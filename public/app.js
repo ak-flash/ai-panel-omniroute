@@ -55,8 +55,7 @@ const state = {
   usage: null,
   fetchedAt: null,
   models: null,
-  tickId: null,
-  providers: [],                  // список с сервера (/api/config)
+    providers: [],                  // список с сервера (/api/config)
   activeProvider: PROVIDER_FALLBACK, // провайдер блока статистики
   modelsProvider: PROVIDER_FALLBACK, // провайдер каталога моделей (выбирается на странице «Модели»)
   combos: [],
@@ -374,9 +373,12 @@ function tickWindow(kind) {
   el.textContent = remainSec <= 0 ? 'обновляется…' : dur(remainSec);
 }
 
-function tick() {
-  tickWindow('short');
-  tickWindow('long');
+function tickFree() {
+  const el = document.getElementById('free-reset');
+  const deadline = state.deadline_free;
+  if (!el || !deadline) return;
+  const remainSec = Math.floor((deadline - Date.now()) / 1000);
+  el.textContent = remainSec <= 0 ? 'обновляется…' : dur(remainSec);
 }
 
 function renderFreeTokens(free) {
@@ -404,6 +406,18 @@ function renderFreeTokens(free) {
   bar.classList.remove('warn', 'danger');
   const cls = barClass(usedPct);
   if (cls) bar.classList.add(cls);
+
+  state.deadline_free =
+    state.fetchedAt + (free.resets_in_sec || 0) * 1000;
+  if (!free.resets_in_sec) {
+    const now = new Date();
+    state.deadline_free = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + 1,
+    );
+  }
+  tickFree();
 }
 
 function renderUsage(data) {
@@ -943,7 +957,6 @@ async function copyCommand() {
 async function init() {
   // Страница «Модели»: каталог моделей выбранного провайдера
   if (PAGE === 'models') {
-    if (state.tickId) clearInterval(state.tickId);
     renderModelsProviders();
     if (!getKey() && !state.modelsProvider.hasKey) {
       state.models = [];
@@ -960,7 +973,6 @@ async function init() {
 
   // Страница «Шпаргалка»
   if (PAGE === 'cheatsheet') {
-    if (state.tickId) clearInterval(state.tickId);
     setStatus('ok', 'Готово');
     return;
   }
@@ -982,9 +994,6 @@ async function init() {
 
   // Главная страница — статистика
   renderProviderLabel();
-
-  if (state.tickId) clearInterval(state.tickId);
-
   if (!getKey() && !state.activeProvider.hasKey) {
     $cards.hidden = true;
     $setup.hidden = false;
@@ -994,7 +1003,6 @@ async function init() {
 
   $setup.hidden = true;
   await loadUsage();
-  state.tickId = setInterval(tick, 1000);
 }
 
 on($id('setup-form'), 'submit', (e) => {

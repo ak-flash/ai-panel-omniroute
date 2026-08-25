@@ -492,6 +492,16 @@ main {
   white-space: nowrap;
 }
 
+.stat-reset {
+  color: var(--text-muted);
+}
+
+.stat-reset > span {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
 .stat-sub {
   display: flex;
   flex-wrap: wrap;
