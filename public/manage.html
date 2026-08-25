@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Управление · AI Панель</title>
+  <style>body.is-booting{visibility:hidden}body.is-booting .topbar{visibility:visible}</style>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="manage" class="is-booting">
+
+<a class="skip-link" href="#main">К содержимому</a>
+
+<div id="tpl-topbar"></div>
+
+<main id="main">
+  <div id="tpl-banner"></div>
+
+  <h2 class="page-title">Управление</h2>
+
+  <section class="manage-card">
+    <div class="info-card">
+      <div class="info-card-head">
+        <span class="info-card-icon" aria-hidden="true">📦</span>
+        <div>
+          <h3 class="info-card-title">Обновление opencode</h3>
+          <p class="info-card-sub">Выполните команду в терминале</p>
+        </div>
+      </div>
+      <div class="manage-cmd">
+        <code id="manage-cmd-text">opencode upgrade</code>
+        <button id="btn-copy-cmd" class="btn btn-ghost" title="Скопировать команду">📋 Копировать</button>
+      </div>
+      <p id="copy-status" class="models-status" role="status"></p>
+    </div>
+    <!--
+    <div class="info-card">
+      <div class="info-card-head">
+        <span class="info-card-icon" aria-hidden="true">🔍</span>
+        <div>
+          <h3 class="info-card-title">Название</h3>
+          <p class="info-card-sub">Описание</p>
+        </div>
+      </div>
+      <p>Текст инструкции.</p>
+    </div>
+    -->
+  </section>
+</main>
+
+
+<div id="tpl-dialog"></div>
+<div id="tpl-live"></div>
+
+<script src="partials.js"></script>
+<script src="app.js" defer></script>
+</body>
+</html>

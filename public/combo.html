@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Combo · AI Панель</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <style>body.is-booting{visibility:hidden}body.is-booting .topbar{visibility:visible}</style>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="combo" class="is-booting">
+
+<a class="skip-link" href="#main">К содержимому</a>
+
+<div id="tpl-topbar"></div>
+
+<main id="main">
+  <div id="tpl-banner"></div>
+
+  <!-- Combos panel (OmniRoute) -->
+  <section id="combos-panel" class="combos-panel">
+    <div class="models-header">
+      <h2>Combo OmniRoute</h2>
+      <div class="combo-controls">
+        <select id="combo-select" class="select" aria-label="Combo"></select>
+        <button id="combo-refresh" class="btn" title="Обновить список combo">⟳</button>
+      </div>
+    </div>
+
+    <div id="combo-empty" class="combo-empty" hidden>
+      Combo не найдены. Убедитесь, что OmniRoute доступен и содержит хотя бы один combo.
+    </div>
+
+    <p id="combo-status" class="models-status" role="status"></p>
+
+    <div id="combo-details" hidden>
+      <div class="combo-info">
+        <span class="badge" id="combo-strategy-badge"></span>
+        <span class="combo-meta" id="combo-targets-count"></span>
+      </div>
+      <div class="combo-toolbar">
+        <label for="combo-model-select">Модель:</label>
+        <select id="combo-model-select" class="select"></select>
+        <button id="combo-move-top" class="btn btn-primary" disabled>⇧ Переставить первой</button>
+      </div>
+      <div class="table-wrap">
+        <ol id="combo-models-list" class="combo-list"></ol>
+      </div>
+    </div>
+  </section>
+</main>
+
+
+<div id="tpl-dialog"></div>
+<div id="tpl-live"></div>
+
+<script src="partials.js"></script>
+<script src="app.js" defer></script>
+</body>
+</html>

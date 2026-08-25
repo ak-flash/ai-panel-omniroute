@@ -1,0 +1,13 @@
+{
+  "name": "ai-panel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Дашборд статистики AI-провайдеров (xKiro), каталог моделей и combo OmniRoute",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

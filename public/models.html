@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Модели · AI Панель</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <style>body.is-booting{visibility:hidden}body.is-booting .topbar{visibility:visible}</style>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="models" class="is-booting">
+
+<a class="skip-link" href="#main">К содержимому</a>
+
+<div id="tpl-topbar"></div>
+
+<main id="main">
+  <!-- Empty state: no key -->
+  <section id="setup" class="setup-card" hidden>
+    <h2>Нужен ключ</h2>
+    <p>Введите API-ключ провайдера <span id="setup-provider-name">xKiro</span>, чтобы загрузить каталог моделей.</p>
+    <form id="setup-form" class="setup-form">
+      <input type="password" id="setup-key" placeholder="sk-xt-…" autocomplete="off" required>
+      <button type="submit" class="btn btn-primary">Подключить</button>
+    </form>
+    <p class="hint">Ключ хранится только локально в вашем браузере.</p>
+  </section>
+
+  <div id="tpl-banner"></div>
+
+  <!-- Models panel -->
+  <section id="models-panel" class="models-panel">
+    <div class="models-header">
+      <h2>Каталог моделей <span class="models-provider-name" id="models-provider-name"></span></h2>
+      <div class="models-controls">
+        <select id="models-provider" class="select" aria-label="Провайдер"></select>
+        <input type="search" id="models-search" placeholder="Поиск…" class="models-search">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="models-table">
+        <thead>
+          <tr>
+            <th>Модель</th>
+            <th>Тариф</th>
+            <th class="num-col">Контекст</th>
+            <th class="num-col">Вход $/1M</th>
+            <th class="num-col">Выход $/1M</th>
+          </tr>
+        </thead>
+        <tbody id="models-body"></tbody>
+      </table>
+    </div>
+    <p id="models-status" class="models-status"></p>
+  </section>
+</main>
+
+
+<div id="tpl-dialog"></div>
+<div id="tpl-live"></div>
+
+<script src="partials.js"></script>
+<script src="app.js" defer></script>
+</body>
+</html>

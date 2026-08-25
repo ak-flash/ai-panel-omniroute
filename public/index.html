@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AI Панель — статистика</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <style>body.is-booting{visibility:hidden}body.is-booting .topbar{visibility:visible}</style>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="index" class="is-booting">
+
+<a class="skip-link" href="#main">К содержимому</a>
+
+<div id="tpl-topbar"></div>
+
+<main id="main">
+  <h2 class="page-title">Статистика</h2>
+
+  <!-- Empty state: no key -->
+  <section id="setup" class="setup-card" hidden>
+    <h2>Добро пожаловать</h2>
+    <p>Введите API-ключ xKiro (вида <code>sk-xt-…</code>) для начала работы.</p>
+    <form id="setup-form" class="setup-form">
+      <input type="password" id="setup-key" placeholder="sk-xt-…" autocomplete="off" required>
+      <button type="submit" class="btn btn-primary">Подключить</button>
+    </form>
+    <p class="hint">Ключ хранится только локально в вашем браузере.</p>
+  </section>
+
+  <div id="tpl-banner"></div>
+
+  <!-- Stats strip: статистика одного провайдера в одну строку -->
+  <section id="cards" class="stats" hidden>
+    <div class="stats-head">
+      <span class="stats-provider" id="stats-provider">провайдер xKiro</span>
+      <span class="badge" id="plan-badge"></span>
+      <!-- Wallet -->
+      <div class="stats-wallet" id="card-wallet">
+        <span class="stat-value num" id="wallet-balance">—</span>
+        <span class="stat-sub" id="wallet-held"></span>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <!-- Short window -->
+      <article class="stat" id="card-short">
+        <div class="stat-top">
+          <span class="stat-head"><span class="stat-label">Короткое окно</span> <span class="stat-meta" id="short-dur"></span></span>
+          <span class="stat-value num" id="short-value">—</span>
+        </div>
+        <div class="bar-track stat-bar"><div class="bar-fill" id="short-bar"></div></div>
+        <div class="stat-sub">
+          <span>Сброс: <span id="short-reset"></span></span>
+          <span class="stat-pct" id="short-pct"></span>
+        </div>
+      </article>
+
+      <!-- Long window -->
+      <article class="stat" id="card-long">
+        <div class="stat-top">
+          <span class="stat-head"><span class="stat-label">Длинное окно</span> <span class="stat-meta" id="long-dur"></span></span>
+          <span class="stat-value num" id="long-value">—</span>
+        </div>
+        <div class="bar-track stat-bar"><div class="bar-fill" id="long-bar"></div></div>
+        <div class="stat-sub">
+          <span>Сброс: <span id="long-reset"></span></span>
+          <span class="stat-pct" id="long-pct"></span>
+        </div>
+      </article>
+
+      <!-- Free tokens -->
+      <article class="stat" id="card-free">
+        <div class="stat-top">
+          <span class="stat-head"><span class="stat-label">Бесплатные токены</span> <span class="stat-meta">сегодня</span></span>
+          <span class="stat-value num" id="free-value">—</span>
+        </div>
+        <div class="bar-track stat-bar"><div class="bar-fill" id="free-bar"></div></div>
+        <div class="stat-sub">
+          <span class="stat-pct" id="free-pct"></span>
+        </div>
+      </article>
+    </div>
+  </section>
+</main>
+
+
+<div id="tpl-dialog"></div>
+<div id="tpl-live"></div>
+
+<script src="partials.js"></script>
+<script src="app.js" defer></script>
+</body>
+</html>
