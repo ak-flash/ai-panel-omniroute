@@ -958,8 +958,8 @@ async function init() {
     return;
   }
 
-  // Страница «Управление»
-  if (PAGE === 'manage') {
+  // Страница «Шпаргалка»
+  if (PAGE === 'cheatsheet') {
     if (state.tickId) clearInterval(state.tickId);
     setStatus('ok', 'Готово');
     return;

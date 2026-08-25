@@ -1036,8 +1036,8 @@ body[data-page="combo"] #updated-wrap { display: none; }
 body[data-page="combo"] .status-label { padding-right: 20px; }
 body[data-page="index"] #updated-wrap { padding-right: 20px; }
 body[data-page="models"] #updated-wrap { padding-right: 20px; }
-body[data-page="manage"] #status-text,
-body[data-page="manage"] #status-dot { display: none; }
+body[data-page="cheatsheet"] #status-text,
+body[data-page="cheatsheet"] #status-dot { display: none; }
 
 .updated {
   display: inline-block;

@@ -8,14 +8,14 @@ const _NAV = [
   { href: 'index.html', label: 'Статистика', page: 'index' },
   { href: 'combo.html', label: 'Маршруты', page: 'combo' },
   { href: 'models.html', label: 'Модели', page: 'models' },
-  { href: 'manage.html', label: 'Управление', page: 'manage' },
+  { href: 'cheatsheet.html', label: 'Шпаргалка', page: 'cheatsheet' },
 ];
 
 const _STATUS_DEFAULTS = {
   index: 'Нужен ключ',
   combo: 'Загружаю…',
   models: 'Загружаю…',
-  manage: 'Готово',
+  cheatsheet: 'Готово',
 };
 
 function topbarHTML(page) {
@@ -117,7 +117,7 @@ function liveRegionHTML() {
 /**
  * Inject all shared partials into placeholder elements.
  * Call once on DOMContentLoaded before app.js init.
- * @param {string} page — current page id (index|combo|models|manage)
+ * @param {string} page — current page id (index|combo|models|cheatsheet)
  */
 function injectPartials(page) {
   const topbar = document.getElementById('tpl-topbar');
