@@ -25,7 +25,7 @@ let $walletBalance, $walletHeld;
 let $shortCard, $longCard, $freeCard;
 let $btnRefresh, $btnSettings;
 let $topbarCollapse, $topbarToggle;
-let $modelsStatus, $modelsBody, $modelsSearch, $modelsProvider, $modelsProviderName, $setupProviderName;
+let $modelsStatus, $modelsBody, $modelsSearch, $modelsTier, $modelsProvider, $modelsProviderName, $setupProviderName;
 let $comboSelect, $comboRefresh, $comboEmpty, $comboStatus, $comboDetails;
 let $comboStrategyBadge, $comboTargetsCount, $comboModelSelect, $comboMoveTop, $comboList;
 let $btnUpgrade, $copyStatus, $cmdText;
@@ -273,6 +273,7 @@ function resolveRefs() {
   $modelsStatus = $id('models-status');
   $modelsBody = $id('models-body');
   $modelsSearch = $id('models-search');
+  $modelsTier = $id('models-tier');
   $modelsProvider = $id('models-provider');
   $modelsProviderName = $id('models-provider-name');
   $setupProviderName = $id('setup-provider-name');
@@ -491,15 +492,26 @@ function renderModels(data) {
   filterModels();
 }
 
+// Суммарная цена за 1M токенов — метрика сортировки каталога
+function modelPrice(m) {
+  const pricing = m.pricing || {};
+  return Number(pricing.input || 0) + Number(pricing.output || 0);
+}
+
 function filterModels() {
   if (!$modelsBody) return;
   const q = ($modelsSearch ? $modelsSearch.value : '').trim().toLowerCase();
+  const tier = $modelsTier && $modelsTier.value !== 'all' ? $modelsTier.value : null;
   $modelsBody.replaceChildren();
-  for (const m of state.models) {
-    const hay = (m.id + ' ' + (m.display_name || '')).toLowerCase();
-    if (q && !hay.includes(q)) continue;
-    $modelsBody.appendChild(modelRow(m));
-  }
+  const rows = state.models
+    .filter((m) => {
+      if (tier && (m.access_tier || 'paid') !== tier) return false;
+      if (!q) return true;
+      const hay = (m.id + ' ' + (m.display_name || '')).toLowerCase();
+      return hay.includes(q);
+    })
+    .sort((a, b) => modelPrice(a) - modelPrice(b));
+  for (const m of rows) $modelsBody.appendChild(modelRow(m));
 }
 
 /**
@@ -1013,6 +1025,7 @@ on($id('setup-form'), 'submit', (e) => {
 });
 
 on($modelsSearch, 'input', filterModels);
+on($modelsTier, 'change', filterModels);
 
 on($modelsProvider, 'change', () => {
   const id = $modelsProvider.value;

@@ -5,10 +5,10 @@
    ============================================================ */
 
 const _NAV = [
-  { href: 'index.html', label: 'Статистика', page: 'index' },
-  { href: 'combo.html', label: 'Маршруты', page: 'combo' },
-  { href: 'models.html', label: 'Модели', page: 'models' },
-  { href: 'cheatsheet.html', label: 'Шпаргалка', page: 'cheatsheet' },
+  { href: 'index.html', label: 'Статистика', page: 'index', icon: '📊' },
+  { href: 'combo.html', label: 'Маршруты', page: 'combo', icon: '🔀' },
+  { href: 'models.html', label: 'Модели', page: 'models', icon: '🧠' },
+  { href: 'cheatsheet.html', label: 'Шпаргалка', page: 'cheatsheet', icon: '📋' },
 ];
 
 const _STATUS_DEFAULTS = {
@@ -22,7 +22,7 @@ function topbarHTML(page) {
   const statusText = _STATUS_DEFAULTS[page] || '';
   const nav = _NAV.map((n) => {
     const cur = n.page === page ? ' aria-current="page"' : '';
-    return `<a href="${n.href}"${cur}>${n.label}</a>`;
+    return `<a href="${n.href}"${cur}><span class="icon" aria-hidden="true">${n.icon}</span> ${n.label}</a>`;
   }).join('\n    ');
 
   const refreshBtn = page === 'index'

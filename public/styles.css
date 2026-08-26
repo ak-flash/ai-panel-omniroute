@@ -1236,6 +1236,11 @@ body[data-page="cheatsheet"] #status-dot { display: none; }
     border-top: 1px solid var(--border);
   }
 
+  /* Точка статуса в мобильном меню не нужна */
+  .topbar-collapse #status-dot {
+    display: none;
+  }
+
   .topbar-collapse .topbar-actions .updated {
     display: none;
   }
