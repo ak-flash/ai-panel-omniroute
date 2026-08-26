@@ -78,9 +78,9 @@ pm2 startup              # автозапуск при перезагрузке 
 Логика работы с API конкретного провайдера — фабрика адаптера в каталоге `providers/`:
 
 - `providers/xkiro.js` — `createXKiroProvider(config)` возвращает адаптер с функциями `getUsage(key)`, `getModels(key)` и авторизацией `x-api-key`
-- `providers/index.js` — реестр: `FACTORIES` (id → фабрика) и `loadProviders()`, возвращает список адаптеров
+- `providers/index.js` — реестр: `FACTORIES` (id → фабрика) и `loadProviders()`, возвращает список вшитых адаптеров
 
-Сейчас `loadProviders()` загружает только xKiro. Поддержка списка `PROVIDERS` из `.env` и динамическая загрузка multiple адаптеров — в планах.
+Набор провайдеров вшит в код: активен каждый из `FACTORIES`, первый — активный по умолчанию. Настройки провайдеров в окружении не задаются (в `.env` — только `PORT`): адрес API вшит в фабрику, ключ всегда присылает клиент.
 
 Панель получает данные через эндпоинты сервера:
 
@@ -92,9 +92,9 @@ pm2 startup              # автозапуск при перезагрузке 
 | `/proxy/{id}/v1/…` | Сырой прокси к API провайдера (или `/proxy/v1/…` — активный) |
 | `/omniroute/…` | Прокси к OmniRoute (требует заголовок `x-omniroute-url` от клиента) |
 
-Ключ: если клиент прислал `x-api-key` — используется он, иначе ключ из `.env`. Ответ upstream проксируется как есть (формат данных xKiro).
+Ключ: всегда присылает клиент (`x-api-key`); сервер ключей не хранит. Ответ upstream проксируется как есть (формат данных xKiro).
 
-**Добавить нового провайдера:** файл `providers/<id>.js` с фабрикой по образцу `xkiro.js` (функции `getUsage`/`getModels`, `authScheme`, `upstream`), строка в `FACTORIES` в `providers/index.js`, переменные в `.env` (`<ID>_NAME`, `<ID>_API_URL`, `<ID>_API_KEY`).
+**Добавить нового провайдера:** файл `providers/<id>.js` с фабрикой по образцу `xkiro.js` (функции `getUsage`/`getModels`, `authScheme`, `upstream`) и строка в `FACTORIES` в `providers/index.js`. Настройки в `.env` не нужны — там только `PORT`.
 
 ## Используемые API
 
@@ -120,12 +120,12 @@ npm test        # или: node --test
 
 Зависимостей нет — используется встроенный раннер Node (`node:test`):
 
-- `test/providers-registry.test.js` — реестр провайдеров: загрузка, дубликаты, неизвестные id
+- `test/providers-registry.test.js` — реестр вшитых провайдеров: список по умолчанию
 - `test/xkiro-adapter.test.js` — фабрика адаптера xKiro против mock-upstream: пути, приоритет ключей, ошибки сети и формата ответа
 - `test/model-match.test.js` — сопоставление модели из combo с каталогом (префикс провайдера, «:free»-варианты, тарифные бейджи)
-- `test/server.test.js` — интеграционные: поднимается настоящий `server.js`, проверяются `/api/config`, `/api/providers/…`, оба формата прокси и статика
+- `test/server.test.js` — интеграционные: сервер поднимается через `createApp` с адаптерами на mock-upstream (плюс smoke-тест CLI-запуска), проверяются `/api/config`, `/api/providers/…`, оба формата прокси и статика
 
-Реальный API xKiro не вызывается: тесты поднимают mock-upstream и переопределяют переменные окружения, так что локальный `.env` на результат не влияет.
+Реальный API xKiro не вызывается: адаптеры в тестах смотрят на mock-upstream, передаваемый напрямую в сервер (через `createApp`), так что локальный `.env` на результат не влияет.
 
 ## Combo (OmniRoute)
 
@@ -157,7 +157,7 @@ ai-panel/
 │   ├── model-match.test.js
 │   └── server.test.js
 ├── package.json       # скрипты start/test — зависимостей нет
-├── .env               # настройки (порт, ключи провайдеров) — не коммитится
+├── .env               # настройки (порт) — не коммитится
 ├── .env.example       # шаблон настроек
 ├── .gitignore
 └── public/

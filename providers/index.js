@@ -1,4 +1,20 @@
+// ============================================================
+// Реестр вшитых провайдеров: FACTORIES (id → фабрика) + loadProviders().
+//
+// Набор провайдеров и их настройки задаются кодом, а не окружением
+// (в .env — только PORT, см. README): адрес API вшит в фабрику,
+// ключ всегда присылает клиент. Чтобы добавить провайдера —
+// файл providers/<id>.js по образцу xkiro.js и строка в FACTORIES.
+// Первый в списке — активный по умолчанию.
+// ============================================================
+
 const { createXKiroProvider } = require('./xkiro');
+
 const FACTORIES = { xkiro: createXKiroProvider };
-function loadProviders(){ return [FACTORIES.xkiro({})]; }
+
+/** Собирает адаптеры вшитых провайдеров в порядке FACTORIES. */
+function loadProviders() {
+  return Object.keys(FACTORIES).map((id) => FACTORIES[id]());
+}
+
 module.exports = { loadProviders, FACTORIES };

@@ -2,15 +2,21 @@
 
 // ============================================================
 // Общие утилиты для тестов:
-//   - mock-upstream — фейковый API xKiro (реальный API не вызывается)
-//   - startPanel    — запуск server.js как дочернего процесса
-//   - getFreePort   — свободный порт для слушающих сокетов
+//   - mock-upstream       — фейковый API xKiro (реальный API не вызывается)
+//   - startPanel          — server.js in-process (createApp) на свободном порту
+//   - startServerProcess  — CLI-запуск node server.js (smoke-тест входной точки)
+//   - getFreePort         — свободный порт для слушающих сокетов
+//
+// Провайдеры передаются в панель напрямую (инъекция), окружение
+// не настраивается — в env остаётся только PORT.
 // ============================================================
 
 const http = require('http');
 const net = require('net');
 const path = require('path');
 const { spawn } = require('child_process');
+const { createApp } = require('../server');
+const { createXKiroProvider } = require('../providers/xkiro');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -93,27 +99,41 @@ function startMockUpstream(opts = {}) {
 }
 
 /**
- * Поднимает server.js на свободном порту и ждёт готовности (/api/config).
- * extraEnv переопределяет переменные из .env на диске, поэтому тесты
- * не зависят от локального .env и не ходят в реальный API xKiro.
- * Возвращает { base, proc, stderr, stop }.
+ * Поднимает server.js in-process (через createApp) на свободном порту.
+ * Провайдеры передаются напрямую — окружение не используется. По
+ * умолчанию один xKiro, смотрящий на opts.upstream (mock-upstream
+ * в тестах). Возвращает { base, stop }.
  */
-async function startPanel(extraEnv = {}) {
+async function startPanel(opts = {}) {
+  const port = await getFreePort();
+  const providers = opts.providers ||
+    [createXKiroProvider({ url: opts.upstream || 'http://127.0.0.1:1' })];
+  const app = createApp({ providers });
+
+  await new Promise((resolve) => app.listen(port, '127.0.0.1', resolve));
+
+  return {
+    base: 'http://127.0.0.1:' + port,
+    stop: () =>
+      new Promise((resolve) => {
+        // Гасим keep-alive соединения, иначе close() ждёт их таймаута
+        if (app.closeIdleConnections) app.closeIdleConnections();
+        app.close(resolve);
+      }),
+  };
+}
+
+/**
+ * CLI-запуск: node server.js как дочерний процесс — smoke-тест
+ * входной точки (поднялся, слушает порт, отдаёт /api/config).
+ * Провайдеры вшитые, upstream не вызывается.
+ */
+async function startServerProcess() {
   const port = await getFreePort();
   const proc = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
     cwd: ROOT,
     stdio: ['ignore', 'ignore', 'pipe'],
-    env: {
-      ...process.env,
-      // Детерминизм: базовые значения, которые extraEnv может переопределить
-      PORT: String(port),
-      PROVIDERS: 'xkiro',
-      XKIRO_NAME: 'xKiro',
-      XKIRO_API_URL: '',
-      XKIRO_API_KEY: '',
-      OMNIROUTE_URL: '',
-      ...extraEnv,
-    },
+    env: { ...process.env, PORT: String(port) },
   });
 
   let stderr = '';
@@ -141,8 +161,6 @@ async function startPanel(extraEnv = {}) {
 
   return {
     base,
-    proc,
-    stderr: () => stderr,
     stop: () =>
       new Promise((resolve) => {
         const timer = setTimeout(() => {
@@ -158,4 +176,4 @@ async function startPanel(extraEnv = {}) {
   };
 }
 
-module.exports = { ROOT, getFreePort, json, startMockUpstream, startPanel };
+module.exports = { ROOT, getFreePort, json, startMockUpstream, startPanel, startServerProcess };

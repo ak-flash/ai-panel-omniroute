@@ -42,7 +42,7 @@ const DIRECT_PATHS = {
 };
 
 // Провайдер по умолчанию — когда /api/config недоступен (режим file://).
-// Список провайдеров и активный приходят с сервера из .env (PROVIDERS=…).
+// Список провайдеров и активный приходят с сервера (/api/config).
 const PROVIDER_FALLBACK = { id: 'xkiro', name: 'xKiro', hasKey: false };
 
 // OmniRoute API: базовый адрес и пути.
@@ -210,15 +210,15 @@ function windowTitle(kind) {
  * Запрос к API активного провайдера (resource: 'usage' | 'models').
  *
  * Через сервер — /api/providers/<id>/<resource>: сервер вызывает функцию
- * адаптера провайдера (providers/ на сервере) и подставляет ключ из .env,
- * если клиент не прислал свой в заголовке x-api-key.
+ * адаптера провайдера (providers/ на сервере), передавая клиентский
+ * ключ из заголовка x-api-key.
  * В режиме file:// — прямой запрос к API xKiro (нужен разрешённый CORS).
  */
 async function providerRequest(resource, opts = {}) {
   const provider = opts.provider || state.activeProvider;
 
   // Ключ: явный (проверка в настройках) → сохранённый локально.
-  // Если ключ есть в .env — ничего не отправляем, сервер подставит свой.
+  // Ключей на сервере нет — upstream всегда уходит клиентский ключ.
   const key = opts.key || (provider.hasKey ? '' : getKey());
   const headers = {};
   if (key) headers['x-api-key'] = key;
@@ -308,7 +308,7 @@ function setStatus(type, text) {
 }
 
 // Подпись блока статистики: «провайдер xKiro».
-// Активный провайдер приходит с сервера из .env (PROVIDERS=…).
+// Активный провайдер приходит с сервера (/api/config).
 function renderProviderLabel() {
   if ($statsProvider) {
     $statsProvider.textContent =
