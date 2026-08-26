@@ -775,29 +775,9 @@ function renderComboControls() {
   $comboEmpty.hidden = true;
 }
 
-function normModelName(s) {
-  return String(s || '').toLowerCase().replace(/[^a-z0-9.]/g, '');
-}
-
+// matchModel — из model-match.js (подключается на странице Combo)
 function findModel(id) {
-  if (!id || !Array.isArray(state.models)) return null;
-  const nid = normModelName(id);
-  const lastSeg = normModelName(
-    String(id).includes('/') ? String(id).slice(String(id).lastIndexOf('/') + 1) : id
-  );
-  // 1) точное совпадение id
-  let m = state.models.find((x) => normModelName(x.id) === nid);
-  // 2) совпадение по последнему сегменту (grok-4.6 и т.п.)
-  if (!m) m = state.models.find((x) => {
-    const nx = normModelName(x.id);
-    return nx === lastSeg || nx.endsWith('/' + lastSeg);
-  });
-  // 3) каталог-имя содержится в названии из combo или наоборот
-  if (!m) m = state.models.find((x) => {
-    const nx = normModelName(x.id);
-    return nx.length > 3 && (nid.includes(nx) || nx.includes(lastSeg));
-  });
-  return m || null;
+  return matchModel(state.models, id);
 }
 
 function renderComboList() {

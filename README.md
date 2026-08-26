@@ -122,6 +122,7 @@ npm test        # или: node --test
 
 - `test/providers-registry.test.js` — реестр провайдеров: загрузка, дубликаты, неизвестные id
 - `test/xkiro-adapter.test.js` — фабрика адаптера xKiro против mock-upstream: пути, приоритет ключей, ошибки сети и формата ответа
+- `test/model-match.test.js` — сопоставление модели из combo с каталогом (префикс провайдера, «:free»-варианты, тарифные бейджи)
 - `test/server.test.js` — интеграционные: поднимается настоящий `server.js`, проверяются `/api/config`, `/api/providers/…`, оба формата прокси и статика
 
 Реальный API xKiro не вызывается: тесты поднимают mock-upstream и переопределяют переменные окружения, так что локальный `.env` на результат не влияет.
@@ -153,6 +154,7 @@ ai-panel/
 │   ├── helpers.js     # mock-upstream и запуск server.js в тестах
 │   ├── providers-registry.test.js
 │   ├── xkiro-adapter.test.js
+│   ├── model-match.test.js
 │   └── server.test.js
 ├── package.json       # скрипты start/test — зависимостей нет
 ├── .env               # настройки (порт, ключи провайдеров) — не коммитится
@@ -164,6 +166,7 @@ ai-panel/
     ├── combo.html     # страница «Combo»: routing combo OmniRoute
     ├── manage.html    # страница «Управление»: команда обновления opencode
     ├── partials.js    # общие HTML-компоненты: шапка, диалог настроек, баннер
+    ├── model-match.js # сопоставление модели из combo с каталогом (бейджи тарифов)
     ├── app.js         # логика всех страниц: загрузка, рендер, отсчёт сбросов
     ├── styles.css     # темы, навигация, полоса статистики, прогресс-бары
     ├── favicon.svg
