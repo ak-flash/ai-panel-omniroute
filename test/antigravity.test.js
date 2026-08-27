@@ -509,6 +509,12 @@ test('секреты refresh-связки не возвращаются клие
 
 test('start: ссылка Google с вшитым client_id и loopback redirect_uri', async () => {
   const mock = await startMockGoogle();
+  // client_id/secret берутся из окружения — подставляем фикстурные значения,
+  // чтобы не коммитить реальные (и не триггерить push-protection).
+  const prevId = process.env.GOOGLE_CLIENT_ID;
+  const prevSecret = process.env.GOOGLE_CLIENT_SECRET;
+  process.env.GOOGLE_CLIENT_ID = 'test-google-client-id.apps.googleusercontent.com';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-google-client-secret';
   const panel = await startPanel({
     providers: [],
     antigravity: createAntigravityProvider({ url: mock.url }),
@@ -519,7 +525,7 @@ test('start: ссылка Google с вшитым client_id и loopback redirect_
     const { url } = await res.json();
     assert.ok(url.startsWith('https://accounts.google.com/o/oauth2/v2/auth?'));
     const params = new URL(url).searchParams;
-    assert.equal(params.get('client_id'), '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com');
+    assert.equal(params.get('client_id'), 'test-google-client-id.apps.googleusercontent.com');
     assert.equal(params.get('response_type'), 'code');
     assert.equal(params.get('access_type'), 'offline');
     assert.equal(params.get('prompt'), 'consent');
@@ -531,6 +537,8 @@ test('start: ссылка Google с вшитым client_id и loopback redirect_
     assert.equal(redirect.port, new URL(panel.base).port);
     assert.ok(params.get('state'));
   } finally {
+    if (prevId === undefined) delete process.env.GOOGLE_CLIENT_ID; else process.env.GOOGLE_CLIENT_ID = prevId;
+    if (prevSecret === undefined) delete process.env.GOOGLE_CLIENT_SECRET; else process.env.GOOGLE_CLIENT_SECRET = prevSecret;
     await panel.stop();
     await mock.close();
   }

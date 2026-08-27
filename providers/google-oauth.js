@@ -12,8 +12,13 @@ const DEFAULT_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 // OAuth-клиент Antigravity берётся из переменных окружения, чтобы
 // секреты не попадали в репозиторий. Задайте GOOGLE_CLIENT_ID и
 // GOOGLE_CLIENT_SECRET (например, в .env) перед запуском.
-const BUILTIN_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
-const BUILTIN_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+// Читаем лениво (в момент вызова), т.к. .env загружается позже require.
+function getBuiltinClientId() {
+  return process.env.GOOGLE_CLIENT_ID || '';
+}
+function getBuiltinClientSecret() {
+  return process.env.GOOGLE_CLIENT_SECRET || '';
+}
 
 const DEFAULT_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 
@@ -34,7 +39,7 @@ const REQUEST_TIMEOUT_MS = 15000;
  * access_type=offline + prompt=consent — чтобы гарантированно
  * получить refresh_token.
  */
-function buildAuthUrl({ redirectUri, state, clientId = BUILTIN_CLIENT_ID, authUrl = DEFAULT_AUTH_URL }) {
+function buildAuthUrl({ redirectUri, state, clientId = getBuiltinClientId(), authUrl = DEFAULT_AUTH_URL }) {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -109,7 +114,7 @@ function createGoogleOauth(config = {}) {
    *     может отсутствовать (Google отдаёт его не всегда)
    *   { ok:false, error } — invalid_grant / oauth_error / network
    */
-  async function exchangeCode({ code, redirectUri, clientId = BUILTIN_CLIENT_ID, clientSecret = BUILTIN_CLIENT_SECRET } = {}) {
+  async function exchangeCode({ code, redirectUri, clientId = getBuiltinClientId(), clientSecret = getBuiltinClientSecret() } = {}) {
     if (!code || !redirectUri) return { ok: false, error: 'no_credentials' };
     try {
       const response = await fetch(url, {
@@ -148,6 +153,6 @@ function createGoogleOauth(config = {}) {
 module.exports = {
   createGoogleOauth,
   buildAuthUrl,
-  BUILTIN_CLIENT_ID,
-  BUILTIN_CLIENT_SECRET,
+  getBuiltinClientId,
+  getBuiltinClientSecret,
 };

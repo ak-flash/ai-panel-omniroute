@@ -19,7 +19,7 @@ function loadEnvFile(fileName){
 }
 const { loadProviders } = require('./providers');
 const { createAntigravityProvider } = require('./providers/antigravity');
-const { createGoogleOauth, BUILTIN_CLIENT_ID, BUILTIN_CLIENT_SECRET } = require('./providers/google-oauth');
+const { createGoogleOauth, getBuiltinClientId, getBuiltinClientSecret } = require('./providers/google-oauth');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const MAX_BODY = 2 * 1024 * 1024;
 const MIME = { '.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.woff2':'font/woff2','.txt':'text/plain; charset=utf-8' };
@@ -46,8 +46,8 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
     googleAuth.token = r.accessToken;
     googleAuth.tokenExpiresAt = r.expiresIn ? Date.now() + r.expiresIn * 1000 : 0;
     if (r.refreshToken) googleAuth.refreshToken = r.refreshToken;
-    googleAuth.clientId = BUILTIN_CLIENT_ID;
-    googleAuth.clientSecret = BUILTIN_CLIENT_SECRET;
+    googleAuth.clientId = getBuiltinClientId();
+    googleAuth.clientSecret = getBuiltinClientSecret();
     agCache = { ts: 0, result: null, project: null };
   }
 

@@ -929,7 +929,7 @@ const AG_ERROR_MESSAGES = {
 
 function agCard(model) {
   const card = document.createElement('article');
-  card.className = 'stat';
+  card.className = 'stat compact';
 
   const top = document.createElement('div');
   top.className = 'stat-top';
@@ -978,6 +978,55 @@ function agCard(model) {
   return card;
 }
 
+// Порядок и состояние свёрнутости групп моделей Antigravity
+const AG_GROUPS = [
+  { key: 'claude', label: 'Claude', collapsed: false },
+  { key: 'gemini', label: 'Gemini', collapsed: true },
+  { key: 'other', label: 'Прочие', collapsed: false },
+];
+
+// К какой группе отнести модель по id / displayName
+function agGroupOf(model) {
+  const s = ((model.id || '') + ' ' + (model.displayName || '')).toLowerCase();
+  if (s.includes('claude')) return 'claude';
+  if (s.includes('gemini')) return 'gemini';
+  return 'other';
+}
+
+// Контейнер группы со сворачиваемой шапкой
+function agGroupContainer(group, models) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ag-group' + (group.collapsed ? ' collapsed' : '');
+  wrap.dataset.group = group.key;
+
+  const head = document.createElement('button');
+  head.type = 'button';
+  head.className = 'ag-group-head';
+  head.setAttribute('aria-expanded', String(!group.collapsed));
+  const title = document.createElement('span');
+  title.className = 'ag-group-title';
+  title.textContent = group.label;
+  const count = document.createElement('span');
+  count.className = 'ag-group-count';
+  count.textContent = String(models.length);
+  const chev = document.createElement('span');
+  chev.className = 'ag-chevron';
+  chev.setAttribute('aria-hidden', 'true');
+  chev.textContent = '▾';
+  head.append(title, count, chev);
+  head.addEventListener('click', () => {
+    const collapsed = wrap.classList.toggle('collapsed');
+    head.setAttribute('aria-expanded', String(!collapsed));
+  });
+
+  const body = document.createElement('div');
+  body.className = 'ag-group-body stats-row';
+  for (const m of models) body.appendChild(agCard(m));
+
+  wrap.append(head, body);
+  return wrap;
+}
+
 function renderAntigravityQuota() {
   if (!$agSection) return;
   const q = state.antigravityQuota;
@@ -996,21 +1045,30 @@ function renderAntigravityQuota() {
   }
 
   const models = Array.isArray(q.models) ? q.models : [];
-  if (!models.length && !Array.isArray(q.windows)) {
+
+  // Групповые окна (weekly / 5h): худший остаток среди моделей
+  const WINDOW_TITLES = { '5h': 'Окно 5 ч', weekly: 'Недельное окно' };
+  const extra = (Array.isArray(q.windows) ? q.windows : []).map((w) => ({
+    id: w.windowSize,
+    displayName: WINDOW_TITLES[w.windowSize] || w.windowSize,
+    remainingFraction: w.remainingFraction,
+    resetTime: w.resetTime,
+  }));
+
+  if (!models.length && !extra.length) {
     $agHint.textContent = 'Google не вернул данные по моделям.';
     $agHint.hidden = false;
     return;
   }
-  for (const m of models) $agCards.appendChild(agCard(m));
 
-  // Групповые окна (weekly / 5h): худший остаток среди моделей
-  const WINDOW_TITLES = { '5h': 'Окно 5 ч', weekly: 'Недельное окно' };
-  for (const w of Array.isArray(q.windows) ? q.windows : []) {
-    $agCards.appendChild(agCard({
-      displayName: WINDOW_TITLES[w.windowSize] || w.windowSize,
-      remainingFraction: w.remainingFraction,
-      resetTime: w.resetTime,
-    }));
+  const grouped = {};
+  for (const m of models) (grouped[agGroupOf(m)] ||= []).push(m);
+  for (const w of extra) (grouped.other ||= []).push(w);
+
+  for (const g of AG_GROUPS) {
+    const list = grouped[g.key];
+    if (!list || !list.length) continue;
+    $agCards.appendChild(agGroupContainer(g, list));
   }
 }
 
