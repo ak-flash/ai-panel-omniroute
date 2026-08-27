@@ -369,6 +369,11 @@ main {
   padding: 20px 24px;
 }
 
+/* Секция Antigravity на дашборде — под блоком статистики xKiro */
+#antigravity-quota {
+  margin-top: 16px;
+}
+
 .stats-head {
   display: flex;
   align-items: center;

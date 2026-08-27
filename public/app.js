@@ -11,6 +11,8 @@ const LS_ALIASES = 'aipanel.combo.aliases';
 const LS_XKIRO_KEY = 'aipanel.xkiro.key.v2';
 const LS_OMNI_URL = 'aipanel.omni.url';
 const LS_OMNI_KEY = 'aipanel.omni.key.v2';
+const LS_AG_PROJECT = 'aipanel.antigravity.project';
+const LS_DLG_PROVIDER = 'aipanel.dlg.provider';
 
 // Текущая страница: index (Статистика) | models (Модели) | combo (Combo).
 // Панель состоит из отдельных HTML-страниц с одним общим app.js.
@@ -29,6 +31,7 @@ let $modelsStatus, $modelsBody, $modelsSearch, $modelsTier, $modelsProvider, $mo
 let $comboSelect, $comboRefresh, $comboEmpty, $comboStatus, $comboDetails;
 let $comboStrategyBadge, $comboTargetsCount, $comboModelSelect, $comboMoveTop, $comboList;
 let $btnUpgrade, $copyStatus, $cmdText;
+let $agSection, $agCards, $agHint, $agBadge;
 let $dlg, $dlgKey, $dlgToggle, $dlgSave, $dlgRemove, $dlgResult;
 
 // Прямой адрес API xKiro — используется только когда панель открыта как файл
@@ -64,6 +67,7 @@ const state = {
   activeComboId: null,
   comboModels: [],     // массив target-объектов: { provider, model, display, weight }
   activeComboData: null, // полный объект combo с сервера для PUT
+  antigravityQuota: null, // квоты Antigravity (модели Google AI Pro)
 };
 
 /* ---------- secure storage (obfuscation, not real encryption) ---------- */
@@ -290,6 +294,10 @@ function resolveRefs() {
   $btnUpgrade = $id('btn-copy-cmd');
   $copyStatus = $id('copy-status');
   $cmdText = $id('manage-cmd-text');
+  $agSection = $id('antigravity-quota');
+  $agCards = $id('ag-cards');
+  $agHint = $id('ag-hint');
+  $agBadge = $id('ag-status-badge');
   $dlg = $id('dlg');
   $dlgKey = $id('dlg-key');
   $dlgToggle = $id('dlg-toggle');
@@ -888,6 +896,124 @@ function selectCombo(id) {
   loadComboModels();
 }
 
+/* ---------- antigravity quota ---------- */
+
+async function loadAntigravityQuota() {
+  if (!$agSection) return null;
+  // project живёт в localStorage и уходит на сервер query-параметром
+  let project = '';
+  try { project = localStorage.getItem(LS_AG_PROJECT) || ''; } catch {}
+  try {
+    const res = await fetch('/api/antigravity-quota' + (project ? '?project=' + encodeURIComponent(project) : ''));
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      state.antigravityQuota = { error: data.error || 'provider_error' };
+    } else {
+      state.antigravityQuota = data;
+    }
+  } catch {
+    state.antigravityQuota = { error: 'network' };
+  }
+  renderAntigravityQuota();
+  return state.antigravityQuota;
+}
+
+const AG_ERROR_MESSAGES = {
+  no_token: 'Токен не задан — вставьте Antigravity OAuth-токен в настройках.',
+  token_expired: 'Токен истёк — обновите его в настройках или задайте refresh-связку для автообновления.',
+  project_required: 'Google требует project_id — укажите его в настройках Antigravity.',
+  rate_limited: 'Слишком частые запросы к Google — попробуйте позже.',
+  provider_error: 'Не удалось получить квоты Google.',
+  network: 'Нет доступа к панели — запустите node server.js',
+};
+
+function agCard(model) {
+  const card = document.createElement('article');
+  card.className = 'stat';
+
+  const top = document.createElement('div');
+  top.className = 'stat-top';
+  const head = document.createElement('span');
+  head.className = 'stat-head';
+  const label = document.createElement('span');
+  label.className = 'stat-label';
+  label.textContent = model.displayName || model.id;
+  head.appendChild(label);
+  if (model.supportsThinking) {
+    const meta = document.createElement('span');
+    meta.className = 'stat-meta';
+    meta.textContent = 'thinking';
+    head.appendChild(meta);
+  }
+  const value = document.createElement('span');
+  value.className = 'stat-value num';
+  if (model.remainingFraction == null) {
+    value.textContent = '—';
+  } else {
+    const usedPct = 100 - Math.round(model.remainingFraction * 100);
+    value.textContent = usedPct + '%';
+  }
+  top.append(head, value);
+
+  const track = document.createElement('div');
+  track.className = 'bar-track stat-bar';
+  const fill = document.createElement('div');
+  fill.className = 'bar-fill';
+  const p = model.remainingFraction == null ? 0 : Math.min(100, Math.max(0, 100 - model.remainingFraction * 100));
+  fill.style.width = p + '%';
+  const cls = barClass(p);
+  if (cls) fill.classList.add(cls);
+  track.appendChild(fill);
+
+  const sub = document.createElement('div');
+  sub.className = 'stat-sub';
+  const reset = document.createElement('span');
+  reset.className = 'stat-reset';
+  reset.textContent = model.resetTime
+    ? 'Сброс: ' + new Date(model.resetTime).toLocaleString('ru', { hour12: false })
+    : '';
+  sub.appendChild(reset);
+
+  card.append(top, track, sub);
+  return card;
+}
+
+function renderAntigravityQuota() {
+  if (!$agSection) return;
+  const q = state.antigravityQuota;
+  $agCards.replaceChildren();
+  $agHint.hidden = true;
+  if ($agBadge) $agBadge.textContent = '';
+
+  if (!q) { $agSection.hidden = true; return; }
+  $agSection.hidden = false;
+
+  if (q.error) {
+    $agHint.textContent = AG_ERROR_MESSAGES[q.error] || 'Ошибка загрузки квот.';
+    $agHint.hidden = false;
+    if ($agBadge) $agBadge.textContent = 'нет данных';
+    return;
+  }
+
+  const models = Array.isArray(q.models) ? q.models : [];
+  if (!models.length && !Array.isArray(q.windows)) {
+    $agHint.textContent = 'Google не вернул данные по моделям.';
+    $agHint.hidden = false;
+    return;
+  }
+  for (const m of models) $agCards.appendChild(agCard(m));
+
+  // Групповые окна (weekly / 5h): худший остаток среди моделей
+  const WINDOW_TITLES = { '5h': 'Окно 5 ч', weekly: 'Недельное окно' };
+  for (const w of Array.isArray(q.windows) ? q.windows : []) {
+    $agCards.appendChild(agCard({
+      displayName: WINDOW_TITLES[w.windowSize] || w.windowSize,
+      remainingFraction: w.remainingFraction,
+      resetTime: w.resetTime,
+    }));
+  }
+}
+
 /* ---------- loading ---------- */
 
 async function loadUsage() {
@@ -990,11 +1116,14 @@ async function init() {
     $cards.hidden = true;
     $setup.hidden = false;
     setStatus('idle', 'Нужен ключ');
+    // Квоты Antigravity не зависят от ключа xKiro — грузим всегда
+    loadAntigravityQuota();
     return;
   }
 
   $setup.hidden = true;
   await loadUsage();
+  loadAntigravityQuota();
 }
 
 on($id('setup-form'), 'submit', (e) => {
@@ -1015,7 +1144,18 @@ on($modelsProvider, 'change', () => {
   reboot();
 });
 
-on($btnRefresh, 'click', loadUsage);
+on($btnRefresh, 'click', () => { loadUsage(); loadAntigravityQuota(); });
+
+// Показ/скрытие полей выбранного в настройках провайдера
+function renderDlgProviderFields() {
+  const $sel = $id('dlg-provider');
+  if (!$sel) return;
+  const isAg = $sel.value === 'antigravity';
+  const $xkiro = $id('dlg-xkiro-fields');
+  const $ag = $id('dlg-ag-fields');
+  if ($xkiro) $xkiro.hidden = isAg;
+  if ($ag) $ag.hidden = !isAg;
+}
 
 on($btnSettings, 'click', () => {
   $dlgKey.value = getKey() || '';
@@ -1024,8 +1164,22 @@ on($btnSettings, 'click', () => {
   const $omniKey = $id('dlg-omni-key');
   if ($omniUrl) $omniUrl.value = getOmniUrl();
   if ($omniKey) $omniKey.value = getOmniKey();
+  const $agProject = $id('dlg-ag-project');
+  if ($agProject) {
+    try { $agProject.value = localStorage.getItem(LS_AG_PROJECT) || ''; } catch {}
+  }
+  // Статус токена — с сервера (сами секреты клиенту не возвращаются)
+  refreshAgStatus();
   $dlgResult.textContent = '';
   $dlgResult.hidden = true;
+  // Восстанавливаем последнего выбранного в диалоге провайдера
+  const $dlgProvider = $id('dlg-provider');
+  if ($dlgProvider) {
+    let savedDlgProvider = 'xkiro';
+    try { savedDlgProvider = localStorage.getItem(LS_DLG_PROVIDER) || 'xkiro'; } catch {}
+    $dlgProvider.value = savedDlgProvider === 'antigravity' ? 'antigravity' : 'xkiro';
+    renderDlgProviderFields();
+  }
   const $hint = document.getElementById('dlg-env-hint');
   if ($hint) $hint.hidden = true;
   $dlg.showModal();
@@ -1103,8 +1257,98 @@ on($id('dlg-alias-add'), 'click', () => {
   inId.focus();
 });
 
+// Переключение полей провайдера в настройках (один обработчик на всё время жизни)
+on($id('dlg-provider'), 'change', () => {
+  const $sel = $id('dlg-provider');
+  if (!$sel) return;
+  try { localStorage.setItem(LS_DLG_PROVIDER, $sel.value); } catch {}
+  renderDlgProviderFields();
+});
+
 on($dlgToggle, 'click', () => {
   $dlgKey.type = $dlgKey.type === 'password' ? 'text' : 'password';
+});
+
+// Обновляет статусную строку в форме Antigravity по данным сервера
+// (сами токены клиенту не возвращаются — только флаги и время истечения)
+async function refreshAgStatus(prefix) {
+  const $exp = $id('dlg-ag-exp');
+  if (!$exp) return;
+  try {
+    const s = await (await fetch('/api/settings/google-token')).json();
+    const parts = [];
+    parts.push(s.hasToken ? '✓ Токен задан на сервере' : 'Токен не задан');
+    if (s.hasToken && s.tokenExpiresAt) {
+      const remainSec = Math.floor((s.tokenExpiresAt - Date.now()) / 1000);
+      parts.push(remainSec > 0
+        ? 'истекает через ' + dur(remainSec)
+        : (s.hasRefresh ? 'истёк — обновится автоматически' : 'истёк — войдите заново'));
+    }
+    if (s.hasRefresh) parts.push('автообновление включено');
+    $exp.textContent = (prefix ? prefix + ' ' : '') + parts.join(', ') + '.';
+    $exp.hidden = false;
+  } catch {}
+}
+
+// Вход через Google: открываем окно авторизации, после входа пользователь
+// копирует адрес из адресной строки (loopback-redirect) и вставляет его
+// в поле «Ссылка после входа» — сервер обменяет код на токены.
+on($id('dlg-ag-login'), 'click', async () => {
+  const $st = $id('dlg-ag-login-status');
+  const setStatus = (t) => { if ($st) $st.textContent = t; };
+  // Окно открываем синхронно по клику, адрес подставляем после ответа сервера —
+  // иначе блокировщик всплывающих окон сработает из-за await
+  const win = window.open('', 'ag-oauth', 'width=520,height=680');
+  try {
+    const res = await fetch('/api/antigravity-auth/start');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.url) throw new Error(data.message || 'HTTP ' + res.status);
+    if (win) win.location.href = data.url;
+    else window.open(data.url, 'ag-oauth', 'width=520,height=680');
+    setStatus('Окно Google открыто. После входа скопируйте адрес из адресной строки (http://127.0.0.1:…) и вставьте в поле ниже.');
+    const $paste = $id('dlg-ag-paste');
+    if ($paste) $paste.focus();
+  } catch (err) {
+    if (win) win.close();
+    setStatus('Ошибка: ' + (err && err.message ? err.message : err));
+  }
+});
+
+// Основной flow: вставить ссылку, на которую ушёл браузер после входа в Google
+on($id('dlg-ag-paste-btn'), 'click', async () => {
+  const $st = $id('dlg-ag-login-status');
+  const $inp = $id('dlg-ag-paste');
+  if (!$inp || !$inp.value.trim()) return;
+  try {
+    if ($st) $st.textContent = 'Обмениваю код авторизации…';
+    const res = await fetch('/api/antigravity-auth/paste', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: $inp.value.trim() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || data.error || 'HTTP ' + res.status);
+    $inp.value = '';
+    const q = await loadAntigravityQuota();
+    if ($st) {
+      $st.textContent = q && !q.error
+        ? 'Авторизация выполнена ✓ — квоты загружены'
+        : 'Авторизация выполнена, но квоты не получены: ' +
+          ((q && AG_ERROR_MESSAGES[q.error]) || (q && q.error) || 'неизвестная ошибка');
+    }
+    refreshAgStatus();
+  } catch (err) {
+    if ($st) $st.textContent = 'Ошибка: ' + (err && err.message ? err.message : err);
+  }
+});
+
+// Enter в поле вставки = «Применить»
+on($id('dlg-ag-paste'), 'keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const $btn = $id('dlg-ag-paste-btn');
+    if ($btn) $btn.click();
+  }
 });
 
 on($dlgSave, 'click', () => {
@@ -1124,6 +1368,15 @@ on($dlgSave, 'click', () => {
   }
   if ($omniUrl || $omniKey) setOmniConfig(omniUrlClean, $omniKey ? $omniKey.value.trim() : '');
   if (candidate) setKey(candidate);
+
+  // Antigravity: project хранится в localStorage и уходит на сервер
+  // query-параметром при запросе квот
+  const $agProject = $id('dlg-ag-project');
+  const agProjectValue = $agProject ? $agProject.value.trim() : '';
+  try {
+    if (agProjectValue) localStorage.setItem(LS_AG_PROJECT, agProjectValue);
+    else localStorage.removeItem(LS_AG_PROJECT);
+  } catch {}
 
   $dlgSave.disabled = false;
   $dlgSave.textContent = 'Проверить и сохранить';
@@ -1233,7 +1486,7 @@ on($id('banner-close'), 'click', hideBanner);
 // Обновление при возврате на вкладку — только для статистики
 if (PAGE === 'index') {
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) loadUsage();
+    if (!document.hidden) { loadUsage(); loadAntigravityQuota(); }
   });
 }
 

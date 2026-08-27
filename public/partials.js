@@ -63,15 +63,39 @@ const _DIALOG_HTML = `<dialog id="dlg">
         <span class="dlg-card-icon" aria-hidden="true">🔌</span>
         <div>
           <h3 class="dlg-card-title">Провайдер</h3>
-          <p class="dlg-card-sub">API-ключи хранятся локально, обфусцированно</p>
+          <p class="dlg-card-sub">Ключ xKiro — локально; токен Antigravity — в памяти сервера</p>
         </div>
       </div>
       <label for="dlg-provider">Провайдер</label>
-      <select id="dlg-provider" class="select"><option value="xkiro">xKiro</option></select>
-      <label for="dlg-key">API-ключ</label>
-      <div class="input-group">
-        <input type="password" id="dlg-key" placeholder="sk-xt-…" autocomplete="off">
-        <button type="button" id="dlg-toggle" class="btn btn-ghost" aria-label="Показать/скрыть ключ">👁</button>
+      <select id="dlg-provider" class="select">
+        <option value="xkiro">xKiro</option>
+        <option value="antigravity">Antigravity</option>
+      </select>
+      <!-- Поля ключа xKiro -->
+      <div id="dlg-xkiro-fields">
+        <label for="dlg-key">API-ключ</label>
+        <div class="input-group">
+          <input type="password" id="dlg-key" placeholder="sk-xt-…" autocomplete="off">
+          <button type="button" id="dlg-toggle" class="btn btn-ghost" aria-label="Показать/скрыть ключ">👁</button>
+        </div>
+      </div>
+      <!-- Поля Antigravity (Google AI Pro): вход через Google + вставка ссылки -->
+      <div id="dlg-ag-fields" hidden>
+        <button type="button" id="dlg-ag-login" class="btn btn-primary">Войти через Google</button>
+        <p class="hint" style="margin-top:6px">
+          В открывшемся окне войдите в аккаунт. Браузер перейдёт на адрес вида
+          <code>http://127.0.0.1:…/callback?code=…</code> (страница может не открыться — это нормально).
+          Скопируйте адрес целиком из адресной строки и вставьте ниже.
+        </p>
+        <label for="dlg-ag-paste">Ссылка после входа</label>
+        <div class="input-group">
+          <input type="text" id="dlg-ag-paste" placeholder="http://127.0.0.1:…/callback?code=…" autocomplete="off">
+          <button type="button" id="dlg-ag-paste-btn" class="btn">Применить</button>
+        </div>
+        <p class="hint" id="dlg-ag-login-status" aria-live="polite"></p>
+        <label for="dlg-ag-project">Project ID (опционально)</label>
+        <input type="text" id="dlg-ag-project" placeholder="my-project-id" autocomplete="off">
+        <p class="hint" id="dlg-ag-exp" hidden></p>
       </div>
     </div>
     <div class="dlg-card">

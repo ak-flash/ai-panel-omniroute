@@ -108,7 +108,7 @@ async function startPanel(opts = {}) {
   const port = await getFreePort();
   const providers = opts.providers ||
     [createXKiroProvider({ url: opts.upstream || 'http://127.0.0.1:1' })];
-  const app = createApp({ providers });
+  const app = createApp({ providers, antigravity: opts.antigravity, googleOauth: opts.googleOauth });
 
   await new Promise((resolve) => app.listen(port, '127.0.0.1', resolve));
 

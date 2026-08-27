@@ -89,12 +89,34 @@ pm2 startup              # автозапуск при перезагрузке 
 | `GET /api/config` | Список провайдеров (`id`, `name`, `hasKey`) и активный — без секретов |
 | `GET /api/providers/{id}/usage` | Статистика через адаптер провайдера |
 | `GET /api/providers/{id}/models` | Каталог моделей через адаптер провайдера |
+| `POST /api/settings/google-token` | Приём Antigravity OAuth-токена (хранится в памяти процесса) |
+| `GET /api/antigravity-quota` | Квоты Antigravity по моделям (кеш 60 с) |
 | `/proxy/{id}/v1/…` | Сырой прокси к API провайдера (или `/proxy/v1/…` — активный) |
 | `/omniroute/…` | Прокси к OmniRoute (требует заголовок `x-omniroute-url` от клиента) |
 
 Ключ: всегда присылает клиент (`x-api-key`); сервер ключей не хранит. Ответ upstream проксируется как есть (формат данных xKiro).
 
 **Добавить нового провайдера:** файл `providers/<id>.js` с фабрикой по образцу `xkiro.js` (функции `getUsage`/`getModels`, `authScheme`, `upstream`) и строка в `FACTORIES` в `providers/index.js`. Настройки в `.env` не нужны — там только `PORT`.
+
+## Antigravity (Google AI Pro)
+
+Секция квот на главной странице: процент использованных лимитов по моделям Claude (данные Google `fetchAvailableModels`, референс — [Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager)).
+
+**Настройка:** откройте **⚙ Настройки** → провайдер **Antigravity** в карточке «Провайдер»:
+
+1. Нажмите **«Войти через Google»** и войдите в аккаунт (OAuth-клиент Antigravity вшит в сервер).
+2. После входа браузер перейдёт на loopback-адрес `http://127.0.0.1:<порт>/callback?code=…` — страница может не открыться (это нормально, Google разрешает только такие redirect). **Скопируйте адрес целиком из адресной строки.**
+3. Вставьте ссылку в поле **«Ссылка после входа»** и нажмите **«Применить»**: сервер обменяет код на токены (код одноразовый, живёт ~10 минут) и сохранит их.
+
+Токены (access + refresh) хранятся **только в памяти сервера** — не в localStorage и не в логах; клиенту возвращается лишь статус «задан/не задан» и время истечения. Пока действует refresh-токен, сервер обновляет access-токен сам (~1 час жизни). После рестарта сервера нужен повторный вход.
+
+Необязательно заполните **Project ID** (обходит ошибку `project_required` для аккаунтов без активного GCP-проекта) — он хранится в localStorage и передаётся на сервер параметром запроса квот.
+
+**Риски:** токен даёт доступ к вашему аккаунту Google. Передавайте его только своему локальному серверу панели; не публикуйте и не вставляйте его в сторонние сервисы.
+
+Ошибки мапятся в понятные коды: `no_token` (ничего не задано), `token_expired` (401 от Google или отозванный refresh-token), `project_required` (403 после fallback без project), `rate_limited` (429), `provider_error` (сеть/таймаут). Ответы Google кешируются на 60 секунд.
+
+Помимо per-model квот панель показывает **групповые окна** из `retrieveUserQuotaSummary`: «Окно 5 ч» и «Недельное окно» (худший остаток среди моделей). Ошибка этого эндпоинта не ломает основной ответ.
 
 ## Используемые API
 
@@ -105,6 +127,10 @@ pm2 startup              # автозапуск при перезагрузке 
 | `GET {omniUrl}/api/combos` | Список всех combo OmniRoute | — |
 | `GET {omniUrl}/api/combos/{id}` | Детали combo (targets, strategy) | — |
 | `PUT {omniUrl}/api/combos/{id}` | Обновить combo (перестановка targets) | — |
+| `POST https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels` | Квоты Antigravity по моделям (нужен заголовок User-Agent `vscode/… (Antigravity/…)`) | Бесплатно |
+| `POST https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` | Групповые окна Antigravity (weekly / 5h) | Бесплатно |
+| `POST https://oauth2.googleapis.com/token` | Обмен кода / обновление access-token | Бесплатно |
+| `GET https://accounts.google.com/o/oauth2/v2/auth` | Окно авторизации Google (кнопка «Войти через Google») | — |
 
 Деньги приходят строками (`"683.950000"`), парсятся во float только для отображения.
 
@@ -124,6 +150,7 @@ npm test        # или: node --test
 - `test/xkiro-adapter.test.js` — фабрика адаптера xKiro против mock-upstream: пути, приоритет ключей, ошибки сети и формата ответа
 - `test/model-match.test.js` — сопоставление модели из combo с каталогом (префикс провайдера, «:free»-варианты, тарифные бейджи)
 - `test/server.test.js` — интеграционные: сервер поднимается через `createApp` с адаптерами на mock-upstream (плюс smoke-тест CLI-запуска), проверяются `/api/config`, `/api/providers/…`, оба формата прокси и статика
+- `test/antigravity.test.js` — квоты Antigravity против mock-Google: заголовки (Bearer + User-Agent), fallback `{}` при 403, кеш 60 с, все коды ошибок, refresh-token flow (автообновление, повтор после 401, invalid_grant), групповые окна weekly/5h и тесты «токен/секреты не попадают в ответы/логи»
 
 Реальный API xKiro не вызывается: адаптеры в тестах смотрят на mock-upstream, передаваемый напрямую в сервер (через `createApp`), так что локальный `.env` на результат не влияет.
 
@@ -149,7 +176,9 @@ ai-panel/
 ├── server.js          # Node-сервер: статика + провайдеры + прокси + .env-загрузчик
 ├── providers/         # провайдеры AI-API
 │   ├── index.js       # реестр: FACTORIES + loadProviders()
-│   └── xkiro.js       # фабрика адаптера xKiro (getUsage, getModels)
+│   ├── xkiro.js       # фабрика адаптера xKiro (getUsage, getModels)
+│   ├── antigravity.js # фабрика адаптера Antigravity (getQuota, getQuotaSummary)
+│   └── google-oauth.js# обновление Google access-token по refresh-token
 ├── test/              # тесты (node:test, без зависимостей)
 │   ├── helpers.js     # mock-upstream и запуск server.js в тестах
 │   ├── providers-registry.test.js
@@ -176,7 +205,7 @@ ai-panel/
 ## Планы развития
 
 - [x] OmniRoute: переключение моделей в combo (auto-coding и др.) по их API
-- [x] Провайдеры: фабрики-адаптеры в `providers/` (пока только xKiro)
+- [x] Провайдеры: фабрики-адаптеры в `providers/` (xKiro, Antigravity + refresh-token flow)
 - [x] Страница «Управление» с командой обновления opencode
 - [x] Алиасы имён провайдеров для OmniRoute
 - [ ] Другие провайдеры: новые адаптеры в `providers/` и переключение в панели
