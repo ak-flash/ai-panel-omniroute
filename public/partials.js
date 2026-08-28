@@ -63,7 +63,7 @@ const _DIALOG_HTML = `<dialog id="dlg">
         <span class="dlg-card-icon" aria-hidden="true">🔌</span>
         <div>
           <h3 class="dlg-card-title">Провайдер</h3>
-          <p class="dlg-card-sub">Ключ xKiro — локально; токен Antigravity — в памяти сервера</p>
+          <p class="dlg-card-sub">Хранятся на сервере в зашифрованном виде (SQLite + AES-256-GCM)</p>
         </div>
       </div>
       <label for="dlg-provider">Провайдер</label>
@@ -81,20 +81,20 @@ const _DIALOG_HTML = `<dialog id="dlg">
       </div>
       <!-- Поля Antigravity (Google AI Pro): вход через Google + вставка ссылки -->
       <div id="dlg-ag-fields" hidden>
-        <button type="button" id="dlg-ag-login" class="btn btn-primary">Войти через Google</button>
-        <p class="hint" style="margin-top:6px">
-          В открывшемся окне войдите в аккаунт. Браузер перейдёт на адрес вида
-          <code>http://127.0.0.1:…/callback?code=…</code> (страница может не открыться — это нормально).
-          Скопируйте адрес целиком из адресной строки и вставьте ниже.
-        </p>
+        <div class="dlg-ag-login-line">
+          <button type="button" id="dlg-ag-login" class="btn btn-primary">Войти через Google</button>
+          <p class="hint">
+            В открывшейся вкладке войдите в аккаунт. Браузер перейдёт на адрес вида
+            <code>http://127.0.0.1:…/callback?code=…</code>.
+            Скопируйте адрес целиком из адресной строки и вставьте ниже.
+          </p>
+        </div>
         <label for="dlg-ag-paste">Ссылка после входа</label>
         <div class="input-group">
           <input type="text" id="dlg-ag-paste" placeholder="http://127.0.0.1:…/callback?code=…" autocomplete="off">
           <button type="button" id="dlg-ag-paste-btn" class="btn">Применить</button>
         </div>
         <p class="hint" id="dlg-ag-login-status" aria-live="polite"></p>
-        <label for="dlg-ag-project">Project ID (опционально)</label>
-        <input type="text" id="dlg-ag-project" placeholder="my-project-id" autocomplete="off">
         <p class="hint" id="dlg-ag-exp" hidden></p>
       </div>
     </div>

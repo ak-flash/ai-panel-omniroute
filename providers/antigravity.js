@@ -55,21 +55,43 @@ function createAntigravityProvider(config = {}) {
   const requestOnce = (token, project) =>
     callInternal('fetchAvailableModels', token, project);
 
-  /** Очищенный список моделей для карточек. */
+  /**
+   * Внутренние/служебные id Google — не модели для пользователя
+   * (примеры: tab_flash_lite_preview, chat_23310).
+   */
+  function isJunkModelId(id) {
+    const s = String(id || '');
+    if (/^tab_/.test(s)) return true;
+    if (/^chat_\d+$/.test(s)) return true;
+    return false;
+  }
+
+  /** Очищенный список моделей для карточек (без повторов по displayName). */
   function cleanModels(models) {
-    return Object.entries(models || {}).map(([id, m]) => ({
-      id,
-      displayName: (m && m.displayName) || id,
-      remainingFraction:
-        m && m.quotaInfo && Number.isFinite(m.quotaInfo.remainingFraction)
-          ? m.quotaInfo.remainingFraction
-          : null,
-      resetTime:
-        m && m.quotaInfo && m.quotaInfo.resetTime
-          ? m.quotaInfo.resetTime
-          : null,
-      supportsThinking: Boolean(m && m.supportsThinking),
-    }));
+    const seen = new Set();
+    const out = [];
+    for (const [id, m] of Object.entries(models || {})) {
+      if (isJunkModelId(id)) continue;
+      const displayName = (m && m.displayName) || id;
+      // Google отдаёт одну модель под разными внутренними id — схлопываем
+      const key = String(displayName).trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        id,
+        displayName,
+        remainingFraction:
+          m && m.quotaInfo && Number.isFinite(m.quotaInfo.remainingFraction)
+            ? m.quotaInfo.remainingFraction
+            : null,
+        resetTime:
+          m && m.quotaInfo && m.quotaInfo.resetTime
+            ? m.quotaInfo.resetTime
+            : null,
+        supportsThinking: Boolean(m && m.supportsThinking),
+      });
+    }
+    return out;
   }
 
   /**

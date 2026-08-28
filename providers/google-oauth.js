@@ -8,6 +8,7 @@
 // ============================================================
 
 const DEFAULT_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const DEFAULT_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
 
 // OAuth-клиент Antigravity берётся из переменных окружения, чтобы
 // секреты не попадали в репозиторий. Задайте GOOGLE_CLIENT_ID и
@@ -61,6 +62,7 @@ function buildAuthUrl({ redirectUri, state, clientId = getBuiltinClientId(), aut
  */
 function createGoogleOauth(config = {}) {
   const url = String(config.url || DEFAULT_TOKEN_URL);
+  const userinfoUrl = String(config.userinfoUrl || DEFAULT_USERINFO_URL);
 
   /**
    * Обновляет access-token.
@@ -147,7 +149,34 @@ function createGoogleOauth(config = {}) {
     }
   }
 
-  return { url, refresh, exchangeCode, buildAuthUrl };
+  /**
+   * Получает email аккаунта из Google userinfo (нужен скоуп
+   * userinfo.email, уже запрошен в SCOPES). Best-effort: при
+   * ошибке/таймауте возвращает { ok:false }.
+   *
+   * Возвращает:
+   *   { ok:true, email }      — успех
+   *   { ok:false, error }     — no_token / userinfo_error / network
+   */
+  async function getUserInfo({ accessToken } = {}) {
+    if (!accessToken) return { ok: false, error: 'no_token' };
+    try {
+      const response = await fetch(userinfoUrl, {
+        method: 'GET',
+        headers: { authorization: 'Bearer ' + accessToken },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      const data = await response.json().catch(() => null);
+      if (response.ok && data && data.email) {
+        return { ok: true, email: String(data.email) };
+      }
+      return { ok: false, error: 'userinfo_error' };
+    } catch {
+      return { ok: false, error: 'network' };
+    }
+  }
+
+  return { url, userinfoUrl, refresh, exchangeCode, buildAuthUrl, getUserInfo };
 }
 
 module.exports = {
@@ -155,4 +184,5 @@ module.exports = {
   buildAuthUrl,
   getBuiltinClientId,
   getBuiltinClientSecret,
+  DEFAULT_USERINFO_URL,
 };

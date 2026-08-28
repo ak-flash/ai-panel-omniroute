@@ -20,10 +20,11 @@ function loadEnvFile(fileName){
 const { loadProviders } = require('./providers');
 const { createAntigravityProvider } = require('./providers/antigravity');
 const { createGoogleOauth, getBuiltinClientId, getBuiltinClientSecret } = require('./providers/google-oauth');
+const { createStore } = require('./store');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const MAX_BODY = 2 * 1024 * 1024;
 const MIME = { '.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.woff2':'font/woff2','.txt':'text/plain; charset=utf-8' };
-const CORS = { 'access-control-allow-origin':'*','access-control-allow-methods':'GET, POST, PUT, PATCH, DELETE, OPTIONS','access-control-allow-headers':'authorization, x-api-key, content-type, accept' };
+const CORS = { 'access-control-allow-origin':'*','access-control-allow-methods':'GET, POST, PUT, PATCH, DELETE, OPTIONS','access-control-allow-headers':'authorization, x-api-key, content-type, accept, x-ag-refresh-token, x-ag-client-id, x-ag-client-secret' };
 function resolveStaticPath(pathname){ const relative=pathname==='/'?'index.html':pathname.slice(1); let decoded; try{decoded=decodeURIComponent(relative)}catch{return null} const resolved=path.normalize(path.join(PUBLIC_DIR,decoded)); if(resolved!==PUBLIC_DIR && !resolved.startsWith(PUBLIC_DIR+path.sep)) return null; return resolved; }
 function serveStatic(req,res,pathname){ const filePath=resolveStaticPath(pathname); if(!filePath){res.writeHead(403,{'content-type':'text/plain; charset=utf-8'});return res.end('403 Forbidden')} fs.stat(filePath,(err,stats)=>{ if(err||!stats.isFile()){res.writeHead(404,{'content-type':'text/plain; charset=utf-8'});return res.end('404 Not Found')} const ext=path.extname(filePath).toLowerCase(); const mime=MIME[ext]||'application/octet-stream'; res.writeHead(200,{'content-type':mime,'cache-control':ext==='.html'?'no-store':'max-age=3600'}); const s=fs.createReadStream(filePath); s.on('error',()=>res.destroy()); s.pipe(res); });}
 function readBody(req){return new Promise((resolve,reject)=>{const chunks=[];let size=0;let done=false; req.on('data',c=>{if(done)return; size+=c.length; if(size>MAX_BODY){done=true;return resolve(null)} chunks.push(c)}); req.on('end',()=>{if(!done)resolve(Buffer.concat(chunks))}); req.on('error',e=>{if(!done)reject(e)});});}
@@ -31,13 +32,20 @@ async function handleProxy(req,res,url,{prefix,upstream}){ if(req.method==='OPTI
 // createApp собирает HTTP-сервер панели с переданным списком провайдеров
 // (по умолчанию — вшитые из loadProviders()). Тесты инжектят сюда
 // адаптеры с mock-upstream; CLI-блок ниже запускает то же самое на PORT.
-function createApp({ providers = loadProviders(), antigravity = createAntigravityProvider(), googleOauth = createGoogleOauth() } = {}){
+function createApp({ providers = loadProviders(), antigravity = createAntigravityProvider(), googleOauth = createGoogleOauth(), store } = {}){
   const activeProvider = providers[0] || null;
-  // Google OAuth antigravity: живёт только в памяти процесса,
-  // в localStorage клиента и в логах не хранится (см. PLAN п.3).
-  // refresh-связка (refreshToken + clientId + clientSecret) позволяет
-  // серверу самому обновлять access-token, когда тот истёк.
-  const googleAuth = { token: '', refreshToken: '', clientId: '', clientSecret: '', project: '', tokenExpiresAt: 0 };
+  // Хранилище ключей/настроек: SQLite на сервере (зашифровано AES-256-GCM).
+  // Если не передано (CLI/тесты передают напрямую), создаётся лениво —
+  // обработчики запросов async, поэтому await в них безопасен.
+  if (!store) store = createStore({});
+  // createStore — async, пока это Promise. Нормализуем лениво в обработчиках.
+  async function getStore(){ if(store && typeof store.then==='function') store = await store; return store; }
+  let agLoaded = false; // refresh-связка из хранилища загружается один раз
+  // Google OAuth antigravity. Access-токен живёт в памяти процесса; refresh-
+  // связка и project_id — в серверном хранилище (SQLite, зашифровано) и
+  // загружаются в память при старте (loadAgFromStore), поэтому перезапуск
+  // сервера не сбрасывает вход: сервер сам обновит access-токен по связке.
+  const googleAuth = { token: '', refreshToken: '', clientId: '', clientSecret: '', project: '', tokenExpiresAt: 0, email: '' };
   let agCache = { ts: 0, result: null, project: null }; // серверный кеш квот, 60 с
   const AG_CACHE_TTL_MS = 60000;
 
@@ -53,6 +61,29 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
 
   const hasRefreshCreds = () =>
     Boolean(googleAuth.refreshToken && googleAuth.clientId && googleAuth.clientSecret);
+
+  /** Применяет сохранённые Antigravity-данные к состоянию в памяти. */
+  function syncAgFromStore(entries = []) {
+    for (const [k, v] of entries) {
+      if (k === 'agRefreshToken') googleAuth.refreshToken = String(v || '');
+      if (k === 'agProject') googleAuth.project = String(v || '');
+    }
+    if (googleAuth.refreshToken) {
+      googleAuth.clientId = getBuiltinClientId();
+      googleAuth.clientSecret = getBuiltinClientSecret();
+    }
+    agCache = { ts: 0, result: null, project: null };
+  }
+
+  /** Загружает сохранённую Antigravity refresh-связку при старте. */
+  async function loadAgFromStore() {
+    try {
+      if(googleAuth.refreshToken) return; // уже установлено через POST/paste
+      const s = await (await getStore()).snapshot();
+      if(s.agRefreshToken) syncAgFromStore([['agRefreshToken', s.agRefreshToken]]);
+      if(s.agProject) syncAgFromStore([['agProject', s.agProject]]);
+    } catch {}
+  }
 
   /** Обновляет access-token по refresh-связке. Возвращает true при успехе. */
   async function refreshGoogleToken() {
@@ -85,7 +116,7 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
     if(apiMatch){
       if(req.method==='OPTIONS'){res.writeHead(204,{...CORS});return res.end()}
       const provider=providers.find(p=>p.id===apiMatch[1]); if(!provider){res.writeHead(404,{...CORS,'content-type':'application/json; charset=utf-8'});return res.end(JSON.stringify({error:'unknown_provider',message:'Провайдер не найден'}))}
-      const clientKey=req.headers['x-api-key']||''; const fn=apiMatch[2]==='usage'?provider.getUsage:provider.getModels; const result=await fn(clientKey);
+      let clientKey=req.headers['x-api-key']||''; if(!clientKey){ try{ const s=await (await getStore()).snapshot(); if(apiMatch[1]==='xkiro'&&s.xkiroKey) clientKey=s.xkiroKey; }catch{} } const fn=apiMatch[2]==='usage'?provider.getUsage:provider.getModels; const result=await fn(clientKey);
       res.writeHead(result.status,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'}); return res.end(JSON.stringify(result.data));
     }
     if(url.pathname==='/omniroute'||url.pathname.startsWith('/omniroute/')){
@@ -155,17 +186,29 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
         return res.end(JSON.stringify({error:r.error,message:'Не удалось обменять код авторизации'}));
       }
       storeExchangedTokens(r);
+      // Refresh-связку сохраняем на сервере (SQLite, зашифровано), чтобы
+      // вход переживал перезапуск — клиенту её возвращать не обязательно.
+      if (googleAuth.refreshToken) await (await getStore()).set('agRefreshToken', googleAuth.refreshToken);
+      // Email аккаунта — best-effort из Google userinfo (не ломает вход при ошибке)
+      if (typeof googleOauth.getUserInfo === 'function') {
+        try {
+          const ui = await googleOauth.getUserInfo({ accessToken: googleAuth.token });
+          if (ui.ok) googleAuth.email = ui.email || '';
+        } catch {}
+      }
       res.writeHead(200,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
-      return res.end(JSON.stringify({ok:true,hasToken:true,hasRefresh:Boolean(googleAuth.refreshToken)}));
+      return res.end(JSON.stringify({ok:true,hasToken:true,hasRefresh:Boolean(googleAuth.refreshToken),refreshToken:googleAuth.refreshToken||null}));
     }
     if(url.pathname==='/api/settings/google-token'){
       if(req.method==='OPTIONS'){res.writeHead(204,{...CORS});return res.end()}
       if(req.method==='GET'){
         res.writeHead(200,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
-        return res.end(JSON.stringify({hasToken:Boolean(googleAuth.token),hasRefresh:hasRefreshCreds(),tokenExpiresAt:googleAuth.tokenExpiresAt||null}));
+        return res.end(JSON.stringify({hasToken:Boolean(googleAuth.token),hasRefresh:hasRefreshCreds(),tokenExpiresAt:googleAuth.tokenExpiresAt||null,email:googleAuth.email||null}));
       }
       if(req.method==='DELETE'){
-        googleAuth.token=''; googleAuth.refreshToken=''; googleAuth.clientId=''; googleAuth.clientSecret=''; googleAuth.project=''; googleAuth.tokenExpiresAt=0; agCache={ts:0,result:null,project:null};
+        googleAuth.token=''; googleAuth.refreshToken=''; googleAuth.clientId=''; googleAuth.clientSecret=''; googleAuth.project=''; googleAuth.tokenExpiresAt=0; googleAuth.email=''; agCache={ts:0,result:null,project:null};
+        await (await getStore()).set('agRefreshToken','');
+        await (await getStore()).set('agProject','');
         res.writeHead(200,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
         return res.end(JSON.stringify({ok:true,hasToken:false,hasRefresh:false}));
       }
@@ -179,6 +222,9 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
       if('clientId' in body) googleAuth.clientId=str(body.clientId);
       if('clientSecret' in body) googleAuth.clientSecret=str(body.clientSecret);
       if('project' in body) googleAuth.project=str(body.project);
+      // Самые важные поля персистим в хранилище (зашифровано на диске)
+      if('refreshToken' in body) await (await getStore()).set('agRefreshToken', googleAuth.refreshToken);
+      if('project' in body) await (await getStore()).set('agProject', googleAuth.project);
       if(!googleAuth.token && !hasRefreshCreds()){
         res.writeHead(400,{...CORS,'content-type':'application/json; charset=utf-8'});
         return res.end(JSON.stringify({error:'no_token',message:'Нужен access-token или связка refresh-token + client_id + client_secret'}));
@@ -189,11 +235,22 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
     }
     if(url.pathname==='/api/antigravity-quota'){
       if(req.method==='OPTIONS'){res.writeHead(204,{...CORS});return res.end()}
+      // Refresh-связка — в серверном хранилище; для совместимости со старым
+      // клиентом (localStorage → заголовки x-ag-*) принимаем её и из заголовков.
+      if(!agLoaded){ agLoaded=true; await loadAgFromStore(); }
+      const hdrRt=(req.headers['x-ag-refresh-token']||'').trim();
+      if(hdrRt && hdrRt!==googleAuth.refreshToken){
+        googleAuth.token=''; googleAuth.tokenExpiresAt=0; agCache={ts:0,result:null,project:null};
+        googleAuth.refreshToken=hdrRt;
+        googleAuth.clientId=(req.headers['x-ag-client-id']||'').trim()||getBuiltinClientId();
+        googleAuth.clientSecret=(req.headers['x-ag-client-secret']||'').trim()||getBuiltinClientSecret();
+        try{ await (await getStore()).set('agRefreshToken', hdrRt); }catch{}
+      }
       if(!googleAuth.token && !hasRefreshCreds()){
         res.writeHead(400,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
         return res.end(JSON.stringify({error:'no_token',message:'Задайте Antigravity OAuth-токен или refresh-связку в настройках'}));
       }
-      // project: приоритет у query-параметра клиента (localStorage), иначе серверное значение
+      // project: приоритет у query-параметра клиента, иначе сохранённое значение
       const project=(url.searchParams.get('project')||'').trim()||googleAuth.project;
       if(agCache.result && agCache.project===project && Date.now()-agCache.ts<AG_CACHE_TTL_MS){
         res.writeHead(agCache.result.status,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
@@ -221,9 +278,42 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
       res.writeHead(result.status,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
       return res.end(JSON.stringify(result.data));
     }
+    if(url.pathname==='/api/settings/vault'){
+      if(req.method==='OPTIONS'){res.writeHead(204,{...CORS});return res.end()}
+      if(req.method==='GET'){
+        const data = await (await getStore()).snapshot();
+        res.writeHead(200,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
+        return res.end(JSON.stringify({ok:true,data}));
+      }
+      if(req.method!=='POST' && req.method!=='PUT'){res.writeHead(405,{...CORS,'content-type':'application/json; charset=utf-8'});return res.end(JSON.stringify({error:'method_not_allowed'}))}
+      let raw; try{raw=await readBody(req)}catch{raw=null}
+      let body={}; try{body=JSON.parse(raw&&raw.toString()||'{}')}catch{}
+      // Принимаем { key, value } (одна запись) или объект ключ→значение.
+      // Пустое/undefined значение удаляет ключ.
+      const entries = [];
+      if('key' in body && typeof body.key==='string'){
+        entries.push([body.key, body.value==null?'':String(body.value)]);
+      } else {
+        for(const k of Object.keys(body)){ if(k==='ok'||k==='data') continue; entries.push([k, body[k]==null?'':String(body[k])]); }
+      }
+      for(const [k,v] of entries) await (await getStore()).set(k,v);
+      // Antigravity refresh связку/проект обновляем в памяти сразу
+      syncAgFromStore(entries);
+      res.writeHead(200,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
+      return res.end(JSON.stringify({ok:true}));
+    }
     if(url.pathname==='/api/config'){
+      // hasKey провайдеров и наличие OmniRoute/Antigravity — из серверного
+      // хранилища (клиент больше не держит секреты в localStorage).
+      if(!agLoaded){ agLoaded=true; await loadAgFromStore(); }
+      const s = await (await getStore()).snapshot();
+      const hasXkiro = Boolean(s.xkiroKey);
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
-      return res.end(JSON.stringify({ok:true,providers:providers.map(p=>({id:p.id,name:p.name,hasKey:Boolean(p.apiKey)})),activeProvider:activeProvider?activeProvider.id:null,hasOmniRoute:false,hasGoogleToken:Boolean(googleAuth.token)||hasRefreshCreds()}));
+      const providerInfo = providers.map(p=>{
+        if(p.id==='xkiro') return {id:p.id,name:p.name,hasKey:hasXkiro};
+        return {id:p.id,name:p.name,hasKey:Boolean(p.apiKey)};
+      });
+      return res.end(JSON.stringify({ok:true,providers:providerInfo,activeProvider:activeProvider?activeProvider.id:null,hasOmniRoute:Boolean(s.omniUrl),hasOmniKey:Boolean(s.omniKey),hasGoogleToken:Boolean(googleAuth.token)||hasRefreshCreds()}));
     }
     serveStatic(req,res,url.pathname);
   }

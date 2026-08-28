@@ -11,8 +11,27 @@ const LS_ALIASES = 'aipanel.combo.aliases';
 const LS_XKIRO_KEY = 'aipanel.xkiro.key.v2';
 const LS_OMNI_URL = 'aipanel.omni.url';
 const LS_OMNI_KEY = 'aipanel.omni.key.v2';
-const LS_AG_PROJECT = 'aipanel.antigravity.project';
+const LS_AG_REFRESH = 'aipanel.antigravity.refresh';
 const LS_DLG_PROVIDER = 'aipanel.dlg.provider';
+
+// Серверное хранилище (SQLite, зашифровано AES-256-GCM) — источник правды.
+// При file:// фолбэк на localStorage. Кеш загружается в boot() один раз.
+let vaultCache = null; // null = ещё не загружен, {} = пусто
+let vaultLoaded = false;
+async function loadVault(){
+  if(vaultLoaded) return vaultCache;
+  if(location.protocol==='file:'){ vaultLoaded=true; vaultCache={}; return vaultCache; }
+  try{ const r=await fetch('/api/settings/vault'); const j=await r.json(); vaultCache=(j&&j.data)||{}; }catch{ vaultCache={}; }
+  vaultLoaded=true; return vaultCache;
+}
+function vaultGet(key, fallback=''){ if(vaultCache&&key in vaultCache) return vaultCache[key]; return fallback; }
+async function vaultSet(key, value){
+  const v=value==null?'':String(value);
+  if(vaultCache) vaultCache[key]=v;
+  if(location.protocol==='file:'){ try{ if(v) localStorage.setItem(key,v); else localStorage.removeItem(key);}catch{} return; }
+  try{ await fetch('/api/settings/vault',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key,value:v})}); }catch{}
+}
+async function vaultRemove(key){ return vaultSet(key,''); }
 
 // Текущая страница: index (Статистика) | models (Модели) | combo (Combo).
 // Панель состоит из отдельных HTML-страниц с одним общим app.js.
@@ -31,7 +50,7 @@ let $modelsStatus, $modelsBody, $modelsSearch, $modelsTier, $modelsProvider, $mo
 let $comboSelect, $comboRefresh, $comboEmpty, $comboStatus, $comboDetails;
 let $comboStrategyBadge, $comboTargetsCount, $comboModelSelect, $comboMoveTop, $comboList;
 let $btnUpgrade, $copyStatus, $cmdText;
-let $agSection, $agCards, $agHint, $agBadge;
+let $agSection, $agCards, $agHint, $agBadge, $agEmail;
 let $dlg, $dlgKey, $dlgToggle, $dlgSave, $dlgRemove, $dlgResult;
 
 // Прямой адрес API xKiro — используется только когда панель открыта как файл
@@ -68,61 +87,21 @@ const state = {
   comboModels: [],     // массив target-объектов: { provider, model, display, weight }
   activeComboData: null, // полный объект combo с сервера для PUT
   antigravityQuota: null, // квоты Antigravity (модели Google AI Pro)
+  antigravityEmail: '',    // email аккаунта Google (из сервера, после входа)
 };
 
-/* ---------- secure storage (obfuscation, not real encryption) ---------- */
-// localStorage доступен любому скрипту на origin — «защищённо» означает
-// лишь обфускацию (XOR + base64), чтобы ключи не лежали plain-text.
-// Для настоящей защиты нужен backend-vault.
-
-function _xorB64Encode(str) {
-  const key = location.hostname || 'ai-panel';
-  let out = '';
-  for (let i = 0; i < str.length; i++) out += String.fromCharCode(str.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-  return btoa(unescape(encodeURIComponent(out)));
-}
-function _xorB64Decode(b64) {
-  try {
-    const key = location.hostname || 'ai-panel';
-    const raw = decodeURIComponent(escape(atob(b64)));
-    let out = '';
-    for (let i = 0; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-    return out;
-  } catch { return null; }
-}
-function secureGet(lsKey) {
-  try {
-    const v = localStorage.getItem(lsKey);
-    if (!v) return null;
-    // backward compat: plain value without encoding
-    if (!v.startsWith('enc:')) return v;
-    return _xorB64Decode(v.slice(4));
-  } catch { return null; }
-}
-function secureSet(lsKey, val) {
-  try { localStorage.setItem(lsKey, 'enc:' + _xorB64Encode(val)); } catch {}
-}
-function secureRemove(lsKey) {
-  try { localStorage.removeItem(lsKey); } catch {}
-}
-
-/* ---------- helpers ---------- */
-
+/* ---------- vault helpers (server SQLite, file:// fallback localStorage) ---------- */
 function getKey() {
-  return secureGet(LS_XKIRO_KEY) || (() => { try { return localStorage.getItem(LS_KEY); } catch { return null; } })();
+  if(vaultLoaded) return vaultGet('xkiroKey')||'';
+  try{ const v=localStorage.getItem(LS_XKIRO_KEY); if(v) return v.startsWith('enc:')?atob(v.slice(4)):v; }catch{}
+  try{ return localStorage.getItem(LS_KEY)||''; }catch{ return ''; }
 }
-
-function setKey(k) {
-  secureSet(LS_XKIRO_KEY, k);
-  try { localStorage.removeItem(LS_KEY); } catch {}
-}
-
-function removeKey() {
-  secureRemove(LS_XKIRO_KEY);
-  try { localStorage.removeItem(LS_KEY); } catch {}
-}
-function getOmniUrl() { return secureGet(LS_OMNI_URL) || (() => { try { return localStorage.getItem(LS_OMNI_URL); } catch { return null; } })() || ''; }
-function getOmniKey() { return secureGet(LS_OMNI_KEY) || ''; }
+function setKey(k){ vaultSet('xkiroKey', k); }
+function removeKey(){ vaultSet('xkiroKey',''); }
+function getOmniUrl(){ return vaultLoaded ? (vaultGet('omniUrl')||'') : (()=>{try{return localStorage.getItem(LS_OMNI_URL)||'';}catch{return '';}})(); }
+function getOmniKey(){ return vaultLoaded ? (vaultGet('omniKey')||'') : (()=>{try{const v=localStorage.getItem(LS_OMNI_KEY);return v&&v.startsWith('enc:')?atob(v.slice(4)):v||'';}catch{return '';}})(); }
+function getAgRefreshToken(){ return vaultGet('agRefreshToken')||''; }
+function setAgRefreshToken(t){ vaultSet('agRefreshToken', t); }
 
 // Нормализация URL OmniRoute: убираем хвостовые слэши и лишние суффиксы
 // (/v1, /v1/, /api), которые пользователь мог ввести по ошибке.
@@ -132,12 +111,9 @@ function normalizeOmniUrl(url) {
   return u;
 }
 function setOmniConfig(url, key) {
-  try {
-    const clean = normalizeOmniUrl(url);
-    if (clean) localStorage.setItem(LS_OMNI_URL, clean);
-    else localStorage.removeItem(LS_OMNI_URL);
-  } catch {}
-  if (key) secureSet(LS_OMNI_KEY, key); else secureRemove(LS_OMNI_KEY);
+  const clean = normalizeOmniUrl(url);
+  vaultSet('omniUrl', clean);
+  vaultSet('omniKey', key||'');
 }
 
 // getElementById, безопасный для страниц, где элемента нет
@@ -223,7 +199,7 @@ async function providerRequest(resource, opts = {}) {
 
   // Ключ: явный (проверка в настройках) → сохранённый локально.
   // Ключей на сервере нет — upstream всегда уходит клиентский ключ.
-  const key = opts.key || (provider.hasKey ? '' : getKey());
+  const key = opts.key || getKey() || '';
   const headers = {};
   if (key) headers['x-api-key'] = key;
 
@@ -298,6 +274,7 @@ function resolveRefs() {
   $agCards = $id('ag-cards');
   $agHint = $id('ag-hint');
   $agBadge = $id('ag-status-badge');
+  $agEmail = $id('ag-account-email');
   $dlg = $id('dlg');
   $dlgKey = $id('dlg-key');
   $dlgToggle = $id('dlg-toggle');
@@ -550,8 +527,7 @@ function renderModelsProviders() {
 /** Сохраняет выбранную combo в localStorage */
 function saveActiveCombo() {
   try {
-    if (state.activeComboId) localStorage.setItem(LS_COMBO_ACTIVE, state.activeComboId);
-    else localStorage.removeItem(LS_COMBO_ACTIVE);
+    if(vaultLoaded) vaultSet('comboActive', state.activeComboId||'');
   } catch {}
 }
 
@@ -603,7 +579,7 @@ async function omniFetch(path, opts = {}) {
 // Хранится как массив пар [id, name] под одним ключом LS_ALIASES (JSON).
 function loadAliases() {
   try {
-    const raw = localStorage.getItem(LS_ALIASES);
+    const raw = (vaultGet('aliases')||'');
     const arr = raw ? JSON.parse(raw) : [];
     const map = {};
     if (Array.isArray(arr)) for (const [id, name] of arr) if (id && name) map[id] = name;
@@ -614,7 +590,7 @@ function loadAliases() {
 function saveAliasesMap(map) {
   try {
     const arr = Object.entries(map).filter(([id, name]) => id && name);
-    localStorage.setItem(LS_ALIASES, JSON.stringify(arr));
+    vaultSet('aliases', JSON.stringify(arr));
   } catch {}
 }
 
@@ -900,13 +876,15 @@ function selectCombo(id) {
 
 async function loadAntigravityQuota() {
   if (!$agSection) return null;
-  // project живёт в localStorage и уходит на сервер query-параметром
-  let project = '';
-  try { project = localStorage.getItem(LS_AG_PROJECT) || ''; } catch {}
   try {
-    const res = await fetch('/api/antigravity-quota' + (project ? '?project=' + encodeURIComponent(project) : ''));
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
+    const [qRes, tRes] = await Promise.all([
+      fetch('/api/antigravity-quota'),
+      fetch('/api/settings/google-token'),
+    ]);
+    const data = await qRes.json().catch(() => ({}));
+    const tok = await tRes.json().catch(() => ({}));
+    state.antigravityEmail = (tok && tok.email) || '';
+    if (!qRes.ok) {
       state.antigravityQuota = { error: data.error || 'provider_error' };
     } else {
       state.antigravityQuota = data;
@@ -931,8 +909,9 @@ function agCard(model) {
   const card = document.createElement('article');
   card.className = 'stat compact';
 
-  const top = document.createElement('div');
-  top.className = 'stat-top';
+  const main = document.createElement('div');
+  main.className = 'ag-model';
+
   const head = document.createElement('span');
   head.className = 'stat-head';
   const label = document.createElement('span');
@@ -941,48 +920,63 @@ function agCard(model) {
   head.appendChild(label);
   if (model.supportsThinking) {
     const meta = document.createElement('span');
-    meta.className = 'stat-meta';
-    meta.textContent = 'thinking';
+    meta.className = 'stat-meta ag-thinking';
+    meta.setAttribute('role', 'img');
+    meta.setAttribute('aria-label', 'режим размышлений');
+    meta.title = 'Режим размышлений (thinking)';
+    meta.innerHTML =
+      '<svg class="ag-thinking-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
+      '<path d="M12 2l2.7 7.3L22 12l-7.3 2.7L12 22l-2.7-7.3L2 12l7.3-2.7z"/></svg>';
     head.appendChild(meta);
   }
-  const value = document.createElement('span');
-  value.className = 'stat-value num';
-  if (model.remainingFraction == null) {
-    value.textContent = '—';
-  } else {
-    const usedPct = 100 - Math.round(model.remainingFraction * 100);
-    value.textContent = usedPct + '%';
-  }
-  top.append(head, value);
+  main.appendChild(head);
 
-  const track = document.createElement('div');
-  track.className = 'bar-track stat-bar';
+  // Компактный прогресс остатка: полный и зелёный, при использовании
+  // убывает и меняет цвет (remainingFraction → ширина).
+  const rem = model.remainingFraction;
+
+  // Проценты — сразу у прогресс-бара
+  const barRow = document.createElement('div');
+  barRow.className = 'ag-bar-row';
+
+  const bar = document.createElement('div');
+  bar.className = 'bar-track ag-bar';
   const fill = document.createElement('div');
   fill.className = 'bar-fill';
-  const p = model.remainingFraction == null ? 0 : Math.min(100, Math.max(0, 100 - model.remainingFraction * 100));
-  fill.style.width = p + '%';
-  const cls = barClass(p);
-  if (cls) fill.classList.add(cls);
-  track.appendChild(fill);
+  if (Number.isFinite(rem)) {
+    fill.style.width = Math.min(100, Math.max(0, rem * 100)) + '%';
+    const cls = agRemClass(rem);
+    if (cls) fill.classList.add(cls);
+  } else {
+    fill.style.width = '0%';
+  }
+  bar.appendChild(fill);
+  barRow.appendChild(bar);
 
-  const sub = document.createElement('div');
-  sub.className = 'stat-sub';
-  const reset = document.createElement('span');
-  reset.className = 'stat-reset';
-  reset.textContent = model.resetTime
-    ? 'Сброс: ' + new Date(model.resetTime).toLocaleString('ru', { hour12: false })
-    : '';
-  sub.appendChild(reset);
+  const pct = document.createElement('span');
+  pct.className = 'ag-pct';
+  pct.textContent = Number.isFinite(rem)
+    ? Math.round(rem * 100) + '%'
+    : '—';
+  barRow.appendChild(pct);
 
-  card.append(top, track, sub);
+  main.appendChild(barRow);
+  card.appendChild(main);
   return card;
+}
+
+// Цвет прогресса остатка: зелёный → жёлтый → красный при снижении остатка
+function agRemClass(rem) {
+  if (rem >= 0.5) return '';
+  if (rem >= 0.25) return 'warn';
+  return 'danger';
 }
 
 // Порядок и состояние свёрнутости групп моделей Antigravity
 const AG_GROUPS = [
   { key: 'claude', label: 'Claude', collapsed: false },
   { key: 'gemini', label: 'Gemini', collapsed: true },
-  { key: 'other', label: 'Прочие', collapsed: false },
+  { key: 'other', label: 'Прочие', collapsed: true },
 ];
 
 // К какой группе отнести модель по id / displayName
@@ -1009,11 +1003,24 @@ function agGroupContainer(group, models) {
   const count = document.createElement('span');
   count.className = 'ag-group-count';
   count.textContent = String(models.length);
+  head.append(title, count);
+  // Время сброса у моделей группы одинаковое (Google AI Pro) — показываем один раз
+  const firstReset = models.find((m) => m.resetTime);
+  if (firstReset) {
+    const reset = document.createElement('span');
+    reset.className = 'ag-group-reset';
+    const remainSec = Math.floor((new Date(firstReset.resetTime) - Date.now()) / 1000);
+    reset.appendChild(document.createTextNode('Сброс: '));
+    const resetVal = document.createElement('span');
+    resetVal.textContent = dur(remainSec);
+    reset.appendChild(resetVal);
+    head.appendChild(reset);
+  }
   const chev = document.createElement('span');
   chev.className = 'ag-chevron';
   chev.setAttribute('aria-hidden', 'true');
   chev.textContent = '▾';
-  head.append(title, count, chev);
+  head.append(chev);
   head.addEventListener('click', () => {
     const collapsed = wrap.classList.toggle('collapsed');
     head.setAttribute('aria-expanded', String(!collapsed));
@@ -1034,10 +1041,18 @@ function renderAntigravityQuota() {
   $agHint.hidden = true;
   if ($agBadge) $agBadge.textContent = '';
 
+  // Email аккаунта — приходит с сервера после входа через Google
+  if ($agEmail) {
+    const email = state.antigravityEmail || '';
+    if (email) { $agEmail.textContent = email; $agEmail.hidden = false; }
+    else $agEmail.hidden = true;
+  }
+
   if (!q) { $agSection.hidden = true; return; }
   $agSection.hidden = false;
 
   if (q.error) {
+    if (q.error === 'no_token') { $agSection.hidden = true; return; }
     $agHint.textContent = AG_ERROR_MESSAGES[q.error] || 'Ошибка загрузки квот.';
     $agHint.hidden = false;
     if ($agBadge) $agBadge.textContent = 'нет данных';
@@ -1046,16 +1061,7 @@ function renderAntigravityQuota() {
 
   const models = Array.isArray(q.models) ? q.models : [];
 
-  // Групповые окна (weekly / 5h): худший остаток среди моделей
-  const WINDOW_TITLES = { '5h': 'Окно 5 ч', weekly: 'Недельное окно' };
-  const extra = (Array.isArray(q.windows) ? q.windows : []).map((w) => ({
-    id: w.windowSize,
-    displayName: WINDOW_TITLES[w.windowSize] || w.windowSize,
-    remainingFraction: w.remainingFraction,
-    resetTime: w.resetTime,
-  }));
-
-  if (!models.length && !extra.length) {
+  if (!models.length) {
     $agHint.textContent = 'Google не вернул данные по моделям.';
     $agHint.hidden = false;
     return;
@@ -1063,7 +1069,6 @@ function renderAntigravityQuota() {
 
   const grouped = {};
   for (const m of models) (grouped[agGroupOf(m)] ||= []).push(m);
-  for (const w of extra) (grouped.other ||= []).push(w);
 
   for (const g of AG_GROUPS) {
     const list = grouped[g.key];
@@ -1155,7 +1160,7 @@ async function init() {
 
   // Страница «Combo»: ключ xKiro не нужен — работает через OmniRoute
   if (PAGE === 'combo') {
-    try { state.activeComboId = localStorage.getItem(LS_COMBO_ACTIVE); } catch {}
+    try { state.activeComboId = vaultGet('comboActive')||''; } catch {}
     renderComboControls();
     setStatus('loading', 'Обновляю…');
     await loadCombos();
@@ -1170,8 +1175,10 @@ async function init() {
 
   // Главная страница — статистика
   renderProviderLabel();
+  const $pageTitle = $id('page-title');
   if (!getKey() && !state.activeProvider.hasKey) {
     $cards.hidden = true;
+    if ($pageTitle) $pageTitle.hidden = true;
     $setup.hidden = false;
     setStatus('idle', 'Нужен ключ');
     // Квоты Antigravity не зависят от ключа xKiro — грузим всегда
@@ -1179,17 +1186,13 @@ async function init() {
     return;
   }
 
+  if ($pageTitle) $pageTitle.hidden = false;
   $setup.hidden = true;
   await loadUsage();
   loadAntigravityQuota();
 }
 
-on($id('setup-form'), 'submit', (e) => {
-  e.preventDefault();
-  const value = $id('setup-key').value.trim();
-  if (value) setKey(value);
-  reboot();
-});
+on($id('setup-open-settings'), 'click', () => { if($btnSettings) $btnSettings.click(); });
 
 on($modelsSearch, 'input', filterModels);
 on($modelsTier, 'change', filterModels);
@@ -1198,7 +1201,7 @@ on($modelsProvider, 'change', () => {
   const id = $modelsProvider.value;
   state.modelsProvider =
     state.providers.find((p) => p.id === id) || state.activeProvider;
-  try { localStorage.setItem(LS_MODELS_PROVIDER, state.modelsProvider.id); } catch {}
+  try { vaultSet('modelsProvider', state.modelsProvider.id); } catch {}
   reboot();
 });
 
@@ -1208,11 +1211,11 @@ on($btnRefresh, 'click', () => { loadUsage(); loadAntigravityQuota(); });
 function renderDlgProviderFields() {
   const $sel = $id('dlg-provider');
   if (!$sel) return;
-  const isAg = $sel.value === 'antigravity';
+  const v = $sel.value;
   const $xkiro = $id('dlg-xkiro-fields');
   const $ag = $id('dlg-ag-fields');
-  if ($xkiro) $xkiro.hidden = isAg;
-  if ($ag) $ag.hidden = !isAg;
+  if ($xkiro) $xkiro.hidden = v !== 'xkiro';
+  if ($ag) $ag.hidden = v !== 'antigravity';
 }
 
 on($btnSettings, 'click', () => {
@@ -1222,10 +1225,6 @@ on($btnSettings, 'click', () => {
   const $omniKey = $id('dlg-omni-key');
   if ($omniUrl) $omniUrl.value = getOmniUrl();
   if ($omniKey) $omniKey.value = getOmniKey();
-  const $agProject = $id('dlg-ag-project');
-  if ($agProject) {
-    try { $agProject.value = localStorage.getItem(LS_AG_PROJECT) || ''; } catch {}
-  }
   // Статус токена — с сервера (сами секреты клиенту не возвращаются)
   refreshAgStatus();
   $dlgResult.textContent = '';
@@ -1234,8 +1233,11 @@ on($btnSettings, 'click', () => {
   const $dlgProvider = $id('dlg-provider');
   if ($dlgProvider) {
     let savedDlgProvider = 'xkiro';
-    try { savedDlgProvider = localStorage.getItem(LS_DLG_PROVIDER) || 'xkiro'; } catch {}
-    $dlgProvider.value = savedDlgProvider === 'antigravity' ? 'antigravity' : 'xkiro';
+    try { savedDlgProvider = (vaultGet('dlgProvider')||'') || 'xkiro'; } catch {}
+    $dlgProvider.value =
+      savedDlgProvider === 'antigravity'
+        ? savedDlgProvider
+        : 'xkiro';
     renderDlgProviderFields();
   }
   const $hint = document.getElementById('dlg-env-hint');
@@ -1319,7 +1321,7 @@ on($id('dlg-alias-add'), 'click', () => {
 on($id('dlg-provider'), 'change', () => {
   const $sel = $id('dlg-provider');
   if (!$sel) return;
-  try { localStorage.setItem(LS_DLG_PROVIDER, $sel.value); } catch {}
+  vaultSet('dlgProvider', $sel.value);
   renderDlgProviderFields();
 });
 
@@ -1335,7 +1337,9 @@ async function refreshAgStatus(prefix) {
   try {
     const s = await (await fetch('/api/settings/google-token')).json();
     const parts = [];
-    parts.push(s.hasToken ? '✓ Токен задан на сервере' : 'Токен не задан');
+    if (s.hasToken) parts.push('✓ Токен задан на сервере');
+    else if (getAgRefreshToken()) parts.push('Связка в браузере — сервер обновит токен сам');
+    else parts.push('Токен не задан');
     if (s.hasToken && s.tokenExpiresAt) {
       const remainSec = Math.floor((s.tokenExpiresAt - Date.now()) / 1000);
       parts.push(remainSec > 0
@@ -1348,26 +1352,29 @@ async function refreshAgStatus(prefix) {
   } catch {}
 }
 
-// Вход через Google: открываем окно авторизации, после входа пользователь
+// Вход через Google: открываем вкладку авторизации, после входа пользователь
 // копирует адрес из адресной строки (loopback-redirect) и вставляет его
 // в поле «Ссылка после входа» — сервер обменяет код на токены.
+//
+// Важно: открываем именно НОВУЮ ВКЛАДКУ (target '_blank'), а не popup-окно.
+// Браузеры принудительно закрывают popup после редиректа на loopback, а
+// вкладки — никогда, поэтому адрес остаётся доступен для копирования.
 on($id('dlg-ag-login'), 'click', async () => {
   const $st = $id('dlg-ag-login-status');
   const setStatus = (t) => { if ($st) $st.textContent = t; };
-  // Окно открываем синхронно по клику, адрес подставляем после ответа сервера —
-  // иначе блокировщик всплывающих окон сработает из-за await
-  const win = window.open('', 'ag-oauth', 'width=520,height=680');
+  // Вкладку открываем синхронно по клику (до await), иначе сработает
+  // блокировщик всплывающих окон; адрес подставляем после ответа сервера.
+  const tab = window.open('', '_blank');
   try {
     const res = await fetch('/api/antigravity-auth/start');
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.url) throw new Error(data.message || 'HTTP ' + res.status);
-    if (win) win.location.href = data.url;
-    else window.open(data.url, 'ag-oauth', 'width=520,height=680');
-    setStatus('Окно Google открыто. После входа скопируйте адрес из адресной строки (http://127.0.0.1:…) и вставьте в поле ниже.');
+    if (tab) tab.location.href = data.url;
+    else window.open(data.url, '_blank');
+    setStatus('Открыта вкладка Google. После входа скопируйте адрес из адресной строки (http://127.0.0.1:…) и вставьте в поле ниже.');
     const $paste = $id('dlg-ag-paste');
     if ($paste) $paste.focus();
   } catch (err) {
-    if (win) win.close();
     setStatus('Ошибка: ' + (err && err.message ? err.message : err));
   }
 });
@@ -1387,6 +1394,7 @@ on($id('dlg-ag-paste-btn'), 'click', async () => {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.message || data.error || 'HTTP ' + res.status);
     $inp.value = '';
+    // Refresh уже сохранён сервером в SQLite (зашифровано).
     const q = await loadAntigravityQuota();
     if ($st) {
       $st.textContent = q && !q.error
@@ -1427,39 +1435,57 @@ on($dlgSave, 'click', () => {
   if ($omniUrl || $omniKey) setOmniConfig(omniUrlClean, $omniKey ? $omniKey.value.trim() : '');
   if (candidate) setKey(candidate);
 
-  // Antigravity: project хранится в localStorage и уходит на сервер
-  // query-параметром при запросе квот
-  const $agProject = $id('dlg-ag-project');
-  const agProjectValue = $agProject ? $agProject.value.trim() : '';
-  try {
-    if (agProjectValue) localStorage.setItem(LS_AG_PROJECT, agProjectValue);
-    else localStorage.removeItem(LS_AG_PROJECT);
-  } catch {}
-
   $dlgSave.disabled = false;
   $dlgSave.textContent = 'Проверить и сохранить';
   $dlgResult.hidden = false;
   $dlgResult.className = 'dlg-result ok';
-  $dlgResult.textContent = 'Сохранено.' + (omniUrlClean ? ' OmniRoute: ' + omniUrlClean : '');
+  // Две строки результата: OmniRoute и xKiro — обновляются независимо, новая строка
+  let omniLine = omniUrlClean ? 'OmniRoute: ' + omniUrlClean + ' — проверяю…' : 'OmniRoute: не задан';
+  let xkiroLine = '';
+  const renderResult = (isErr) => {
+    $dlgResult.className = isErr ? 'dlg-result err' : 'dlg-result ok';
+    $dlgResult.textContent = 'Сохранено.\n' + omniLine + (xkiroLine ? '\n' + xkiroLine : '');
+  };
+  $dlgResult.textContent = 'Сохранено.\n' + omniLine;
   reboot();
 
-  // Проверку ключа делаем в фоне — она не блокирует кнопку/диалог.
+  // Фоновая проверка OmniRoute — уточняет строку OmniRoute
+  if (omniUrlClean) {
+    console.info('[OmniRoute] проверка', omniUrlClean);
+    omniFetch(COMBO_LIST_PATH).then((data) => {
+      const n = Array.isArray(data) ? data.length : Array.isArray(data.combos) ? data.combos.length : Array.isArray(data.data) ? data.data.length : 0;
+      console.info('[OmniRoute] OK', data);
+      omniLine = 'OmniRoute ✓ ' + omniUrlClean + ' — доступно combo: ' + n;
+      renderResult(false);
+    }).catch((err) => {
+      console.warn('[OmniRoute] проверка не прошла', err);
+      omniLine = 'OmniRoute ✗ ' + omniUrlClean + ' — ' + (err && err.message ? err.message : String(err));
+      const isErr = !(err && err.status === 400); // 400 без URL не считаем критичным
+      renderResult(isErr);
+    });
+  } else {
+    renderResult(false);
+  }
+  const setXkiroLine = (line, isErr) => { xkiroLine = line; renderResult(isErr); };
   if (candidate) {
+    console.info('[xKiro] проверка ключа…');
+    setXkiroLine('xKiro: проверяю ключ…', false);
     providerRequest('usage', { key: candidate })
       .then((data) => {
         const wallet = (data && data.wallet) || {};
-        $dlgResult.className = 'dlg-result ok';
-        $dlgResult.textContent =
-          'Сохранено. Ключ работает — баланс: ' + fmtUsd(wallet.balance) +
-          (omniUrlClean ? ' · OmniRoute: ' + omniUrlClean : '');
+        const bal = wallet.balance_usd ?? wallet.balance ?? 0;
+        console.info('[xKiro] ключ OK', data);
+        setXkiroLine('xKiro ✓ ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · план: ' + data.plan : ''), false);
       })
       .catch((err) => {
-        $dlgResult.className = 'dlg-result err';
-        let msg = 'Сохранено, но ключ не прошёл проверку: ' +
-          (err && err.message ? err.message : String(err));
+        console.warn('[xKiro] проверка не прошла', err);
+        let msg = 'xKiro ✗ ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err));
         if (err && err.status === 401) msg += ' — проверьте ключ';
-        $dlgResult.textContent = msg;
+        setXkiroLine(msg, true);
       });
+  } else {
+    console.info('[xKiro] ключ не задан');
+    setXkiroLine('xKiro: ключ не задан', false);
   }
 });
 
@@ -1567,6 +1593,7 @@ async function reboot() {
 }
 
 async function boot() {
+  await loadVault();
   if (location.protocol !== 'file:') {
     try {
       const res = await fetch('/api/config');
@@ -1582,7 +1609,7 @@ async function boot() {
   }
   // Провайдер каталога на странице «Модели»: сохранённый или активный
   let savedModelsProviderId = null;
-  try { savedModelsProviderId = localStorage.getItem(LS_MODELS_PROVIDER); } catch {}
+  try { savedModelsProviderId = (vaultGet('modelsProvider')||''); } catch {}
   state.modelsProvider =
     state.providers.find((p) => p.id === savedModelsProviderId) ||
     state.activeProvider;

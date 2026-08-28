@@ -15,17 +15,14 @@
 <div id="tpl-topbar"></div>
 
 <main id="main">
-  <h2 class="page-title">Статистика</h2>
+  <h2 class="page-title" id="page-title">Статистика</h2>
 
   <!-- Empty state: no key -->
   <section id="setup" class="setup-card" hidden>
     <h2>Добро пожаловать</h2>
-    <p>Введите API-ключ xKiro (вида <code>sk-xt-…</code>) для начала работы.</p>
-    <form id="setup-form" class="setup-form">
-      <input type="password" id="setup-key" placeholder="sk-xt-…" autocomplete="off" required>
-      <button type="submit" class="btn btn-primary">Подключить</button>
-    </form>
-    <p class="hint">Ключ хранится только локально в вашем браузере.</p>
+    <p>Настройки не заполнены. Откройте <strong>Настройки</strong> и укажите ключи провайдеров.</p>
+    <button type="button" class="btn btn-primary" id="setup-open-settings">⚙ Открыть настройки</button>
+    <p class="hint">Ключи хранятся на сервере в зашифрованном виде (SQLite + AES-256-GCM).</p>
   </section>
 
   <div id="tpl-banner"></div>
@@ -34,12 +31,13 @@
   <section id="cards" class="stats" hidden>
     <div class="stats-head">
       <span class="stats-provider" id="stats-provider">провайдер xKiro</span>
-      <span class="badge" id="plan-badge"></span>
-      <!-- Wallet -->
-      <div class="stats-wallet" id="card-wallet">
-        <span class="stat-value num" id="wallet-balance">—</span>
-        <span class="stat-sub" id="wallet-held"></span>
-      </div>
+      <span class="stats-head-right">
+        <span class="badge" id="plan-badge"></span>
+        <span class="stats-wallet" id="card-wallet">
+          <span class="stat-value num" id="wallet-balance">—</span>
+          <span class="stat-sub" id="wallet-held"></span>
+        </span>
+      </span>
     </div>
 
     <div class="stats-row">
@@ -87,8 +85,12 @@
   <!-- Antigravity: квоты Google AI Pro по моделям -->
   <section id="antigravity-quota" class="stats" hidden>
     <div class="stats-head">
-      <span class="stats-provider">Antigravity · Google AI Pro</span>
-      <span class="badge" id="ag-status-badge"></span>
+      <span class="stats-provider">Antigravity</span>
+      <span class="ag-head-meta">
+        <span class="ag-subtitle">Google AI Pro</span>
+        <span class="ag-email" id="ag-account-email" hidden></span>
+        <span class="badge" id="ag-status-badge"></span>
+      </span>
     </div>
     <div class="stats-row" id="ag-cards"></div>
     <p class="hint" id="ag-hint" hidden></p>

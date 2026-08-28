@@ -171,6 +171,39 @@ test('успех: прокси до Google, заголовки и очищенн
   }
 });
 
+test('дубли моделей по displayName схлопываются в один', async () => {
+  const mock = await startMockGoogle({
+    body: {
+      models: {
+        g1: { displayName: 'Gemini 3.1 Flash Lite', quotaInfo: { remainingFraction: 1 } },
+        g2: { displayName: 'Gemini 3.1 Flash Lite', quotaInfo: { remainingFraction: 0.9 } },
+        g3: { displayName: '  gemini 3.1 flash lite  ', quotaInfo: { remainingFraction: 0.5 } },
+        g4: { displayName: 'Gemini 3.6 Flash (Medium)', quotaInfo: { remainingFraction: 0.8 } },
+        g5: { displayName: 'Gemini 3.7 Flash (Low)', quotaInfo: { remainingFraction: 0.7 } },
+        tab_flash_lite_preview: { quotaInfo: { remainingFraction: 1 } },
+        chat_23310: { quotaInfo: { remainingFraction: 1 } },
+        gpt: { displayName: 'GPT-OSS 120B (Medium)', supportsThinking: true, quotaInfo: { remainingFraction: 1 } },
+      },
+      deprecatedModelIds: {},
+    },
+  });
+  const panel = await startWithMock(mock);
+  try {
+    const data = await (await fetch(panel.base + '/api/antigravity-quota')).json();
+    assert.deepEqual(data.models.map((m) => m.displayName), [
+      'Gemini 3.1 Flash Lite',
+      'Gemini 3.6 Flash (Medium)',
+      'Gemini 3.7 Flash (Low)',
+      'GPT-OSS 120B (Medium)',
+    ]);
+    // Служебные raw-id записи (tab_*, chat_<цифры>) отфильтрованы
+    assert.ok(!data.models.some((m) => /^tab_|^chat_\d+$/.test(m.id)));
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
 test('project из настроек уходит в тело запроса', async () => {
   const mock = await startMockGoogle();
   const panel = await startWithMock(mock, 'my-project-id');
@@ -498,7 +531,7 @@ test('секреты refresh-связки не возвращаются клие
     for (const secret of ['rt-secret', 'cid-x', 'csec-y']) {
       assert.ok(!text.includes(secret), 'секрет утёк: ' + secret);
     }
-    assert.deepEqual(JSON.parse(text), { hasToken: true, hasRefresh: true, tokenExpiresAt: null });
+    assert.deepEqual(JSON.parse(text), { hasToken: true, hasRefresh: true, tokenExpiresAt: null, email: null });
   } finally {
     await panel.stop();
     await mock.close();
@@ -585,6 +618,10 @@ test('paste: ссылка callback обменивается с её же redirec
       seenExchange = args;
       return { ok: true, accessToken: 'pasted-token', refreshToken: 'rt-paste', expiresIn: 3600 };
     },
+    getUserInfo: async ({ accessToken }) =>
+      accessToken === 'pasted-token'
+        ? { ok: true, email: 'user@gmail.com' }
+        : { ok: false, error: 'userinfo_error' },
   };
   const panel = await startPanel({
     providers: [],
@@ -602,7 +639,10 @@ test('paste: ссылка callback обменивается с её же redirec
     });
     assert.equal(res.status, 200);
     const data = await res.json();
-    assert.deepEqual(data, { ok: true, hasToken: true, hasRefresh: true });
+    assert.equal(data.ok, true);
+    assert.equal(data.hasToken, true);
+    assert.equal(data.hasRefresh, true);
+    assert.equal(data.refreshToken, 'rt-paste');
 
     // Обмен выполнен с тем же origin+path, что в ссылке; hash/прочее отброшено
     assert.equal(seenExchange.redirectUri, 'http://127.0.0.1:20128/callback');
@@ -612,6 +652,10 @@ test('paste: ссылка callback обменивается с её же redirec
     const quota = await fetch(panel.base + '/api/antigravity-quota');
     assert.equal(quota.status, 200);
     assert.equal(modelCalls(mock)[0].auth, 'Bearer pasted-token');
+
+    // Email аккаунта подтянулся из Google userinfo
+    const st = await (await fetch(panel.base + '/api/settings/google-token')).json();
+    assert.equal(st.email, 'user@gmail.com');
   } finally {
     await panel.stop();
     await mock.close();
@@ -722,4 +766,72 @@ test('tokenExpiresAt появляется после paste-обмена', async 
     await panel.stop();
     await mock.close();
   }
+});
+
+test('refresh-связка из заголовков переживает перезапуск сервера', async () => {
+  const mock = await startMockGoogle();
+  const oauth = await startMockOauth({ accessToken: 'restored-token' });
+
+  // "Первый запуск": связка известна серверу напрямую (POST из настроек)
+  const first = await startPanel({
+    providers: [],
+    antigravity: createAntigravityProvider({ url: mock.url }),
+    googleOauth: createGoogleOauth({ url: oauth.url }),
+  });
+  const saved = await setRefreshOnly(first);
+  assert.equal(saved.hasRefresh, true);
+  let res = await fetch(first.base + '/api/antigravity-quota');
+  assert.equal(res.status, 200);
+  await first.stop();
+
+  // "Перезапуск": память пуста (hasToken false), но браузер в localStorage
+  // хранит связку и присылает её заголовками x-ag-* → сервер сам обновляет токен
+  const second = await startPanel({
+    providers: [],
+    antigravity: createAntigravityProvider({ url: mock.url }),
+    googleOauth: createGoogleOauth({ url: oauth.url }),
+  });
+  res = await fetch(second.base + '/api/settings/google-token');
+  const st = await res.json();
+  assert.equal(st.hasToken, false);
+  assert.equal(st.hasRefresh, false);
+
+  res = await fetch(second.base + '/api/antigravity-quota', {
+    headers: {
+      'x-ag-refresh-token': 'rt-123',
+      'x-ag-client-id': 'cid',
+      'x-ag-client-secret': 'csec',
+    },
+  });
+  assert.equal(res.status, 200);
+  // OAuth: refresh прошёл по связке из заголовка локального хранилища
+  assert.equal(oauth.seen.filter((r) => r.grant_type === 'refresh_token').length, 2);
+  const lastRefresh = oauth.seen[oauth.seen.length - 1];
+  assert.equal(lastRefresh.refresh_token, 'rt-123');
+  assert.equal(lastRefresh.client_id, 'cid');
+  assert.equal(lastRefresh.client_secret, 'csec');
+  // В Google ушёл обновлённый токен
+  assert.equal(modelCalls(mock)[modelCalls(mock).length - 1].auth, 'Bearer restored-token');
+  await second.stop();
+
+  // Сменилась связка (другой аккаунт) → старый access-токен не используется
+  const third = await startPanel({
+    providers: [],
+    antigravity: createAntigravityProvider({ url: mock.url }),
+    googleOauth: createGoogleOauth({ url: oauth.url }),
+  });
+  const before = oauth.seen.length;
+  res = await fetch(third.base + '/api/antigravity-quota', {
+    headers: {
+      'x-ag-refresh-token': 'rt-other',
+      'x-ag-client-id': 'cid',
+      'x-ag-client-secret': 'csec',
+    },
+  });
+  assert.equal(res.status, 200);
+  assert.equal(oauth.seen[before].refresh_token, 'rt-other');
+  await third.stop();
+
+  await mock.close();
+  await oauth.close();
 });
