@@ -99,6 +99,57 @@ function startMockUpstream(opts = {}) {
 }
 
 /**
+ * Mock upstream AgentRouter (new-api): GET /api/user/self требует
+ * Authorization (Bearer, префикс опционален) и отдаёт
+ * { success, data: { group, quota, … } } — как UserAuth() в new-api.
+ *
+ * Опции:
+ *   code / body — переопределить код и JSON-ответ
+ *   raw         — отдать сырую строку вместо JSON (тесты не-JSON ответов)
+ *
+ * Возвращает { url, seen, close }: seen — лог запросов { url, auth }.
+ */
+function startAgentRouterUpstream(opts = {}) {
+  const seen = [];
+
+  const server = http.createServer((req, res) => {
+    const auth = req.headers['authorization'] || '';
+    seen.push({ url: req.url, auth, uid: req.headers['new-api-user'] || '' });
+
+    if (opts.raw !== undefined) {
+      res.writeHead(opts.code || 200, { 'content-type': 'text/plain' });
+      return res.end(opts.raw);
+    }
+    return json(res, opts.code || 200, opts.body || {
+      success: true,
+      message: '',
+      data: {
+        id: 7,
+        username: 'tester',
+        group: 'vip',
+        quota: 41157471,
+        used_quota: 908842529,
+        request_count: 7756,
+      },
+    });
+  });
+
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      resolve({
+        url: 'http://127.0.0.1:' + server.address().port,
+        seen,
+        close: () =>
+          new Promise((done) => {
+            server.closeIdleConnections();
+            server.close(done);
+          }),
+      });
+    });
+  });
+}
+
+/**
  * Поднимает server.js in-process (через createApp) на свободном порту.
  * Провайдеры передаются напрямую — окружение не используется. По
  * умолчанию один xKiro, смотрящий на opts.upstream (mock-upstream
@@ -178,4 +229,4 @@ async function startServerProcess() {
   };
 }
 
-module.exports = { ROOT, getFreePort, json, startMockUpstream, startPanel, startServerProcess };
+module.exports = { ROOT, getFreePort, json, startMockUpstream, startAgentRouterUpstream, startPanel, startServerProcess };

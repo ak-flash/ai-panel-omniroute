@@ -70,6 +70,7 @@ const _DIALOG_HTML = `<dialog id="dlg">
       <label for="dlg-provider">Провайдер</label>
       <select id="dlg-provider" class="select">
         <option value="xkiro">xKiro</option>
+        <option value="agentrouter">AgentRouter</option>
         <option value="antigravity">Antigravity</option>
       </select>
       <!-- Поля ключа xKiro -->
@@ -79,6 +80,27 @@ const _DIALOG_HTML = `<dialog id="dlg">
           <input type="password" id="dlg-key" placeholder="sk-xt-…" autocomplete="off">
           <button type="button" id="dlg-toggle" class="btn btn-ghost" aria-label="Показать/скрыть ключ">👁</button>
         </div>
+      </div>
+      <!-- Поля AgentRouter: access-токен + числовой ID в одной строке -->
+      <div id="dlg-agentrouter-fields" hidden>
+        <div class="dlg-ar-row">
+          <div class="dlg-ar-token">
+            <label for="dlg-agentrouter-key">Access-токен</label>
+            <div class="input-group">
+              <input type="password" id="dlg-agentrouter-key" placeholder="Токен из Security Settings" autocomplete="off">
+              <button type="button" id="dlg-agentrouter-toggle" class="btn btn-ghost" aria-label="Показать/скрыть токен">👁</button>
+            </div>
+          </div>
+          <div class="dlg-ar-user">
+            <label for="dlg-agentrouter-user">User ID</label>
+            <input type="text" id="dlg-agentrouter-user" inputmode="numeric" placeholder="49521" autocomplete="off">
+          </div>
+        </div>
+        <p class="hint">
+          agentrouter.org → аватар → Security Settings → System Access Token →
+          Generate; числовой ID — из профиля (New-Api-User).
+          API-ключ (sk-…) не подходит: сайт принимает только access-токен.
+        </p>
       </div>
       <!-- Поля Antigravity (Google AI Pro): вход через Google + вставка ссылки -->
       <div id="dlg-ag-fields" hidden>

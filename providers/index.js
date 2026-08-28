@@ -9,8 +9,9 @@
 // ============================================================
 
 const { createXKiroProvider } = require('./xkiro');
+const { createAgentRouterProvider } = require('./agentrouter');
 
-const FACTORIES = { xkiro: createXKiroProvider };
+const FACTORIES = { xkiro: createXKiroProvider, agentrouter: createAgentRouterProvider };
 
 /** Собирает адаптеры вшитых провайдеров в порядке FACTORIES. */
 function loadProviders() {

@@ -51,7 +51,7 @@ let $comboSelect, $comboRefresh, $comboEmpty, $comboStatus, $comboDetails;
 let $comboStrategyBadge, $comboTargetsCount, $comboModelSelect, $comboMoveTop, $comboList;
 let $btnUpgrade, $copyStatus, $cmdText;
 let $agSection, $agCards, $agHint, $agBadge, $agEmail;
-let $dlg, $dlgKey, $dlgToggle, $dlgSave, $dlgRemove, $dlgResult;
+let $dlg, $dlgKey, $dlgArKey, $dlgArUser, $dlgToggle, $dlgArToggle, $dlgSave, $dlgRemove, $dlgResult;
 
 // Прямой адрес API xKiro — используется только когда панель открыта как файл
 // (file://), без локального сервера. При работе через сервер данные идут
@@ -100,6 +100,18 @@ function getKey() {
 }
 function setKey(k){ vaultSet('xkiroKey', k); }
 function removeKey(){ vaultSet('xkiroKey',''); }
+function getAgentRouterKey(){ return vaultGet('agentrouterKey')||''; }
+// Числовой ID пользователя AgentRouter — второй фактор авторизации
+// (заголовок New-Api-User); не секрет, но храним рядом с токеном
+function getAgentRouterUserId(){ return vaultGet('agentrouterUserId')||''; }
+
+// Ключ провайдера статистики/моделей: у каждого своё поле в хранилище
+// (xkiro — с legacy-фолбэками на localStorage для режима file://)
+function keyForProvider(id) {
+  if (id === 'xkiro') return getKey();
+  if (id === 'agentrouter') return getAgentRouterKey();
+  return '';
+}
 function getOmniUrl(){ return vaultLoaded ? (vaultGet('omniUrl')||'') : (()=>{try{return localStorage.getItem(LS_OMNI_URL)||'';}catch{return '';}})(); }
 function getOmniKey(){ return vaultLoaded ? (vaultGet('omniKey')||'') : (()=>{try{const v=localStorage.getItem(LS_OMNI_KEY);return v&&v.startsWith('enc:')?atob(v.slice(4)):v||'';}catch{return '';}})(); }
 function getAgRefreshToken(){ return vaultGet('agRefreshToken')||''; }
@@ -199,11 +211,16 @@ function windowTitle(kind) {
 async function providerRequest(resource, opts = {}) {
   const provider = opts.provider || state.activeProvider;
 
-  // Ключ: явный (проверка в настройках) → сохранённый локально.
+  // Ключ: явный (проверка в настройках) → ключ этого провайдера из хранилища.
   // Ключей на сервере нет — upstream всегда уходит клиентский ключ.
-  const key = opts.key || getKey() || '';
+  const key = opts.key || keyForProvider(provider.id) || '';
   const headers = {};
   if (key) headers['x-api-key'] = key;
+  // Доп. данные авторизации (AgentRouter: числовой ID для New-Api-User)
+  const extraUserId = opts.userId !== undefined
+    ? opts.userId
+    : getAgentRouterUserId();
+  if (extraUserId) headers['x-agentrouter-user-id'] = extraUserId;
 
   const url =
     location.protocol === 'file:'
@@ -279,7 +296,10 @@ function resolveRefs() {
   $agEmail = $id('ag-account-email');
   $dlg = $id('dlg');
   $dlgKey = $id('dlg-key');
+  $dlgArKey = $id('dlg-agentrouter-key');
+  $dlgArUser = $id('dlg-agentrouter-user');
   $dlgToggle = $id('dlg-toggle');
+  $dlgArToggle = $id('dlg-agentrouter-toggle');
   $dlgSave = $id('dlg-save');
   $dlgRemove = $id('dlg-remove');
   $dlgResult = $id('dlg-result');
@@ -294,12 +314,19 @@ function setStatus(type, text) {
   $statusText.textContent = text;
 }
 
-// Подпись блока статистики: «провайдер xKiro».
-// Активный провайдер приходит с сервера (/api/config).
+// Селектор провайдера блока статистики (пилюля в шапке блока).
+// Активный провайдер выбирается как каталог на «Моделях»: сервер даёт
+// список (/api/config), выбор сохраняется в хранилище (statsProvider).
 function renderProviderLabel() {
-  if ($statsProvider) {
-    $statsProvider.textContent =
-      'провайдер ' + (state.activeProvider.name || '—');
+  if (!$statsProvider) return;
+  const list = state.providers.length ? state.providers : [state.activeProvider];
+  $statsProvider.replaceChildren();
+  for (const p of list) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name || p.id;
+    opt.selected = p.id === (state.activeProvider.id || '');
+    $statsProvider.appendChild(opt);
   }
 }
 
@@ -1206,6 +1233,59 @@ async function loadUsage() {
   }
 }
 
+/* ---------- AgentRouter: карточка баланса на главной ---------- */
+
+// Показываем карточку, только если у AgentRouter есть токен; когда в
+// полосе статистики уже выбран AgentRouter — прячем (не дублируем)
+async function loadAgentRouterCard() {
+  const $card = $id('ar-card');
+  if (!$card) return;
+  const hasKey =
+    Boolean(getAgentRouterKey()) ||
+    state.providers.some((p) => p.id === 'agentrouter' && p.hasKey);
+  if (!hasKey || state.activeProvider.id === 'agentrouter') {
+    $card.hidden = true;
+    return;
+  }
+  try {
+    const data = await providerRequest('usage', {
+      provider: { id: 'agentrouter', name: 'AgentRouter' },
+    });
+    renderAgentRouterCard(data);
+  } catch (err) {
+    $card.hidden = false;
+    const $err = $id('ar-error');
+    if ($err) {
+      $err.hidden = false;
+      $err.textContent =
+        'Не удалось получить баланс — ' +
+        (err && err.message ? err.message : String(err));
+    }
+  }
+}
+
+function renderAgentRouterCard(data) {
+  const $card = $id('ar-card');
+  if (!$card) return;
+  $card.hidden = false;
+  const $err = $id('ar-error');
+  if ($err) $err.hidden = true;
+
+  const balance = $id('ar-balance');
+  if (balance) balance.textContent = fmtUsd((data.wallet || {}).balance_usd);
+
+  const group = $id('ar-group');
+  if (group) group.textContent = data.plan ? String(data.plan).toUpperCase() : '';
+
+  const sub = [];
+  const used = Number(data.used_usd) || 0;
+  if (used > 0) sub.push('Израсходовано: ' + fmtUsd(used));
+  const requests = Number(data.requests) || 0;
+  if (requests > 0) sub.push('Запросов: ' + requests.toLocaleString('ru-RU'));
+  const $sub = $id('ar-sub');
+  if ($sub) $sub.textContent = sub.join(' · ');
+}
+
 async function loadModels() {
   $modelsStatus.hidden = false;
   $modelsStatus.textContent = 'Загружаю каталог…';
@@ -1247,7 +1327,7 @@ async function init() {
   // Страница «Модели»: каталог моделей выбранного провайдера
   if (PAGE === 'models') {
     renderModelsProviders();
-    if (!getKey() && !state.modelsProvider.hasKey) {
+    if (!keyForProvider(state.modelsProvider.id) && !state.modelsProvider.hasKey) {
       state.models = [];
       if ($modelsBody) $modelsBody.replaceChildren();
       if ($modelsStatus) $modelsStatus.hidden = true;
@@ -1285,21 +1365,32 @@ async function init() {
   // Главная страница — статистика
   renderProviderLabel();
   const $pageTitle = $id('page-title');
-  if (!getKey() && !state.activeProvider.hasKey) {
+  // Экран «Нужен ключ» — только если ключей нет ни у одного провайдера:
+  // иначе селектор провайдера скрыт вместе с карточками и не переключиться
+  const hasAnyKey =
+    Boolean(keyForProvider(state.activeProvider.id)) ||
+    state.activeProvider.hasKey ||
+    state.providers.some((p) => keyForProvider(p.id) || p.hasKey);
+  if (!hasAnyKey) {
     $cards.hidden = true;
     if ($pageTitle) $pageTitle.hidden = true;
     $setup.hidden = false;
     setStatus('idle', 'Нужен ключ');
-    // Квоты Antigravity не зависят от ключа xKiro — грузим всегда
+    // Квоты Antigravity и баланс AgentRouter не зависят от ключа xKiro
     loadAntigravityQuota();
+    loadAgentRouterCard();
     loadIndexComboFirst();
     return;
   }
 
   if ($pageTitle) $pageTitle.hidden = false;
   $setup.hidden = true;
+  // Полосу статистики показываем сразу (селектор провайдера должен быть
+  // доступен и когда загрузка упала — например, у активного нет ключа)
+  $cards.hidden = false;
   await loadUsage();
   loadAntigravityQuota();
+  loadAgentRouterCard();
   loadIndexComboFirst();
 }
 
@@ -1316,7 +1407,16 @@ on($modelsProvider, 'change', () => {
   reboot();
 });
 
-on($btnRefresh, 'click', () => { loadUsage(); loadAntigravityQuota(); });
+// Смена провайдера блока статистики — как выбор каталога на «Моделях»
+on($statsProvider, 'change', () => {
+  const p = state.providers.find((x) => x.id === $statsProvider.value);
+  if (!p || p.id === state.activeProvider.id) return;
+  state.activeProvider = p;
+  try { vaultSet('statsProvider', p.id); } catch {}
+  reboot();
+});
+
+on($btnRefresh, 'click', () => { loadUsage(); loadAntigravityQuota(); loadAgentRouterCard(); });
 
 // Показ/скрытие полей выбранного в настройках провайдера
 function renderDlgProviderFields() {
@@ -1324,13 +1424,17 @@ function renderDlgProviderFields() {
   if (!$sel) return;
   const v = $sel.value;
   const $xkiro = $id('dlg-xkiro-fields');
+  const $ar = $id('dlg-agentrouter-fields');
   const $ag = $id('dlg-ag-fields');
   if ($xkiro) $xkiro.hidden = v !== 'xkiro';
+  if ($ar) $ar.hidden = v !== 'agentrouter';
   if ($ag) $ag.hidden = v !== 'antigravity';
 }
 
 on($btnSettings, 'click', () => {
   $dlgKey.value = getKey() || '';
+  if ($dlgArKey) $dlgArKey.value = getAgentRouterKey();
+  if ($dlgArUser) $dlgArUser.value = getAgentRouterUserId();
   renderAliasRows();
   const $omniUrl = $id('dlg-omni-url');
   const $omniKey = $id('dlg-omni-key');
@@ -1346,7 +1450,7 @@ on($btnSettings, 'click', () => {
     let savedDlgProvider = 'xkiro';
     try { savedDlgProvider = (vaultGet('dlgProvider')||'') || 'xkiro'; } catch {}
     $dlgProvider.value =
-      savedDlgProvider === 'antigravity'
+      savedDlgProvider === 'antigravity' || savedDlgProvider === 'agentrouter'
         ? savedDlgProvider
         : 'xkiro';
     renderDlgProviderFields();
@@ -1440,6 +1544,11 @@ on($dlgToggle, 'click', () => {
   $dlgKey.type = $dlgKey.type === 'password' ? 'text' : 'password';
 });
 
+// Показать/скрыть access-токен AgentRouter
+on($dlgArToggle, 'click', () => {
+  if ($dlgArKey) $dlgArKey.type = $dlgArKey.type === 'password' ? 'text' : 'password';
+});
+
 // Обновляет статусную строку в форме Antigravity по данным сервера
 // (сами токены клиенту не возвращаются — только флаги и время истечения)
 async function refreshAgStatus(prefix) {
@@ -1531,7 +1640,9 @@ on($id('dlg-ag-paste'), 'keydown', (e) => {
 on($dlgSave, 'click', () => {
   const $omniUrl = $id('dlg-omni-url');
   const $omniKey = $id('dlg-omni-key');
-  const candidate = $dlgKey.value.trim();
+  const $dlgProviderSel = $id('dlg-provider');
+  // Проверяем ключ того провайдера, чья вкладка открыта в диалоге
+  const dlgProvider = $dlgProviderSel ? $dlgProviderSel.value : 'xkiro';
 
   // Сохраняем всё сразу (синхронно), не дожидаясь проверки ключа,
   // чтобы кнопка никогда не «зависала».
@@ -1544,18 +1655,28 @@ on($dlgSave, 'click', () => {
     $omniUrl.value = omniUrlClean;
   }
   if ($omniUrl || $omniKey) setOmniConfig(omniUrlClean, $omniKey ? $omniKey.value.trim() : '');
-  if (candidate) setKey(candidate);
+
+  // Ключи всех провайдеров: непустые поля сохраняем (поля предзаполнены
+  // хранимыми значениями, так что неизменённое поле просто перезапишется).
+  // User ID сохраняем всегда: пустое значение просто удаляется из хранилища
+  const xkiroCandidate = $dlgKey.value.trim();
+  const arCandidate = $dlgArKey ? $dlgArKey.value.trim() : '';
+  const arUserCandidate = $dlgArUser ? $dlgArUser.value.trim() : '';
+  if (xkiroCandidate) setKey(xkiroCandidate);
+  if (arCandidate) vaultSet('agentrouterKey', arCandidate);
+  vaultSet('agentrouterUserId', arUserCandidate);
+  const candidate = dlgProvider === 'agentrouter' ? arCandidate : xkiroCandidate;
 
   $dlgSave.disabled = false;
   $dlgSave.textContent = 'Проверить и сохранить';
   $dlgResult.hidden = false;
   $dlgResult.className = 'dlg-result ok';
-  // Две строки результата: OmniRoute и xKiro — обновляются независимо, новая строка
+  // Две строки результата: OmniRoute и провайдер — обновляются независимо, новая строка
   let omniLine = omniUrlClean ? 'OmniRoute: ' + omniUrlClean + ' — проверяю…' : 'OmniRoute: не задан';
-  let xkiroLine = '';
+  let providerLine = '';
   const renderResult = (isErr) => {
     $dlgResult.className = isErr ? 'dlg-result err' : 'dlg-result ok';
-    $dlgResult.textContent = 'Сохранено.\n' + omniLine + (xkiroLine ? '\n' + xkiroLine : '');
+    $dlgResult.textContent = 'Сохранено.\n' + omniLine + (providerLine ? '\n' + providerLine : '');
   };
   $dlgResult.textContent = 'Сохранено.\n' + omniLine;
   reboot();
@@ -1577,31 +1698,57 @@ on($dlgSave, 'click', () => {
   } else {
     renderResult(false);
   }
-  const setXkiroLine = (line, isErr) => { xkiroLine = line; renderResult(isErr); };
-  if (candidate) {
-    console.info('[xKiro] проверка ключа…');
-    setXkiroLine('xKiro: проверяю ключ…', false);
-    providerRequest('usage', { key: candidate })
-      .then((data) => {
-        const wallet = (data && data.wallet) || {};
-        const bal = wallet.balance_usd ?? wallet.balance ?? 0;
-        console.info('[xKiro] ключ OK', data);
-        setXkiroLine('xKiro ✓ ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · план: ' + data.plan : ''), false);
-      })
-      .catch((err) => {
-        console.warn('[xKiro] проверка не прошла', err);
-        let msg = 'xKiro ✗ ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err));
-        if (err && err.status === 401) msg += ' — проверьте ключ';
-        setXkiroLine(msg, true);
-      });
-  } else {
-    console.info('[xKiro] ключ не задан');
-    setXkiroLine('xKiro: ключ не задан', false);
+  const setProviderLine = (line, isErr) => { providerLine = line; renderResult(isErr); };
+  if (dlgProvider === 'agentrouter') {
+    if (candidate) {
+      console.info('[AgentRouter] проверка токена…');
+      setProviderLine('AgentRouter: проверяю токен…', false);
+      providerRequest('usage', { provider: { id: 'agentrouter', name: 'AgentRouter' }, key: candidate, userId: arUserCandidate })
+        .then((data) => {
+          const wallet = (data && data.wallet) || {};
+          const bal = wallet.balance_usd ?? wallet.balance ?? 0;
+          console.info('[AgentRouter] токен OK', data);
+          setProviderLine('AgentRouter ✓ токен работает — баланс: ' + fmtUsd(bal), false);
+        })
+        .catch((err) => {
+          console.warn('[AgentRouter] проверка не прошла', err);
+          const msg = 'AgentRouter ✗ токен не прошёл проверку: ' + (err && err.message ? err.message : String(err));
+          setProviderLine(msg, true);
+        });
+    } else {
+      console.info('[AgentRouter] токен не задан');
+      setProviderLine('AgentRouter: токен не задан', false);
+    }
+  } else if (dlgProvider === 'xkiro') {
+    if (candidate) {
+      console.info('[xKiro] проверка ключа…');
+      setProviderLine('xKiro: проверяю ключ…', false);
+      providerRequest('usage', { key: candidate })
+        .then((data) => {
+          const wallet = (data && data.wallet) || {};
+          const bal = wallet.balance_usd ?? wallet.balance ?? 0;
+          console.info('[xKiro] ключ OK', data);
+          setProviderLine('xKiro ✓ ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · план: ' + data.plan : ''), false);
+        })
+        .catch((err) => {
+          console.warn('[xKiro] проверка не прошла', err);
+          let msg = 'xKiro ✗ ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err));
+          if (err && err.status === 401) msg += ' — проверьте ключ';
+          setProviderLine(msg, true);
+        });
+    } else {
+      console.info('[xKiro] ключ не задан');
+      setProviderLine('xKiro: ключ не задан', false);
+    }
   }
+  // antigravity: токен живёт на сервере — проверять в диалоге нечего
 });
 
 on($dlgRemove, 'click', () => {
-  removeKey();
+  const $sel = $id('dlg-provider');
+  const dlgProvider = $sel ? $sel.value : 'xkiro';
+  if (dlgProvider === 'agentrouter') vaultSet('agentrouterKey', '');
+  else removeKey();
   $dlg.close();
   reboot();
 });
@@ -1681,7 +1828,7 @@ on($id('banner-close'), 'click', hideBanner);
 // Обновление при возврате на вкладку — только для статистики
 if (PAGE === 'index') {
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) { loadUsage(); loadAntigravityQuota(); }
+    if (!document.hidden) { loadUsage(); loadAntigravityQuota(); loadAgentRouterCard(); }
   });
 }
 
@@ -1711,7 +1858,11 @@ async function boot() {
       if (res.ok) {
         const cfg = await res.json();
         state.providers = Array.isArray(cfg.providers) ? cfg.providers : [];
+        // Провайдер статистики: сохранённый выбор → активный от сервера → первый
+        let savedStatsProviderId = null;
+        try { savedStatsProviderId = (vaultGet('statsProvider')||''); } catch {}
         state.activeProvider =
+          state.providers.find((p) => p.id === savedStatsProviderId) ||
           state.providers.find((p) => p.id === cfg.activeProvider) ||
           state.providers[0] ||
           PROVIDER_FALLBACK;

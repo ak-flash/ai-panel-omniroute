@@ -22,6 +22,14 @@ const { createAntigravityProvider } = require('./providers/antigravity');
 const { createGoogleOauth, getBuiltinClientId, getBuiltinClientSecret } = require('./providers/google-oauth');
 const { createStore } = require('./store');
 const PUBLIC_DIR = path.join(__dirname, 'public');
+
+// Поле серверного хранилища с ключом провайдера (клиент секреты не
+// хранит): hasKey в /api/config и фолбэк ключа для
+// /api/providers/<id>/usage, если клиент не прислал x-api-key.
+// PROVIDER_STORE_USER_FIELDS — то же для доп. полей авторизации
+// (у AgentRouter это числовой ID пользователя для New-Api-User).
+const PROVIDER_STORE_KEYS = { xkiro: 'xkiroKey', agentrouter: 'agentrouterKey' };
+const PROVIDER_STORE_USER_FIELDS = { agentrouter: 'agentrouterUserId' };
 const MAX_BODY = 2 * 1024 * 1024;
 const MIME = { '.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.woff2':'font/woff2','.txt':'text/plain; charset=utf-8' };
 const CORS = { 'access-control-allow-origin':'*','access-control-allow-methods':'GET, POST, PUT, PATCH, DELETE, OPTIONS','access-control-allow-headers':'authorization, x-api-key, content-type, accept, x-ag-refresh-token, x-ag-client-id, x-ag-client-secret' };
@@ -116,7 +124,7 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
     if(apiMatch){
       if(req.method==='OPTIONS'){res.writeHead(204,{...CORS});return res.end()}
       const provider=providers.find(p=>p.id===apiMatch[1]); if(!provider){res.writeHead(404,{...CORS,'content-type':'application/json; charset=utf-8'});return res.end(JSON.stringify({error:'unknown_provider',message:'Провайдер не найден'}))}
-      let clientKey=req.headers['x-api-key']||''; if(!clientKey){ try{ const s=await (await getStore()).snapshot(); if(apiMatch[1]==='xkiro'&&s.xkiroKey) clientKey=s.xkiroKey; }catch{} } const fn=apiMatch[2]==='usage'?provider.getUsage:provider.getModels; const result=await fn(clientKey);
+      let clientKey=req.headers['x-api-key']||''; let clientUserId=req.headers['x-agentrouter-user-id']||''; if(!clientKey||!clientUserId){ try{ const s=await (await getStore()).snapshot(); const storeField=PROVIDER_STORE_KEYS[apiMatch[1]]; if(!clientKey&&storeField&&s[storeField]) clientKey=s[storeField]; const userField=PROVIDER_STORE_USER_FIELDS[apiMatch[1]]; if(!clientUserId&&userField&&s[userField]) clientUserId=s[userField]; }catch{} } const fn=apiMatch[2]==='usage'?provider.getUsage:provider.getModels; const result=await fn(clientKey,clientUserId);
       res.writeHead(result.status,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'}); return res.end(JSON.stringify(result.data));
     }
     if(url.pathname==='/omniroute'||url.pathname.startsWith('/omniroute/')){
@@ -307,11 +315,11 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
       // хранилища (клиент больше не держит секреты в localStorage).
       if(!agLoaded){ agLoaded=true; await loadAgFromStore(); }
       const s = await (await getStore()).snapshot();
-      const hasXkiro = Boolean(s.xkiroKey);
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
+      // hasKey провайдера — по его полю в хранилище (см. PROVIDER_STORE_KEYS)
       const providerInfo = providers.map(p=>{
-        if(p.id==='xkiro') return {id:p.id,name:p.name,hasKey:hasXkiro};
-        return {id:p.id,name:p.name,hasKey:Boolean(p.apiKey)};
+        const storeField=PROVIDER_STORE_KEYS[p.id];
+        return {id:p.id,name:p.name,hasKey:storeField?Boolean(s[storeField]):Boolean(p.apiKey)};
       });
       return res.end(JSON.stringify({ok:true,providers:providerInfo,activeProvider:activeProvider?activeProvider.id:null,hasOmniRoute:Boolean(s.omniUrl),hasOmniKey:Boolean(s.omniKey),hasGoogleToken:Boolean(googleAuth.token)||hasRefreshCreds()}));
     }

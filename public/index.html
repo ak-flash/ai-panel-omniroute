@@ -38,7 +38,7 @@
   <!-- Stats strip: статистика одного провайдера в одну строку -->
   <section id="cards" class="stats" hidden>
     <div class="stats-head">
-      <span class="stats-provider" id="stats-provider">провайдер xKiro</span>
+      <select class="stats-provider" id="stats-provider" aria-label="Провайдер статистики"></select>
       <span class="stats-head-right">
         <span class="badge" id="plan-badge"></span>
         <span class="stats-wallet" id="card-wallet">
@@ -88,6 +88,21 @@
         </div>
       </article>
     </div>
+  </section>
+
+  <!-- AgentRouter: баланс кошелька -->
+  <section id="ar-card" class="stats" hidden>
+    <div class="stats-head">
+      <span class="stats-provider">AgentRouter</span>
+      <span class="stats-head-right">
+        <span class="badge" id="ar-group"></span>
+        <span class="stats-wallet">
+          <span class="stat-value num" id="ar-balance">—</span>
+          <span class="stat-sub" id="ar-sub"></span>
+        </span>
+      </span>
+    </div>
+    <p class="hint" id="ar-error" hidden></p>
   </section>
 
   <!-- Antigravity: квоты Google AI Pro по моделям -->
