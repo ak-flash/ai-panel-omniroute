@@ -377,7 +377,7 @@ main {
 }
 
 /* --------------------------------------------------------------------------
-   Stats strip — статистика одного провайдера в одну строку
+   Provider cards
    -------------------------------------------------------------------------- */
 .stats {
   background: var(--surface);
@@ -386,10 +386,16 @@ main {
   padding: 20px 24px;
 }
 
-/* Секция Antigravity на дашборде — под блоком статистики xKiro */
-#antigravity-quota {
+.provider-card {
+  overflow: hidden;
+  box-shadow: 0 1px 2px oklch(0% 0 0 / 0.08), 0 12px 32px oklch(0% 0 0 / 0.06);
+}
+
+/* Единый вертикальный ритм карточек провайдеров. */
+#cards ~ .provider-card {
   margin-top: 16px;
 }
+
 #index-combo {
   margin-top: 16px;
   margin-bottom: 16px;
@@ -403,12 +409,32 @@ main {
   gap: 8px 12px;
   margin-bottom: 12px;
 }
-.stats-head-right {
+
+.provider-card-head {
+  align-items: flex-start;
+  gap: 16px 24px;
+  margin: -20px -24px 20px;
+  padding: 20px 24px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.provider-identity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.provider-name-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-inline-start: auto;
+  flex-wrap: wrap;
+  gap: 8px;
 }
+
+/* Статичный ярлык секции вне карточки провайдера (например, «Маршруты»)
+   сохраняет прежний вид пилюли */
 
 .stats-title {
   margin: 0;
@@ -422,7 +448,7 @@ main {
   font-weight: 700;
 }
 
-/* Провайдер блока статистики: селектор в виде той же пилюли */
+/* Ярлык секции (например, «Маршруты») — пилюля */
 .stats-provider {
   font-size: 12px;
   font-weight: 600;
@@ -433,18 +459,13 @@ main {
   padding: 2px 10px;
 }
 
-select.stats-provider {
-  font-family: inherit;
-  cursor: pointer;
-  padding: 2px 24px 2px 10px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-  background-size: 10px;
-}
-
-select.stats-provider:hover {
-  border-color: var(--border-strong);
+/* Имя провайдера в шапке карточки — пилюля в обычном регистре */
+.provider-name-badge {
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  background: var(--surface);
 }
 
 /* «Google AI Pro» + email аккаунта прижаты вправо от имени провайдера */
@@ -465,7 +486,7 @@ select.stats-provider:hover {
 .ag-email {
   font-size: 12px;
   color: var(--text-muted);
-  background: var(--surface-2);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 99px;
   padding: 2px 10px;
@@ -475,30 +496,61 @@ select.stats-provider:hover {
   margin-inline-start: 0;
 }
 
-/* Баланс в шапке блока статистики, после бейджа тарифа */
-.stats-wallet {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+/* Бейджи в шапке карточки: подложка поверхности, чтобы читались на surface-2 */
+.provider-card-head .badge {
+  background: var(--surface);
 }
 
-.stats-wallet .stat-value {
-  margin-inline-start: 0;
+.provider-balance {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+  min-width: 150px;
+  margin-inline-start: auto;
+  text-align: end;
+}
+
+.provider-balance .stat-value {
+  margin: 0;
+  font-size: 26px;
+}
+
+.provider-balance-note {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .stats-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px 32px;
+  gap: 12px;
+}
+
+#cards > .stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+.provider-card-wallet .provider-card-head {
+  margin-bottom: -20px;
+  border-bottom: 0;
+}
+
+/* Подсказки и ошибки внутри карточек — контрастнее на подложке карточки */
+.provider-card .hint {
+  color: var(--text-muted);
 }
 
 .stat {
-  flex: 1 1 220px;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding-block: 4px;
+  gap: 14px;
+  padding: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
 }
 
 /* Использовано / лимит — разные цвета */
@@ -507,7 +559,7 @@ select.stats-provider:hover {
 }
 
 .val-limit {
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-weight: 600;
   font-size: 0.72em;
 }
@@ -521,7 +573,7 @@ select.stats-provider:hover {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
 }
 
 .stat-head {
@@ -537,7 +589,7 @@ select.stats-provider:hover {
   font-size: 11px;
   font-weight: 700;
   color: var(--text-muted);
-  background: var(--surface-2);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 99px;
   padding: 0 7px;
@@ -548,16 +600,14 @@ select.stats-provider:hover {
 }
 
 .stat-label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 13px;
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .stat-meta {
   font-size: 12px;
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 
 /* Иконка «thinking» — берёт приглушённый цвет темы (currentColor) */
@@ -572,9 +622,10 @@ select.stats-provider:hover {
 }
 
 .stat-value {
-  font-size: 22px;
-  font-weight: 700;
+  font-size: 24px;
+  font-weight: 750;
   line-height: 1.2;
+  letter-spacing: -0.03em;
   white-space: nowrap;
 }
 
@@ -592,15 +643,19 @@ select.stats-provider:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px 12px;
+  gap: 4px 12px;
   font-size: 12px;
   color: var(--text);
   font-weight: 600;
-  margin-top: -10px;
 }
 
 .stat-bar {
-  height: 5px;
+  height: 6px;
+}
+
+/* Трек прогресса внутри подложки метрики — поверхность вместо surface-2 */
+.stat .bar-track {
+  background: var(--surface);
 }
 
 /* Компактная карточка квот Antigravity */
@@ -610,7 +665,7 @@ select.stats-provider:hover {
   align-items: flex-end;
   justify-content: space-between;
   gap: 8px 12px;
-  padding-block: 2px;
+  padding: 10px 14px;
 }
 .stat.compact .stat-value {
   font-size: 16px;
@@ -619,6 +674,16 @@ select.stats-provider:hover {
   font-size: 13px;
   text-transform: none;
   letter-spacing: normal;
+  overflow-wrap: break-word;
+}
+
+/* Иконка thinking — при первой строке названия, не переносится */
+.stat.compact .stat-head {
+  flex-wrap: nowrap;
+}
+
+.stat.compact .ag-thinking {
+  flex-shrink: 0;
 }
 
 /* Имя модели + маленький прогресс-бар под ним */
@@ -1545,6 +1610,22 @@ body[data-page="cheatsheet"] #status-dot { display: none; }
 
   .stats {
     padding: 14px 16px;
+  }
+
+  .provider-card-head {
+    margin: -14px -16px 16px;
+    padding: 16px;
+  }
+
+  .provider-card-wallet .provider-card-head {
+    margin: -14px -16px;
+  }
+
+  .provider-balance {
+    justify-items: start;
+    width: 100%;
+    margin-inline-start: 0;
+    text-align: start;
   }
 
   .stats-row {

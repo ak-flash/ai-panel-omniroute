@@ -314,20 +314,12 @@ function setStatus(type, text) {
   $statusText.textContent = text;
 }
 
-// Селектор провайдера блока статистики (пилюля в шапке блока).
-// Активный провайдер выбирается как каталог на «Моделях»: сервер даёт
-// список (/api/config), выбор сохраняется в хранилище (statsProvider).
+// Бейдж имени провайдера в шапке карточки статистики. Сам выбор
+// провайдера выполняется в boot() по сохранённому значению (statsProvider).
 function renderProviderLabel() {
   if (!$statsProvider) return;
-  const list = state.providers.length ? state.providers : [state.activeProvider];
-  $statsProvider.replaceChildren();
-  for (const p of list) {
-    const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.name || p.id;
-    opt.selected = p.id === (state.activeProvider.id || '');
-    $statsProvider.appendChild(opt);
-  }
+  const p = state.activeProvider || PROVIDER_FALLBACK;
+  $statsProvider.textContent = p.name || p.id;
 }
 
 function showBanner(msg) {
@@ -369,7 +361,15 @@ function setWindow(kind, w) {
     `<span class="val-limit">${fmtUsd(w.cap_usd)}</span>`;
 
   const bar = card.querySelector('.bar-fill');
+  const progress = card.querySelector('[role="progressbar"]');
   bar.style.width = p + '%';
+  if (progress) {
+    progress.setAttribute('aria-valuenow', String(Math.round(p)));
+    progress.setAttribute(
+      'aria-valuetext',
+      `${fmtUsd(w.spent_usd)} из ${fmtUsd(w.cap_usd)}`,
+    );
+  }
   bar.classList.remove('warn', 'danger');
   const cls = barClass(p);
   if (cls) bar.classList.add(cls);
@@ -417,7 +417,15 @@ function renderFreeTokens(free) {
         `<span class="val-limit">${compact(limit)}</span>`;
 
   const bar = $freeCard.querySelector('.bar-fill');
+  const progress = $freeCard.querySelector('[role="progressbar"]');
   bar.style.width = usedPct + '%';
+  if (progress) {
+    progress.setAttribute('aria-valuenow', String(Math.round(usedPct)));
+    progress.setAttribute(
+      'aria-valuetext',
+      limit == null ? `${compact(used)} использовано` : `${compact(used)} из ${compact(limit)}`,
+    );
+  }
   bar.classList.remove('warn', 'danger');
   const cls = barClass(usedPct);
   if (cls) bar.classList.add(cls);
@@ -966,10 +974,10 @@ function selectCombo(id) {
 async function loadAntigravityQuota() {
   if (!$agSection) return null;
   try {
-    const [qRes, tRes] = await Promise.all([
-      fetch('/api/antigravity-quota'),
-      fetch('/api/settings/google-token'),
-    ]);
+    // Токен-эндпоинт — после квот: сервер в этот момент может успеть
+    // восстановить email (backfill из Google userinfo после перезапуска)
+    const qRes = await fetch('/api/antigravity-quota');
+    const tRes = await fetch('/api/settings/google-token');
     const data = await qRes.json().catch(() => ({}));
     const tok = await tRes.json().catch(() => ({}));
     state.antigravityEmail = (tok && tok.email) || '';
@@ -1030,14 +1038,22 @@ function agCard(model) {
 
   const bar = document.createElement('div');
   bar.className = 'bar-track ag-bar';
+  bar.setAttribute('role', 'progressbar');
+  bar.setAttribute('aria-label', `Остаток квоты ${model.name || model.id || ''}`.trim());
+  bar.setAttribute('aria-valuemin', '0');
+  bar.setAttribute('aria-valuemax', '100');
   const fill = document.createElement('div');
   fill.className = 'bar-fill';
   if (Number.isFinite(rem)) {
-    fill.style.width = Math.min(100, Math.max(0, rem * 100)) + '%';
+    const remainingPct = Math.round(Math.min(100, Math.max(0, rem * 100)));
+    fill.style.width = remainingPct + '%';
+    bar.setAttribute('aria-valuenow', String(remainingPct));
+    bar.setAttribute('aria-valuetext', `Осталось ${remainingPct}%`);
     const cls = agRemClass(rem);
     if (cls) fill.classList.add(cls);
   } else {
     fill.style.width = '0%';
+    bar.setAttribute('aria-valuetext', 'Нет данных');
   }
   bar.appendChild(fill);
   barRow.appendChild(bar);
@@ -1404,15 +1420,6 @@ on($modelsProvider, 'change', () => {
   state.modelsProvider =
     state.providers.find((p) => p.id === id) || state.activeProvider;
   try { vaultSet('modelsProvider', state.modelsProvider.id); } catch {}
-  reboot();
-});
-
-// Смена провайдера блока статистики — как выбор каталога на «Моделях»
-on($statsProvider, 'change', () => {
-  const p = state.providers.find((x) => x.id === $statsProvider.value);
-  if (!p || p.id === state.activeProvider.id) return;
-  state.activeProvider = p;
-  try { vaultSet('statsProvider', p.id); } catch {}
   reboot();
 });
 

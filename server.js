@@ -75,6 +75,7 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
     for (const [k, v] of entries) {
       if (k === 'agRefreshToken') googleAuth.refreshToken = String(v || '');
       if (k === 'agProject') googleAuth.project = String(v || '');
+      if (k === 'agEmail') googleAuth.email = String(v || '');
     }
     if (googleAuth.refreshToken) {
       googleAuth.clientId = getBuiltinClientId();
@@ -90,6 +91,7 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
       const s = await (await getStore()).snapshot();
       if(s.agRefreshToken) syncAgFromStore([['agRefreshToken', s.agRefreshToken]]);
       if(s.agProject) syncAgFromStore([['agProject', s.agProject]]);
+      if(s.agEmail) syncAgFromStore([['agEmail', s.agEmail]]);
     } catch {}
   }
 
@@ -197,11 +199,13 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
       // Refresh-связку сохраняем на сервере (SQLite, зашифровано), чтобы
       // вход переживал перезапуск — клиенту её возвращать не обязательно.
       if (googleAuth.refreshToken) await (await getStore()).set('agRefreshToken', googleAuth.refreshToken);
-      // Email аккаунта — best-effort из Google userinfo (не ломает вход при ошибке)
+      // Email аккаунта — best-effort из Google userinfo (не ломает вход при ошибке);
+      // сохраняем в хранилище, чтобы email переживал перезапуск сервера
       if (typeof googleOauth.getUserInfo === 'function') {
         try {
           const ui = await googleOauth.getUserInfo({ accessToken: googleAuth.token });
           if (ui.ok) googleAuth.email = ui.email || '';
+          if (googleAuth.email) { try{ await (await getStore()).set('agEmail', googleAuth.email); }catch{} }
         } catch {}
       }
       res.writeHead(200,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
@@ -217,6 +221,7 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
         googleAuth.token=''; googleAuth.refreshToken=''; googleAuth.clientId=''; googleAuth.clientSecret=''; googleAuth.project=''; googleAuth.tokenExpiresAt=0; googleAuth.email=''; agCache={ts:0,result:null,project:null};
         await (await getStore()).set('agRefreshToken','');
         await (await getStore()).set('agProject','');
+        await (await getStore()).set('agEmail','');
         res.writeHead(200,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
         return res.end(JSON.stringify({ok:true,hasToken:false,hasRefresh:false}));
       }
@@ -266,6 +271,17 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
       }
       // Нет access-token, но есть refresh-связка — обновляем заранее
       if(!googleAuth.token){ await refreshGoogleToken(); }
+      // Email: разовый backfill после перезапуска — связка жива, а email в
+      // памяти пуст. Успешный результат сохраняется в хранилище.
+      if(!googleAuth.email && googleAuth.token && typeof googleOauth.getUserInfo==='function'){
+        try{
+          const ui=await googleOauth.getUserInfo({accessToken:googleAuth.token});
+          if(ui.ok&&ui.email){
+            googleAuth.email=ui.email;
+            try{ await (await getStore()).set('agEmail', googleAuth.email); }catch{}
+          }
+        }catch{}
+      }
       let result = googleAuth.token
         ? await antigravity.getQuota({token:googleAuth.token,project})
         : { status:401, data:{error:'token_expired'} }; // refresh не удался
