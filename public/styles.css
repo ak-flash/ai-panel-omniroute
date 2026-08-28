@@ -737,6 +737,15 @@ main {
   border-color: currentColor;
 }
 
+.badge.combo {
+  color: var(--ok);
+  border-color: currentColor;
+}
+
+tr.in-combo td:first-child {
+  border-left: 2px solid var(--ok);
+}
+
 /* --------------------------------------------------------------------------
    Progress bar
    -------------------------------------------------------------------------- */

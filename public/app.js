@@ -88,6 +88,8 @@ const state = {
   activeComboData: null, // полный объект combo с сервера для PUT
   antigravityQuota: null, // квоты Antigravity (модели Google AI Pro)
   antigravityEmail: '',    // email аккаунта Google (из сервера, после входа)
+  comboModelKeys: new Set(), // norm id моделей которые есть в любом Combo
+  comboTargetIds: [], // сырые id target'ов всех Combo (provider/model)
 };
 
 /* ---------- vault helpers (server SQLite, file:// fallback localStorage) ---------- */
@@ -442,11 +444,33 @@ function renderUsage(data) {
 
 /* ---------- models ---------- */
 
+function isModelInCombo(model) {
+  if (!state.comboTargetIds || !state.comboTargetIds.length) return false;
+  if (typeof matchModel === 'function') {
+    // matchModel ожидает массив каталога и id из combo — проверяем каждым target'ом
+    for (const tid of state.comboTargetIds) {
+      const m = matchModel([model], tid);
+      if (m) return true;
+    }
+    return false;
+  }
+  const norm = typeof normModelName === 'function' ? normModelName : (s)=>String(s||'').toLowerCase();
+  return state.comboModelKeys.has(norm(model.id));
+}
+
 function modelRow(model) {
   const tr = document.createElement('tr');
+  if (isModelInCombo(model)) tr.classList.add('in-combo');
 
   const tdId = document.createElement('td');
   tdId.textContent = model.id;
+  if (isModelInCombo(model)) {
+    const b = document.createElement('span');
+    b.className = 'badge combo';
+    b.textContent = 'Combo';
+    b.style.marginLeft = '8px';
+    tdId.appendChild(b);
+  }
 
   const tdTier = document.createElement('td');
   const badge = document.createElement('span');
@@ -660,6 +684,44 @@ function applyAliases(model, aliases) {
   const prov = model.slice(0, i);
   const rest = model.slice(i + 1);
   return (aliases && aliases[prov] ? aliases[prov] : prov) + '/' + rest;
+}
+
+function rebuildComboModelKeys() {
+  const norm = typeof normModelName === 'function' ? normModelName : (s)=>String(s||'').toLowerCase();
+  const set = new Set();
+  const ids = [];
+  for (const t of state.comboModels) {
+    if (t.modelId) { set.add(norm(t.modelId)); ids.push(t.modelId); }
+    if (t.key && t.key !== t.modelId) { set.add(norm(t.key)); ids.push(t.key); }
+  }
+  state.comboModelKeys = set;
+  state.comboTargetIds = ids;
+}
+
+async function loadModelsComboMarks() {
+  if (PAGE !== 'models') return;
+  try {
+    const data = await omniFetch(COMBO_LIST_PATH);
+    const combos = Array.isArray(data) ? data : Array.isArray(data.combos) ? data.combos : Array.isArray(data.data) ? data.data : [];
+    const norm = typeof normModelName === 'function' ? normModelName : (s)=>String(s||'').toLowerCase();
+    const set = new Set();
+    const ids = [];
+    for (const c of combos) {
+      let targets = extractComboTargets(c);
+      if (!targets.length) {
+        try { const d = await omniFetch(COMBO_PATH(c.id)); targets = extractComboTargets(d); } catch {}
+      }
+      for (const t of targets) {
+        if (t.modelId) { set.add(norm(t.modelId)); ids.push(t.modelId); }
+        if (t.key && t.key !== t.modelId) { set.add(norm(t.key)); ids.push(t.key); }
+        if (t.display && t.display !== t.modelId) { set.add(norm(t.display)); ids.push(t.display); }
+      }
+    }
+    state.comboModelKeys = set;
+    state.comboTargetIds = ids;
+    console.debug('[Combo] marks', ids.length, ids.slice(0,3));
+    if (state.models) filterModels();
+  } catch (e) { console.warn('[Combo] loadModelsComboMarks failed', e); }
 }
 
 /** Извлекает models из combo-объекта OmniRoute */
@@ -1195,6 +1257,7 @@ async function init() {
     }
     if ($setup) $setup.hidden = true;
     await loadModels();
+    loadModelsComboMarks();
     return;
   }
 
