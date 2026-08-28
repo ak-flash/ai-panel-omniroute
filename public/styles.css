@@ -185,8 +185,16 @@ main {
 }
 
 .logo {
-  font-size: 22px;
+  width: 22px;
+  height: 22px;
   color: var(--accent);
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.logo svg {
+  width: 100%;
+  height: 100%;
 }
 
 .status {
@@ -237,7 +245,41 @@ main {
   justify-content: space-between;
 }
 
-/* Навигация по страницам: Статистика / Модели / Combo */
+/* Generic icon class for inline SVG heroicons */
+.icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Navigation icons in topnav */
+.topnav .icon {
+  width: 16px;
+  height: 16px;
+  vertical-align: -2px;
+  margin-top: -1px;
+  margin-right: 2px;
+}
+
+/* Theme toggle button icon */
+#btn-theme {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px;
+}
+
+#btn-theme svg {
+  width: 18px;
+  height: 18px;
+}
 .topnav {
   display: flex;
   flex-wrap: wrap;
@@ -360,7 +402,16 @@ main {
 }
 
 .btn .icon {
-  display: inline-block;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.btn .icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .btn.spinning .icon {
@@ -619,6 +670,23 @@ main {
   width: 11px;
   height: 11px;
   color: var(--text-faint);
+}
+.ag-thinking-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Маленькие inline иконки статуса (✓ / ✗) */
+.ico-status {
+  width: 16px;
+  height: 16px;
+  vertical-align: text-bottom;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.ico-status svg {
+  width: 100%;
+  height: 100%;
 }
 
 .stat-value {
@@ -929,14 +997,21 @@ tr.in-combo td:first-child {
   background: none;
   border: none;
   color: white;
-  font-size: 20px;
   cursor: pointer;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   /* Увеличиваем зону клика до ~28px без визуального сдвига глифа */
   padding: 4px 8px;
   margin-inline-start: auto;
   margin-inline-end: -8px;
   border-radius: var(--radius-s);
+}
+
+.banner-close svg {
+  width: 20px;
+  height: 20px;
 }
 
 .banner-close:hover {
@@ -1201,7 +1276,6 @@ dialog::backdrop {
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-muted, var(--text));
-  font-size: 18px;
   line-height: 1;
   width: 32px;
   height: 32px;
@@ -1209,6 +1283,11 @@ dialog::backdrop {
   cursor: pointer;
   display: grid;
   place-items: center;
+}
+
+.dlg-close svg {
+  width: 18px;
+  height: 18px;
 }
 
 .dlg-close:hover {
@@ -1239,8 +1318,17 @@ dialog::backdrop {
 }
 
 .dlg-card-icon {
-  font-size: 22px;
+  width: 22px;
+  height: 22px;
   line-height: 1;
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.dlg-card-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .dlg-card-title {
@@ -1320,6 +1408,7 @@ dialog::backdrop {
 .alias-row input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:var(--radius-s);font-size:13px}
 .alias-row input:focus{border-color:var(--accent);outline:none}
 .alias-row .btn-ghost{padding:6px 10px}
+.alias-row .btn-ghost svg{width:14px;height:14px}
 
 .input-group {
   display: flex;
@@ -1427,8 +1516,17 @@ body[data-page="cheatsheet"] #status-dot { display: none; }
 }
 
 .info-card-icon {
-  font-size: 20px;
+  width: 20px;
+  height: 20px;
   line-height: 1;
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.info-card-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .info-card-title {
@@ -1487,10 +1585,14 @@ body[data-page="cheatsheet"] #status-dot { display: none; }
     border-radius: var(--radius-m);
     background: var(--surface-2);
     color: var(--text);
-    font-size: 20px;
     cursor: pointer;
     transition: background 0.15s;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  .topbar-toggle svg {
+    width: 24px;
+    height: 24px;
   }
 
   .topbar-toggle:hover {

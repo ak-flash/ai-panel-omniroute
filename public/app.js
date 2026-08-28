@@ -133,6 +133,13 @@ function setOmniConfig(url, key) {
 // getElementById, безопасный для страниц, где элемента нет
 const $id = (id) => document.getElementById(id);
 
+// Small inline status icons (heroicons)
+function _ico(name, cls) { return `<svg class="${cls||'ico-status'}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">` + (name === 'check'
+  ? '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+  : '<path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'); }
+const ICO_CHECK = _ico('check');
+const ICO_X = _ico('x');
+
 // addEventListener только если элемент есть на текущей странице
 function on(el, event, handler) {
   if (el) el.addEventListener(event, handler);
@@ -684,7 +691,7 @@ function renderAliasRows() {
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'btn btn-ghost';
-    del.textContent = '✕';
+    del.innerHTML = icon('x-mark');
     del.setAttribute('aria-label', 'Удалить');
     del.addEventListener('click', () => {
       const m = loadAliases();
@@ -1021,9 +1028,7 @@ function agCard(model) {
     meta.setAttribute('role', 'img');
     meta.setAttribute('aria-label', 'режим размышлений');
     meta.title = 'Режим размышлений (thinking)';
-    meta.innerHTML =
-      '<svg class="ag-thinking-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
-      '<path d="M12 2l2.7 7.3L22 12l-7.3 2.7L12 22l-2.7-7.3L2 12l7.3-2.7z"/></svg>';
+    meta.innerHTML = icon('star', { class: 'ag-thinking-icon' });
     head.appendChild(meta);
   }
   main.appendChild(head);
@@ -1124,7 +1129,7 @@ function agGroupContainer(group, models) {
   const chev = document.createElement('span');
   chev.className = 'ag-chevron';
   chev.setAttribute('aria-hidden', 'true');
-  chev.textContent = '▾';
+  chev.innerHTML = icon('chevron-down');
   head.append(chev);
   head.addEventListener('click', () => {
     const collapsed = wrap.classList.toggle('collapsed');
@@ -1531,7 +1536,7 @@ on($id('dlg-alias-add'), 'click', () => {
   const del = document.createElement('button');
   del.type = 'button';
   del.className = 'btn btn-ghost';
-  del.textContent = '✕';
+  del.innerHTML = icon('x-mark');
   del.setAttribute('aria-label', 'Удалить');
   del.addEventListener('click', () => row.remove());
   row.append(inId, inName, del);
@@ -1564,7 +1569,7 @@ async function refreshAgStatus(prefix) {
   try {
     const s = await (await fetch('/api/settings/google-token')).json();
     const parts = [];
-    if (s.hasToken) parts.push('✓ Токен задан на сервере');
+    if (s.hasToken) parts.push(ICO_CHECK + ' Токен задан на сервере');
     else if (getAgRefreshToken()) parts.push('Связка в браузере — сервер обновит токен сам');
     else parts.push('Токен не задан');
     if (s.hasToken && s.tokenExpiresAt) {
@@ -1624,8 +1629,8 @@ on($id('dlg-ag-paste-btn'), 'click', async () => {
     // Refresh уже сохранён сервером в SQLite (зашифровано).
     const q = await loadAntigravityQuota();
     if ($st) {
-      $st.textContent = q && !q.error
-        ? 'Авторизация выполнена ✓ — квоты загружены'
+      $st.innerHTML = q && !q.error
+        ? ICO_CHECK + ' Авторизация выполнена — квоты загружены'
         : 'Авторизация выполнена, но квоты не получены: ' +
           ((q && AG_ERROR_MESSAGES[q.error]) || (q && q.error) || 'неизвестная ошибка');
     }
@@ -1683,9 +1688,9 @@ on($dlgSave, 'click', () => {
   let providerLine = '';
   const renderResult = (isErr) => {
     $dlgResult.className = isErr ? 'dlg-result err' : 'dlg-result ok';
-    $dlgResult.textContent = 'Сохранено.\n' + omniLine + (providerLine ? '\n' + providerLine : '');
+    $dlgResult.innerHTML = 'Сохранено.<br>' + omniLine + (providerLine ? '<br>' + providerLine : '');
   };
-  $dlgResult.textContent = 'Сохранено.\n' + omniLine;
+  $dlgResult.innerHTML = 'Сохранено.<br>' + omniLine;
   reboot();
 
   // Фоновая проверка OmniRoute — уточняет строку OmniRoute
@@ -1694,11 +1699,11 @@ on($dlgSave, 'click', () => {
     omniFetch(COMBO_LIST_PATH).then((data) => {
       const n = Array.isArray(data) ? data.length : Array.isArray(data.combos) ? data.combos.length : Array.isArray(data.data) ? data.data.length : 0;
       console.info('[OmniRoute] OK', data);
-      omniLine = 'OmniRoute ✓ ' + omniUrlClean + ' — доступно combo: ' + n;
+      omniLine = 'OmniRoute ' + ICO_CHECK + ' ' + omniUrlClean + ' — доступно combo: ' + n;
       renderResult(false);
     }).catch((err) => {
       console.warn('[OmniRoute] проверка не прошла', err);
-      omniLine = 'OmniRoute ✗ ' + omniUrlClean + ' — ' + (err && err.message ? err.message : String(err));
+      omniLine = 'OmniRoute ' + ICO_X + ' ' + omniUrlClean + ' — ' + (err && err.message ? err.message : String(err));
       const isErr = !(err && err.status === 400); // 400 без URL не считаем критичным
       renderResult(isErr);
     });
@@ -1715,11 +1720,11 @@ on($dlgSave, 'click', () => {
           const wallet = (data && data.wallet) || {};
           const bal = wallet.balance_usd ?? wallet.balance ?? 0;
           console.info('[AgentRouter] токен OK', data);
-          setProviderLine('AgentRouter ✓ токен работает — баланс: ' + fmtUsd(bal), false);
+          setProviderLine('AgentRouter ' + ICO_CHECK + ' токен работает — баланс: ' + fmtUsd(bal), false);
         })
         .catch((err) => {
           console.warn('[AgentRouter] проверка не прошла', err);
-          const msg = 'AgentRouter ✗ токен не прошёл проверку: ' + (err && err.message ? err.message : String(err));
+          const msg = 'AgentRouter ' + ICO_X + ' токен не прошёл проверку: ' + (err && err.message ? err.message : String(err));
           setProviderLine(msg, true);
         });
     } else {
@@ -1735,11 +1740,11 @@ on($dlgSave, 'click', () => {
           const wallet = (data && data.wallet) || {};
           const bal = wallet.balance_usd ?? wallet.balance ?? 0;
           console.info('[xKiro] ключ OK', data);
-          setProviderLine('xKiro ✓ ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · план: ' + data.plan : ''), false);
+          setProviderLine('xKiro ' + ICO_CHECK + ' ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · план: ' + data.plan : ''), false);
         })
         .catch((err) => {
           console.warn('[xKiro] проверка не прошла', err);
-          let msg = 'xKiro ✗ ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err));
+          let msg = 'xKiro ' + ICO_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err));
           if (err && err.status === 401) msg += ' — проверьте ключ';
           setProviderLine(msg, true);
         });

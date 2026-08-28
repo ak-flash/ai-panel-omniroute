@@ -5,10 +5,10 @@
    ============================================================ */
 
 const _NAV = [
-  { href: 'index.html', label: 'Статистика', page: 'index', icon: '📊' },
-  { href: 'combo.html', label: 'Маршруты', page: 'combo', icon: '🔀' },
-  { href: 'models.html', label: 'Модели', page: 'models', icon: '🧠' },
-  { href: 'cheatsheet.html', label: 'Шпаргалка', page: 'cheatsheet', icon: '📋' },
+  { href: 'index.html', label: 'Статистика', page: 'index', icon: 'bar-chart' },
+  { href: 'combo.html', label: 'Маршруты', page: 'combo', icon: 'arrows-right-left' },
+  { href: 'models.html', label: 'Модели', page: 'models', icon: 'brain' },
+  { href: 'cheatsheet.html', label: 'Шпаргалка', page: 'cheatsheet', icon: 'clipboard-document-list' },
 ];
 
 const _STATUS_DEFAULTS = {
@@ -22,33 +22,33 @@ function topbarHTML(page) {
   const statusText = _STATUS_DEFAULTS[page] || '';
   const nav = _NAV.map((n) => {
     const cur = n.page === page ? ' aria-current="page"' : '';
-    return `<a href="${n.href}"${cur}><span class="icon" aria-hidden="true">${n.icon}</span> ${n.label}</a>`;
+    return `<a href="${n.href}"${cur}><span class="icon" aria-hidden="true">${icon(n.icon)}</span> ${n.label}</a>`;
   }).join('\n    ');
 
   const refreshBtn = page === 'index'
-    ? '\n    <button id="btn-refresh" class="btn" disabled title="Обновить сейчас"><span class="icon">⟳</span> Обновить</button>'
+    ? '\n    <button id="btn-refresh" class="btn" disabled title="Обновить сейчас"><span class="icon">' + icon('arrow-path') + '</span> Обновить</button>'
     : '';
 
   return `<header class="topbar">
-  <div class="brand"><span class="logo" aria-hidden="true">◈</span> AI Панель</div>
+  <div class="brand"><span class="logo" aria-hidden="true">${icon('sparkles')}</span> AI Панель</div>
   <div class="topbar-collapse" id="topbar-collapse">
     <nav class="topnav" aria-label="Разделы панели">
       ${nav}
     </nav>
     <div class="topbar-actions"><span id="status-dot" class="dot"></span><span id="status-text" class="status-label">${statusText}</span><span id="updated-wrap" class="updated"><time id="updated" hidden></time></span>${refreshBtn}
-      <button id="btn-theme" class="btn" aria-label="Переключить тему" title="Переключить тему">🌙</button>
-      <button id="btn-settings" class="btn btn-primary" aria-haspopup="dialog">⚙ Настройки</button>
+      <button id="btn-theme" class="btn" aria-label="Переключить тему" title="Переключить тему">${icon('moon')}</button>
+      <button id="btn-settings" class="btn btn-primary" aria-haspopup="dialog">${icon('cog')} Настройки</button>
     </div>
   </div>
   <div class="topbar-end">
-    <button id="btn-topbar-toggle" class="topbar-toggle" aria-expanded="false" aria-controls="topbar-collapse" aria-label="Меню">☰</button>
+    <button id="btn-topbar-toggle" class="topbar-toggle" aria-expanded="false" aria-controls="topbar-collapse" aria-label="Меню">${icon('bars-3')}</button>
   </div>
 </header>`;
 }
 
 const _BANNER_HTML = `<div id="banner" class="banner" role="alert" hidden>
     <span id="banner-text"></span>
-    <button id="banner-close" class="banner-close" aria-label="Закрыть">×</button>
+    <button id="banner-close" class="banner-close" aria-label="Закрыть">${icon('x-mark')}</button>
   </div>`;
 
 function bannerHTML() { return _BANNER_HTML; }
@@ -57,11 +57,11 @@ const _DIALOG_HTML = `<dialog id="dlg">
   <form method="dialog" class="dlg-form">
     <div class="dlg-header">
       <h2>Настройки</h2>
-      <button type="submit" class="dlg-close" aria-label="Закрыть настройки" title="Закрыть">✕</button>
+      <button type="submit" class="dlg-close" aria-label="Закрыть настройки" title="Закрыть">${icon('x-mark')}</button>
     </div>
     <div class="dlg-card">
       <div class="dlg-card-head">
-        <span class="dlg-card-icon" aria-hidden="true">🔌</span>
+        <span class="dlg-card-icon" aria-hidden="true">${icon('plug')}</span>
         <div>
           <h3 class="dlg-card-title">Провайдер</h3>
           <p class="dlg-card-sub">Хранятся на сервере в зашифрованном виде (SQLite + AES-256-GCM)</p>
@@ -78,7 +78,7 @@ const _DIALOG_HTML = `<dialog id="dlg">
         <label for="dlg-key">API-ключ</label>
         <div class="input-group">
           <input type="password" id="dlg-key" placeholder="sk-xt-…" autocomplete="off">
-          <button type="button" id="dlg-toggle" class="btn btn-ghost" aria-label="Показать/скрыть ключ">👁</button>
+              <button type="button" id="dlg-toggle" class="btn btn-ghost" aria-label="Показать/скрыть ключ">${icon('eye')}</button>
         </div>
       </div>
       <!-- Поля AgentRouter: access-токен + числовой ID в одной строке -->
@@ -88,7 +88,7 @@ const _DIALOG_HTML = `<dialog id="dlg">
             <label for="dlg-agentrouter-key">Access-токен</label>
             <div class="input-group">
               <input type="password" id="dlg-agentrouter-key" placeholder="Токен из Security Settings" autocomplete="off">
-              <button type="button" id="dlg-agentrouter-toggle" class="btn btn-ghost" aria-label="Показать/скрыть токен">👁</button>
+              <button type="button" id="dlg-agentrouter-toggle" class="btn btn-ghost" aria-label="Показать/скрыть токен">${icon('eye')}</button>
             </div>
           </div>
           <div class="dlg-ar-user">
@@ -123,7 +123,7 @@ const _DIALOG_HTML = `<dialog id="dlg">
     </div>
     <div class="dlg-card">
       <div class="dlg-card-head">
-        <span class="dlg-card-icon" aria-hidden="true">🔀</span>
+        <span class="dlg-card-icon" aria-hidden="true">${icon('arrows-right-left')}</span>
         <div>
           <h3 class="dlg-card-title">OmniRoute (Combo)</h3>
           <p class="dlg-card-sub">Адрес и ключ Combo-панели</p>
@@ -136,7 +136,7 @@ const _DIALOG_HTML = `<dialog id="dlg">
     </div>
     <div class="dlg-card">
       <div class="dlg-card-head">
-        <span class="dlg-card-icon" aria-hidden="true">🏷️</span>
+        <span class="dlg-card-icon" aria-hidden="true">${icon('tag')}</span>
         <div>
           <h3 class="dlg-card-title">Сопоставление имён</h3>
           <p class="dlg-card-sub">ID из OmniRoute → отображаемое имя</p>
@@ -173,7 +173,7 @@ function initTheme() {
     var btn = document.getElementById('btn-theme');
     if (btn) {
       var isDark = t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-      btn.textContent = isDark ? '☀️' : '🌙';
+      btn.innerHTML = isDark ? icon('sun') : icon('moon');
       btn.title = isDark ? 'Светлая тема' : 'Тёмная тема';
       btn.setAttribute('aria-label', btn.title);
     }
