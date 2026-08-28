@@ -36,6 +36,7 @@ function topbarHTML(page) {
       ${nav}
     </nav>
     <div class="topbar-actions"><span id="status-dot" class="dot"></span><span id="status-text" class="status-label">${statusText}</span><span id="updated-wrap" class="updated"><time id="updated" hidden></time></span>${refreshBtn}
+      <button id="btn-theme" class="btn" aria-label="Переключить тему" title="Переключить тему">🌙</button>
       <button id="btn-settings" class="btn btn-primary" aria-haspopup="dialog">⚙ Настройки</button>
     </div>
   </div>
@@ -143,6 +144,41 @@ function liveRegionHTML() {
  * Call once on DOMContentLoaded before app.js init.
  * @param {string} page — current page id (index|combo|models|cheatsheet)
  */
+function initTheme() {
+  function apply(t) {
+    if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    else document.documentElement.removeAttribute('data-theme');
+    var btn = document.getElementById('btn-theme');
+    if (btn) {
+      var isDark = t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      btn.textContent = isDark ? '☀️' : '🌙';
+      btn.title = isDark ? 'Светлая тема' : 'Тёмная тема';
+      btn.setAttribute('aria-label', btn.title);
+    }
+  }
+  try {
+    var saved = localStorage.getItem('theme');
+    if (saved === 'light' || saved === 'dark') apply(saved);
+    else apply(null);
+  } catch(e) { apply(null); }
+  document.addEventListener('click', function(e) {
+    var b = e.target.closest('#btn-theme');
+    if (!b) return;
+    var cur = document.documentElement.getAttribute('data-theme');
+    if (!cur) cur = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    var next = cur === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem('theme', next); } catch(e2) {}
+    apply(next);
+  });
+  try {
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+      try { if (!localStorage.getItem('theme')) apply(null); } catch(e) {}
+    });
+  } catch(e) {}
+}
+
+(function(){ try{ var t=localStorage.getItem('theme'); if(t==='light'||t==='dark') document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+
 function injectPartials(page) {
   const topbar = document.getElementById('tpl-topbar');
   if (topbar) topbar.outerHTML = topbarHTML(page);
@@ -155,4 +191,5 @@ function injectPartials(page) {
 
   const live = document.getElementById('tpl-live');
   if (live) live.outerHTML = liveRegionHTML();
+  initTheme();
 }

@@ -15,8 +15,6 @@
 <div id="tpl-topbar"></div>
 
 <main id="main">
-  <h2 class="page-title" id="page-title">Статистика</h2>
-
   <!-- Empty state: no key -->
   <section id="setup" class="setup-card" hidden>
     <h2>Добро пожаловать</h2>
@@ -26,6 +24,16 @@
   </section>
 
   <div id="tpl-banner"></div>
+
+  <!-- Combo: первые модели маршрутов -->
+  <section id="index-combo" class="stats" hidden>
+    <div class="stats-head">
+      <span class="stats-provider">Маршруты</span>
+      <a href="combo.html" class="badge" style="text-decoration:none">к маршрутам →</a>
+    </div>
+    <p id="index-combo-status" class="hint" style="margin:0 0 8px"></p>
+    <div id="index-combo-list" class="combo-list"></div>
+  </section>
 
   <!-- Stats strip: статистика одного провайдера в одну строку -->
   <section id="cards" class="stats" hidden>

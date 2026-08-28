@@ -1077,6 +1077,52 @@ function renderAntigravityQuota() {
   }
 }
 
+/* ---------- index: первые модели Combo ---------- */
+async function loadIndexComboFirst() {
+  const $sec = $id('index-combo'), $list = $id('index-combo-list'), $st = $id('index-combo-status');
+  if (!$sec || !$list) return;
+  if (!getOmniUrl() && location.protocol !== 'file:') {
+    // пробуем всё равно — прокси может отдать без URL, иначе покажем hint
+  }
+  if ($st) $st.textContent = 'Загружаю маршруты…';
+  $sec.hidden = false;
+  try {
+    const data = await omniFetch(COMBO_LIST_PATH);
+    const combos = Array.isArray(data) ? data : Array.isArray(data.combos) ? data.combos : Array.isArray(data.data) ? data.data : [];
+    if (!combos.length) { if ($st) $st.textContent = 'Маршруты не найдены.'; $list.replaceChildren(); return; }
+    if ($st) $st.textContent = '';
+    $list.replaceChildren();
+    // для каждого combo берём первую модель: если поле models есть в списке — используем его, иначе догружаем детали
+    for (const c of combos) {
+      let first = null;
+      let targets = extractComboTargets(c);
+      if (!targets.length) {
+        try { const detail = await omniFetch(COMBO_PATH(c.id)); targets = extractComboTargets(detail); } catch {}
+      }
+      first = targets[0] || null;
+      const li = document.createElement('div');
+      li.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)';
+      const name = document.createElement('span');
+      name.style.cssText = 'font-size:13px;font-weight:600;min-width:110px';
+      name.textContent = c.name || c.id;
+      const model = document.createElement('code');
+      model.className = 'combo-model-id';
+      model.style.cssText = 'font-size:13px;flex:1;overflow-wrap:anywhere';
+      model.textContent = first ? first.display : '— нет моделей';
+      const badge = document.createElement('span');
+      badge.className = 'badge top';
+      badge.textContent = 'первая';
+      if (!first) badge.hidden = true;
+      li.append(name, model, badge);
+      $list.appendChild(li);
+    }
+    // убрать бордер у последнего
+    if ($list.lastElementChild) $list.lastElementChild.style.borderBottom = 'none';
+  } catch (err) {
+    if ($st) $st.textContent = 'Не удалось загрузить маршруты: ' + (err.message || err);
+  }
+}
+
 /* ---------- loading ---------- */
 
 async function loadUsage() {
@@ -1183,6 +1229,7 @@ async function init() {
     setStatus('idle', 'Нужен ключ');
     // Квоты Antigravity не зависят от ключа xKiro — грузим всегда
     loadAntigravityQuota();
+    loadIndexComboFirst();
     return;
   }
 
@@ -1190,6 +1237,7 @@ async function init() {
   $setup.hidden = true;
   await loadUsage();
   loadAntigravityQuota();
+  loadIndexComboFirst();
 }
 
 on($id('setup-open-settings'), 'click', () => { if($btnSettings) $btnSettings.click(); });

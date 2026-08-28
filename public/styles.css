@@ -37,8 +37,25 @@ body.is-booting .topbar {
   --radius-l: 14px;
 }
 
+:root[data-theme='light'] {
+  --bg: oklch(97% 0.004 265);
+  --surface: oklch(100% 0 0);
+  --surface-2: oklch(95% 0.006 265);
+  --border: oklch(88% 0.01 265);
+  --border-strong: oklch(78% 0.015 265);
+  --text: oklch(20% 0.02 265);
+  --text-muted: oklch(42% 0.02 265);
+  --text-faint: oklch(55% 0.015 265);
+  --accent: oklch(55% 0.18 265);
+  --accent-hover: oklch(50% 0.2 265);
+  --accent-text: oklch(98% 0 0);
+  --ok: oklch(50% 0.14 155);
+  --warn: oklch(55% 0.14 85);
+  --danger: oklch(52% 0.18 25);
+}
+
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme]) {
     --bg: oklch(97% 0.004 265);
     --surface: oklch(100% 0 0);
     --surface-2: oklch(95% 0.006 265);
@@ -373,6 +390,10 @@ main {
 #antigravity-quota {
   margin-top: 16px;
 }
+#index-combo {
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
 
 .stats-head {
   display: flex;
@@ -497,15 +518,19 @@ main {
 }
 
 .stat-pct {
+  display: inline-flex;
+  align-items: center;
   font-size: 11px;
   font-weight: 700;
   color: var(--text-muted);
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 99px;
-  padding: 1px 7px;
-  line-height: 1.4;
+  padding: 0 7px;
+  line-height: 1;
+  min-height: 18px;
   margin-inline-start: auto;
+  align-self: center;
 }
 
 .stat-label {
@@ -552,6 +577,7 @@ main {
 .stat-sub {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 2px 12px;
   font-size: 12px;
   color: var(--text);
@@ -576,7 +602,7 @@ main {
   font-size: 16px;
 }
 .stat.compact .stat-label {
-  font-size: 11px;
+  font-size: 13px;
   text-transform: none;
   letter-spacing: normal;
 }
@@ -605,7 +631,7 @@ main {
   background: var(--ok);
 }
 .ag-pct {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text-muted);
   white-space: nowrap;
@@ -647,14 +673,14 @@ main {
   padding: 0 8px;
 }
 .ag-group-reset {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-faint);
   font-weight: 600;
 }
 .ag-group-reset > span {
   font-weight: 700;
   color: var(--text);
-  font-size: 14px;
+  font-size: 15px;
 }
 .ag-chevron {
   margin-inline-start: auto;
