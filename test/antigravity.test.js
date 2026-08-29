@@ -643,7 +643,7 @@ test('paste: ссылка callback обменивается с её же redirec
     assert.equal(data.ok, true);
     assert.equal(data.hasToken, true);
     assert.equal(data.hasRefresh, true);
-    assert.equal(data.refreshToken, 'rt-paste');
+    assert.equal('refreshToken' in data, false);
 
     // Обмен выполнен с тем же origin+path, что в ссылке; hash/прочее отброшено
     assert.equal(seenExchange.redirectUri, 'http://127.0.0.1:20128/callback');

@@ -18,20 +18,32 @@ function parseAllowedOrigins(value = '') {
     .map((origin) => new URL(origin).origin);
 }
 
-function isSameOrigin(req, origin) {
-  const host = req.headers.host;
-  if (!host) return false;
+function firstForwardedValue(value) {
+  return String(value || '').split(',')[0].trim();
+}
+
+function getExternalOrigin(req, publicOrigin = '') {
+  if (publicOrigin) {
+    try { return new URL(publicOrigin).origin; } catch { return ''; }
+  }
+  const host = firstForwardedValue(req.headers['x-forwarded-host']) || req.headers.host;
+  if (!host) return '';
+  const protocol = firstForwardedValue(req.headers['x-forwarded-proto']) || 'http';
+  if (protocol !== 'http' && protocol !== 'https') return '';
+  try { return new URL(protocol + '://' + host).origin; } catch { return ''; }
+}
+
+function isSameOrigin(req, origin, publicOrigin = '') {
   try {
-    const parsed = new URL(origin);
-    return parsed.host === host && (parsed.protocol === 'http:' || parsed.protocol === 'https:');
+    return new URL(origin).origin === getExternalOrigin(req, publicOrigin);
   } catch {
     return false;
   }
 }
 
-function applyRequestSecurity(req, res, allowedOrigins = []) {
+function applyRequestSecurity(req, res, allowedOrigins = [], publicOrigin = '') {
   const origin = req.headers.origin;
-  const allowed = !origin || isSameOrigin(req, origin) || allowedOrigins.includes(origin);
+  const allowed = !origin || isSameOrigin(req, origin, publicOrigin) || allowedOrigins.includes(origin);
   const corsOrigin = origin && allowedOrigins.includes(origin) ? origin : null;
   const originalWriteHead = res.writeHead.bind(res);
 
@@ -104,10 +116,17 @@ function validateMasterKey(value) {
 }
 
 function getServerConfig(env = process.env) {
-  const host = env.HOST || '127.0.0.1';
+  let publicOrigin = '';
+  if (env.PUBLIC_ORIGIN) {
+    try { publicOrigin = new URL(env.PUBLIC_ORIGIN).origin; }
+    catch { throw new Error('PUBLIC_ORIGIN must be a valid http(s) URL'); }
+    if (!/^https?:/.test(publicOrigin)) throw new Error('PUBLIC_ORIGIN must use http or https');
+  }
+  const host = env.HOST || (publicOrigin ? '0.0.0.0' : '127.0.0.1');
   return {
     host,
     port: env.PORT || 8765,
+    publicOrigin,
     remoteMode: !['127.0.0.1', '::1', 'localhost'].includes(host),
   };
 }
@@ -115,8 +134,10 @@ function getServerConfig(env = process.env) {
 module.exports = {
   SECURITY_HEADERS,
   applyRequestSecurity,
+  getExternalOrigin,
   getServerConfig,
   isPrivateAddress,
+  isSameOrigin,
   parseAllowedOrigins,
   validateMasterKey,
   validateUpstreamUrl,

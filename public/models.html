@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Модели · AI Панель</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
   <style>body.is-booting{visibility:hidden}body.is-booting .topbar{visibility:visible}</style>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -65,9 +66,6 @@
 <div id="tpl-dialog"></div>
 <div id="tpl-live"></div>
 
-<script src="icons.js"></script>
-<script src="partials.js"></script>
-<script src="model-match.js"></script>
-<script src="app.js" defer></script>
+<script type="module" src="js/pages/models.js"></script>
 </body>
 </html>

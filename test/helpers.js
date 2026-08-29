@@ -51,7 +51,7 @@ function json(res, code, body) {
  *   usageCode / usageBody — переопределить ответ /v1/usage
  *   usageRaw   — отдать сырую строку вместо JSON (тесты не-JSON ответов)
  *
- * Возвращает { url, seen, close }: seen — лог запросов { url, key }.
+ * Возвращает { url, seen, close }: seen — лог запросов { url, key, accept }.
  */
 function startMockUpstream(opts = {}) {
   const requireKey = opts.requireKey !== false;
@@ -59,7 +59,7 @@ function startMockUpstream(opts = {}) {
 
   const server = http.createServer((req, res) => {
     const key = req.headers['x-api-key'] || '';
-    seen.push({ url: req.url, key });
+    seen.push({ url: req.url, key, accept: req.headers['accept'] || '' });
 
     if (requireKey && !key) return json(res, 401, { error: 'unauthorized' });
 
@@ -107,14 +107,19 @@ function startMockUpstream(opts = {}) {
  *   code / body — переопределить код и JSON-ответ
  *   raw         — отдать сырую строку вместо JSON (тесты не-JSON ответов)
  *
- * Возвращает { url, seen, close }: seen — лог запросов { url, auth }.
+ * Возвращает { url, seen, close }: seen — лог запросов { url, auth, accept }.
  */
 function startAgentRouterUpstream(opts = {}) {
   const seen = [];
 
   const server = http.createServer((req, res) => {
     const auth = req.headers['authorization'] || '';
-    seen.push({ url: req.url, auth, uid: req.headers['new-api-user'] || '' });
+    seen.push({
+      url: req.url,
+      auth,
+      uid: req.headers['new-api-user'] || '',
+      accept: req.headers['accept'] || '',
+    });
 
     if (opts.raw !== undefined) {
       res.writeHead(opts.code || 200, { 'content-type': 'text/plain' });

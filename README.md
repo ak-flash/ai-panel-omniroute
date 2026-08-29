@@ -37,7 +37,26 @@ npm start
 
 Прямой запуск через `file://` не поддерживается: интерфейс зависит от серверного API и encrypted vault.
 
-### Вариант Б — через PM2 (фоновый демон)
+### Вариант Б — за reverse proxy
+
+Если reverse proxy работает в другом контейнере или сетевом namespace, задайте публичный origin:
+
+```env
+PUBLIC_ORIGIN=https://ai-panel.home.ak-vps.ru
+```
+
+`PUBLIC_ORIGIN` автоматически включает bind на `0.0.0.0`; `HOST` можно задать отдельно. Reverse proxy должен передавать `Host`, `X-Forwarded-Host` и `X-Forwarded-Proto`. Для одного origin `ALLOWED_ORIGINS` не требуется — он считается same-origin.
+
+Пример Nginx/OpenResty:
+
+```nginx
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-Host $host;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_pass http://ai-panel:8765;
+```
+
+### Вариант В — через PM2 (фоновый демон)
 
 Установите PM2 глобально: `npm install -g pm2`.
 
@@ -63,16 +82,17 @@ pm2 startup              # автозапуск при перезагрузке 
 
 | Переменная | По умолчанию | Описание |
 |---|---|---|
-| `HOST` | `127.0.0.1` | Адрес прослушивания; remote-режим включается явно |
+| `HOST` | `127.0.0.1` или `0.0.0.0` при `PUBLIC_ORIGIN` | Адрес прослушивания |
+| `PUBLIC_ORIGIN` | _(пусто)_ | Внешний `https://` origin reverse proxy; явно включает remote deployment |
 | `PORT` | `8765` | Порт локального сервера |
-| `ALLOWED_ORIGINS` | _(пусто)_ | Явный CORS allowlist через запятую |
+| `ALLOWED_ORIGINS` | _(пусто)_ | Явный CORS allowlist браузерных origins через запятую |
 | `AIPANEL_MASTER_KEY` | генерируется локально | Необязательный переносимый master key: ровно 64 hex-символа |
 | `GOOGLE_CLIENT_ID` | _(пусто)_ | ID клиента OAuth для кнопки «Войти через Google» (Antigravity) |
 | `GOOGLE_CLIENT_SECRET` | _(пусто)_ | Секрет клиента OAuth (для типа «Настольное приложение» обычно не нужен) |
 
 Реальные переменные окружения (`PORT=9000 node server.js`) имеют приоритет над `.env`.
 
-Baseline HTTP-контракта и принятые решения описаны в [`docs/BASELINE.md`](docs/BASELINE.md), [`docs/DECISIONS.md`](docs/DECISIONS.md) и [`docs/TESTING.md`](docs/TESTING.md).
+Baseline HTTP-контракта и принятые решения описаны в [`docs/BASELINE.md`](docs/BASELINE.md), [`docs/DECISIONS.md`](docs/DECISIONS.md) и [`docs/TESTING.md`](docs/TESTING.md). Устройство encrypted store, бэкап и ротация master-ключа — в [`docs/STORE.md`](docs/STORE.md).
 
 **Откуда брать `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`** (Google Cloud Console):
 
@@ -105,7 +125,7 @@ flowchart TD
     R --> A[AgentRouter]
     S --> G[Antigravity и Google OAuth]
     S --> O[OmniRoute]
-    S --> V[store.js]
+    S --> V[src/store]
     V --> D[(SQLite-файл)]
 ```
 
@@ -208,6 +228,8 @@ npm test        # или: node --test
 
 **Настройка:** откройте **⚙ Настройки** в панели, введите URL OmniRoute (например `http://localhost:20128`) и, если инстанс требует management-авторизацию, ключ с правами management. URL и ключ хранятся в encrypted store сервера. Клиент обращается только к `/omniroute/…`; сервер валидирует сохранённый URL и добавляет management key в `Authorization: Bearer …`.
 
+Сохранённый в настройках URL является единственным разрешённым OmniRoute upstream. Дополнительная переменная окружения для LAN-адресов не нужна; URL из клиентских заголовков сервер игнорирует.
+
 **Возможности:**
 
 1. Выбор combo из списка — панель загружает все combo через `GET /api/combos`, при выборе — детали через `GET /api/combos/{id}`.
@@ -221,7 +243,22 @@ Combo создаются и удаляются в самом OmniRoute (Dashboar
 
 ```
 ai-panel/
-├── server.js          # Node-сервер: статика + провайдеры + прокси + .env-загрузчик
+├── server.js          # точка входа-shim: вся логика в src/ (node server.js работает как раньше)
+├── src/               # серверная часть (этап 3 рефакторинга)
+│   ├── app.js         # createApp: сборка приложения, security-периметр, error boundary, lifecycle
+│   ├── main.js        # CLI-запуск: .env, проверка конфига, listen, graceful shutdown
+│   ├── routes/        # модули маршрутов: providers, proxy, omniroute, antigravity, config
+│   ├── antigravity-service.js # состояние Google-авторизации и кеш квот
+│   ├── agentrouter-tracker.js # ежедневный снимок баланса AgentRouter
+│   ├── static.js      # раздача public/ (path traversal-защита)
+│   ├── proxy.js       # универсальный прозрачный прокси (/proxy, /omniroute)
+│   ├── store/         # encrypted store (этап 4): фасад index.js, crypto,
+│   │                  #   master-key, persistence, CLI rotate-key
+│   └── provider-store-fields.js # маппинг провайдер → поля хранилища
+├── http.js            # HTTP-инфраструктура: AppError, sendJson, readJson, request ID
+├── router.js          # декларативный роутер (params, 405/404)
+├── security.js        # CORS/same-origin, security headers, валидация upstream и master key
+├── store.js           # shim над src/store (обратная совместимость импортов)
 ├── providers/         # провайдеры AI-API
 │   ├── index.js       # реестр: FACTORIES + loadProviders()
 │   ├── xkiro.js       # фабрика адаптера xKiro (getUsage, getModels)
@@ -229,10 +266,15 @@ ai-panel/
 │   ├── antigravity.js # фабрика адаптера Antigravity (getQuota, getQuotaSummary)
 │   └── google-oauth.js# обновление Google access-token по refresh-token
 ├── test/              # тесты (node:test, без зависимостей)
-│   ├── helpers.js     # mock-upstream (xKiro, AgentRouter) и запуск server.js в тестах
+│   ├── helpers.js     # mock-upstream (xKiro, AgentRouter) и запуск панели в тестах
+│   ├── http.test.js   # readJson/readBody/safeLog/Router
+│   ├── security.test.js # CORS, headers, master key, SSRF-валидация
+│   ├── store.test.js  # encrypted store: открытие, allowlist, ротация
+│   ├── formatters.test.js # чистые форматтеры фронтенда
 │   ├── providers-registry.test.js
 │   ├── xkiro-adapter.test.js
 │   ├── agentrouter-adapter.test.js
+│   ├── antigravity.test.js
 │   ├── model-match.test.js
 │   └── server.test.js
 ├── package.json       # скрипты start/test — зависимостей нет
@@ -243,10 +285,25 @@ ai-panel/
     ├── index.html     # страница «Статистика» (главная)
     ├── models.html    # страница «Модели»: каталог моделей
     ├── combo.html     # страница «Combo»: routing combo OmniRoute
-    ├── manage.html    # страница «Управление»: команда обновления opencode
-    ├── partials.js    # общие HTML-компоненты: шапка, диалог настроек, баннер
-    ├── model-match.js # сопоставление модели из combo с каталогом (бейджи тарифов)
-    ├── app.js         # логика всех страниц: загрузка, рендер, отсчёт сбросов
+    ├── cheatsheet.html# страница «Шпаргалка»: команда обновления opencode
+    ├── icons.js       # ES-модуль: heroicons
+    ├── partials.js    # ES-модуль: общие HTML-компоненты (шапка, диалог, баннер)
+    ├── model-match.js # ES-модуль: сопоставление модели combo с каталогом
+    ├── js/            # фронтенд-модули (этап 5 рефакторинга)
+    │   ├── boot.js    # запуск страницы: partials → общий UI → page.init()
+    │   ├── session.js # общее состояние: провайдеры, каталог моделей
+    │   ├── settings.js# settings client: серверное хранилище, write-only секреты
+    │   ├── api.js     # API client: провайдеры, OmniRoute, Antigravity
+    │   ├── dialog.js  # диалог настроек: батч-сохранение, проверка ключей
+    │   ├── topbar.js  # статус, время обновления, мобильное меню
+    │   ├── banner.js  # баннер ошибок
+    │   ├── dom.js     # $id/on, инлайн-иконки статуса
+    │   ├── events.js  # мини-шина событий (диалог ↔ страницы)
+    │   ├── aliases.js # сопоставление имён OmniRoute (хранилище + UI)
+    │   ├── combos.js  # разбор combo-объектов OmniRoute
+    │   ├── formatters.js # чистые форматтеры (unit-тесты)
+    │   └── pages/     # entry и логика каждой страницы:
+    │                  #   index, models, combo, cheatsheet
     ├── styles.css     # темы, навигация, полоса статистики, прогресс-бары
     ├── favicon.svg
     └── assets/imgs/   # скриншоты интерфейса

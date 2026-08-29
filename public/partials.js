@@ -1,8 +1,10 @@
-'use strict';
-
 /* ============================================================
    AI Panel — shared HTML partials (single source of truth)
+   ES-модуль: импортирует icon() из icons.js и экспортирует
+   injectPartials() для boot.js.
    ============================================================ */
+
+import { icon } from './icons.js';
 
 const _NAV = [
   { href: 'index.html', label: 'Статистика', page: 'index', icon: 'bar-chart' },
@@ -18,7 +20,7 @@ const _STATUS_DEFAULTS = {
   cheatsheet: 'Готово',
 };
 
-function topbarHTML(page) {
+export function topbarHTML(page) {
   const statusText = _STATUS_DEFAULTS[page] || '';
   const nav = _NAV.map((n) => {
     const cur = n.page === page ? ' aria-current="page"' : '';
@@ -51,7 +53,7 @@ const _BANNER_HTML = `<div id="banner" class="banner" role="alert" hidden>
     <button id="banner-close" class="banner-close" aria-label="Закрыть">${icon('x-mark')}</button>
   </div>`;
 
-function bannerHTML() { return _BANNER_HTML; }
+export function bannerHTML() { return _BANNER_HTML; }
 
 const _DIALOG_HTML = `<dialog id="dlg">
   <form method="dialog" class="dlg-form">
@@ -155,18 +157,18 @@ const _DIALOG_HTML = `<dialog id="dlg">
   </form>
 </dialog>`;
 
-function dialogHTML() { return _DIALOG_HTML; }
+export function dialogHTML() { return _DIALOG_HTML; }
 
-function liveRegionHTML() {
+export function liveRegionHTML() {
   return '<div aria-live="polite" class="visually-hidden" id="live"></div>';
 }
 
 /**
  * Inject all shared partials into placeholder elements.
- * Call once on DOMContentLoaded before app.js init.
+ * Call once on boot before page init.
  * @param {string} page — current page id (index|combo|models|cheatsheet)
  */
-function initTheme() {
+export function initTheme() {
   function apply(t) {
     if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     else document.documentElement.removeAttribute('data-theme');
@@ -199,9 +201,7 @@ function initTheme() {
   } catch(e) {}
 }
 
-(function(){ try{ var t=localStorage.getItem('theme'); if(t==='light'||t==='dark') document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
-
-function injectPartials(page) {
+export function injectPartials(page) {
   const topbar = document.getElementById('tpl-topbar');
   if (topbar) topbar.outerHTML = topbarHTML(page);
 

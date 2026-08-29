@@ -1,14 +1,18 @@
 'use strict';
 
 // Юнит-тесты сопоставления модели из combo с каталогом провайдера
-// (public/model-match.js). Воспроизводят баг с неверным тарифом:
-// id из combo с префиксом провайдера («xKiro/qwen/qwen3.8-max:free»)
-// раньше матчился не на ту модель из каталога — вместо free-варианта
-// выбиралась похожая платная.
+// (public/model-match.js, ES-модуль — импортируется динамически).
+// Воспроизводят баг с неверным тарифом: id из combo с префиксом
+// провайдера («xKiro/qwen/qwen3.8-max:free») раньше матчился не на ту
+// модель из каталога — вместо free-варианта выбиралась похожая платная.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { matchModel } = require('../public/model-match');
+
+let matchModel;
+test.before(async () => {
+  ({ matchModel } = await import('../public/model-match.js'));
+});
 
 // Имитация каталога xKiro (/v1/models): premium-варианты идут
 // раньше free — как в реальном каталоге, чтобы поймать баг порядка.

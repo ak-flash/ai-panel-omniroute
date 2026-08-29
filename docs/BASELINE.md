@@ -32,8 +32,12 @@
 Приложение является local-first инструментом одного пользователя.
 
 - По умолчанию сервер слушает `127.0.0.1`; другой адрес задаётся явно через `HOST`.
+- `PUBLIC_ORIGIN` явно включает reverse-proxy deployment и bind на `0.0.0.0`,
+  если `HOST` не задан. Same-origin учитывает `X-Forwarded-Host` и
+  `X-Forwarded-Proto`.
 - Удалённый доступ не является режимом по умолчанию. Для него нужны TLS на
-  reverse proxy, `ALLOWED_ORIGINS` и внешняя аутентификация.
+  reverse proxy и внешняя аутентификация; дополнительные origins задаются
+  через `ALLOWED_ORIGINS`.
 
 ## Решение по `file://`
 
@@ -46,14 +50,15 @@ server-side vault интерфейс зависит от HTTP API, а брауз
 
 Общие свойства текущего API:
 
-- JSON-ошибки обычно имеют форму `{ "error": "code", "message": "text" }`,
-  однако часть ответов содержит только `error`, а статические ошибки — text;
+- ошибки API имеют форму `{ "error": "code", "message": "text", "requestId": "uuid" }`;
+- статические 403/404 остаются text-ответами;
 - cross-origin запрещён по умолчанию; разрешённые origins задаются через
   `ALLOWED_ORIGINS`;
 - большинство специальных API-маршрутов не ограничивают HTTP-метод, если в
   таблице не указано обратное;
 - неизвестный путь обрабатывается как запрос статического файла;
-- proxy возвращает статус, content type и тело upstream без нормализации.
+- proxy возвращает статус, content type и тело upstream без нормализации;
+- каждый HTTP-ответ содержит `X-Request-Id`, запросы ограничены таймаутом 30 секунд.
 
 ### Маршруты
 
@@ -74,9 +79,10 @@ server-side vault интерфейс зависит от HTTP API, а брауз
 
 | Переменная | Назначение | Текущее значение по умолчанию |
 | --- | --- | --- |
-| `HOST` | адрес HTTP-сервера | `127.0.0.1` |
+| `HOST` | адрес HTTP-сервера | `127.0.0.1`, либо `0.0.0.0` с `PUBLIC_ORIGIN` |
+| `PUBLIC_ORIGIN` | внешний origin reverse proxy | пусто |
 | `PORT` | порт HTTP-сервера | `8765` |
-| `ALLOWED_ORIGINS` | CORS allowlist | пусто |
+| `ALLOWED_ORIGINS` | браузерный CORS allowlist | пусто |
 | `AIPANEL_MASTER_KEY` | master key encrypted store | локальная генерация; заданное значение валидируется |
 | `GOOGLE_CLIENT_ID` | OAuth client ID Antigravity | пусто |
 | `GOOGLE_CLIENT_SECRET` | OAuth client secret Antigravity | пусто |

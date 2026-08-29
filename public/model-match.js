@@ -1,18 +1,15 @@
-'use strict';
-
 /* ============================================================
    AI Panel — сопоставление модели из combo с каталогом провайдера
    ============================================================
-   Подключается на странице Combo (combo.html) перед app.js и
-   используется в тестах через require (node:test).
-   В браузере функции доступны как глобальные, как и в partials.js.
+   ES-модуль: импортируется страницами «Модели» и «Combo», а также
+   используется в тестах через dynamic import (node:test).
    */
 
 // Нормализует id модели: нижний регистр, остаются только буквы,
 // цифры, точка, двоеточие и слэш. «:» и «/» важны: они отделяют
 // вариант (":free") и сегменты, иначе «qwen3.8-max:free» после
 // нормализации совпадает с платным «qwen3.8-max».
-function normModelName(s) {
+export function normModelName(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9.:/]/g, '');
 }
 
@@ -36,7 +33,7 @@ function normModelName(s) {
  * длинное (наиболее конкретное) совпадение, а не первое попавшееся.
  * Возвращает найденную модель или null.
  */
-function matchModel(models, id) {
+export function matchModel(models, id) {
   if (!id || !Array.isArray(models)) return null;
 
   const raw = String(id);
@@ -66,9 +63,4 @@ function matchModel(models, id) {
     }
   }
   return best;
-}
-
-// Экспорт для Node (тесты); в браузере функции — глобальные
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { normModelName, matchModel };
 }

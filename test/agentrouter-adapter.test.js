@@ -114,13 +114,18 @@ test('в ответе нет quota → 502 bad_response', async () => {
   }
 });
 
-test('не-JSON ответ → 502 bad_response', async () => {
+test('не-JSON ответ → 502 bad_response с диагнозом upstream', async () => {
   const mock = await startAgentRouterUpstream({ raw: '<html>502 Bad Gateway</html>' });
   try {
     const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN });
     const { status, data } = await provider.getUsage();
     assert.equal(status, 502);
     assert.equal(data.error, 'bad_response');
+    // В сообщении — HTTP-статус и content-type upstream (диагностика
+    // HTML-заглушек защиты вроде Cloudflare без доступа к серверу)
+    assert.match(data.message, /HTTP 200, text\/plain/);
+    // Запрос помечен как ожидающий JSON
+    assert.equal(mock.seen[0].accept, 'application/json');
   } finally {
     await mock.close();
   }

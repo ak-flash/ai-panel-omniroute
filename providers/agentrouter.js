@@ -60,7 +60,7 @@ function createAgentRouterProvider(config = {}) {
   };
 
   async function apiGet(pathname, key = '', userId = '') {
-    const headers = buildHeaders(key || apiKey, userId);
+    const headers = { accept: 'application/json', ...buildHeaders(key || apiKey, userId) };
     try {
       const response = await fetch(upstream + pathname, {
         headers,
@@ -73,11 +73,15 @@ function createAgentRouterProvider(config = {}) {
       try {
         return { status: response.status, data: JSON.parse(text) };
       } catch {
+        // Не-JSON вместо JSON — обычно HTML-заглушка защиты (Cloudflare и
+        // т.п.) или страница ошибки: показываем статус и content-type
+        // upstream, чтобы диагноз был виден прямо в интерфейсе панели.
+        const contentType = response.headers.get('content-type') || 'content-type отсутствует';
         return {
           status: 502,
           data: {
             error: 'bad_response',
-            message: 'Провайдер вернул не-JSON ответ',
+            message: `Провайдер вернул не-JSON ответ (HTTP ${response.status}, ${contentType})`,
           },
         };
       }

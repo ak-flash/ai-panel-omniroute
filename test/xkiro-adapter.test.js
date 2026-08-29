@@ -74,13 +74,17 @@ test('ошибка сети → 502 provider_error', async () => {
   assert.equal(data.error, 'provider_error');
 });
 
-test('не-JSON ответ → 502 bad_response', async () => {
+test('не-JSON ответ → 502 bad_response с диагнозом upstream', async () => {
   const mock = await startMockUpstream({ usageRaw: 'not-json{{' });
   try {
     const provider = createXKiroProvider({ url: mock.url, apiKey: CONFIG_KEY });
     const { status, data } = await provider.getUsage();
     assert.equal(status, 502);
     assert.equal(data.error, 'bad_response');
+    // В сообщении — HTTP-статус и content-type upstream
+    assert.match(data.message, /HTTP 200, text\/plain/);
+    // Запрос помечен как ожидающий JSON
+    assert.equal(mock.seen[0].accept, 'application/json');
   } finally {
     await mock.close();
   }
