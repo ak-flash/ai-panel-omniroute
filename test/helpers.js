@@ -167,6 +167,7 @@ async function startPanel(opts = {}) {
 
   return {
     base: 'http://127.0.0.1:' + port,
+    app,
     stop: () =>
       new Promise((resolve) => {
         // Гасим keep-alive соединения, иначе close() ждёт их таймаута

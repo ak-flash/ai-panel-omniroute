@@ -94,17 +94,31 @@
 
   <!-- AgentRouter: баланс кошелька -->
   <section id="ar-card" class="stats provider-card provider-card-wallet" hidden>
-    <div class="stats-head provider-card-head">
-      <div class="provider-identity">
-        <div class="provider-name-row">
-          <span class="badge provider-name-badge">AgentRouter</span>
-          <span class="badge" id="ar-group"></span>
+    <div class="ar-hero">
+      <div class="provider-name-row">
+        <span class="badge provider-name-badge"><a class="provider-site-link" href="https://agentrouter.org/console" target="_blank" rel="noopener noreferrer">AgentRouter</a></span>
+        <span class="badge" id="ar-group" hidden></span>
+      </div>
+    </div>
+    <div class="stats-row">
+      <article class="stat">
+        <div class="stat-top">
+          <span class="stat-label">Баланс</span>
+          <span class="stat-value num" id="ar-balance">—</span>
         </div>
-      </div>
-      <div class="provider-balance">
-        <span class="stat-value num" id="ar-balance">—</span>
-        <span class="provider-balance-note" id="ar-sub"></span>
-      </div>
+      </article>
+      <article class="stat">
+        <div class="stat-top">
+          <span class="stat-label">За сегодня</span>
+          <span class="stat-value num" id="ar-today">—</span>
+        </div>
+      </article>
+      <article class="stat">
+        <div class="stat-top">
+          <span class="stat-label">Всего израсходовано</span>
+          <span class="stat-value num" id="ar-total">—</span>
+        </div>
+      </article>
     </div>
     <p class="hint" id="ar-error" hidden></p>
   </section>
@@ -114,7 +128,7 @@
     <div class="stats-head provider-card-head">
       <div class="provider-identity">
         <div class="provider-name-row">
-          <span class="badge provider-name-badge">Antigravity</span>
+          <span class="badge provider-name-badge"><a class="provider-site-link" href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer">Antigravity</a></span>
           <span class="badge" id="ag-status-badge"></span>
         </div>
       </div>

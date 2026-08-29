@@ -21,7 +21,7 @@ test('интеграция: /api/config, адаптеры, статика', asyn
     assert.equal(cfg.ok, true);
     assert.equal(cfg.activeProvider, 'xkiro');
     assert.deepEqual(cfg.providers, [
-      { id: 'xkiro', name: 'xKiro', hasKey: false },
+      { id: 'xkiro', name: 'xKiro', site: 'https://xkiro.com/dashboard', hasKey: false },
     ]);
 
     // usage: ключ присылает клиент
@@ -87,7 +87,7 @@ test('agentrouter: ключ и User ID из хранилища уходят ад
     // hasKey — по полю хранилища (STORE_KEYS), не по apiKey адаптера
     const cfg = await (await fetch(panel.base + '/api/config')).json();
     assert.deepEqual(cfg.providers, [
-      { id: 'agentrouter', name: 'AgentRouter', hasKey: true },
+      { id: 'agentrouter', name: 'AgentRouter', site: 'https://agentrouter.org', hasKey: true },
     ]);
 
     // usage без x-api-key: сервер подставляет ключ из хранилища и
@@ -106,6 +106,42 @@ test('agentrouter: ключ и User ID из хранилища уходят ад
     assert.equal(res2.status, 200);
     assert.equal(mock.seen[1].auth, 'Bearer client-token');
     assert.equal(mock.seen[1].uid, '999');
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('agentrouter: разовый снимок баланса дня сохраняется и уходит в usage', async () => {
+  const { createAgentRouterProvider } = require('../providers/agentrouter');
+  const { createStore } = require('../store');
+  const mock = await startAgentRouterUpstream();
+  const store = await createStore({ memory: true });
+  await store.set('agentrouterKey', STORED_TOKEN);
+  await store.set('agentrouterUserId', STORED_USER_ID);
+  const panel = await startPanel({
+    providers: [createAgentRouterProvider({ url: mock.url })],
+    store,
+  });
+  try {
+    // Снимок ещё не снят — usage без day_balance_usd
+    let data = await (await fetch(panel.base + '/api/providers/agentrouter/usage')).json();
+    assert.equal('day_balance_usd' in data, false);
+
+    // Ручной разовый снимок (как это делает планировщик в 00:00)
+    await panel.app.snapshotAgentRouterDayBalance();
+    const now = new Date();
+    const saved = JSON.parse(await store.get('agentrouterDayBalance'));
+    assert.equal(
+      saved.date,
+      now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0'),
+    );
+    assert.equal(saved.balance_usd, 82.31);
+
+    // Теперь usage отдаёт стартовый баланс дня
+    data = await (await fetch(panel.base + '/api/providers/agentrouter/usage')).json();
+    assert.equal(data.day_balance_usd, 82.31);
+    assert.equal(data.wallet.balance_usd, 82.31);
   } finally {
     await panel.stop();
     await mock.close();

@@ -30,6 +30,9 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 // (у AgentRouter это числовой ID пользователя для New-Api-User).
 const PROVIDER_STORE_KEYS = { xkiro: 'xkiroKey', agentrouter: 'agentrouterKey' };
 const PROVIDER_STORE_USER_FIELDS = { agentrouter: 'agentrouterUserId' };
+// Ключ ежедневного снимка баланса AgentRouter в хранилище. храним JSON
+// { date: 'YYYY-MM-DD', balance_usd } — только последний (больше суток не нужно).
+const AGENTROUTER_DAY_BALANCE_KEY = 'agentrouterDayBalance';
 const MAX_BODY = 2 * 1024 * 1024;
 const MIME = { '.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.woff2':'font/woff2','.txt':'text/plain; charset=utf-8' };
 const CORS = { 'access-control-allow-origin':'*','access-control-allow-methods':'GET, POST, PUT, PATCH, DELETE, OPTIONS','access-control-allow-headers':'authorization, x-api-key, content-type, accept, x-ag-refresh-token, x-ag-client-id, x-ag-client-secret' };
@@ -115,6 +118,77 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
     }
     return false;
   }
+
+  // ---------- Ежедневный снимок баланса AgentRouter ----------
+  // Раз в сутки (как только наступили новые сутки, ~00:00) делаем
+  // запрос баланса ключом из хранилища и сохраняем его как стартовый
+  // баланс дня. Карточка вычитает из него текущий баланс и показывает
+  // «потребление за сутки». Храним только последний снимок — при смене
+  // суток он перезаписывается, больше дня в БД не держим.
+  const todayStr = () => {
+    const d = new Date();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return d.getFullYear() + '-' + m + '-' + String(d.getDate()).padStart(2, '0');
+  };
+
+  async function snapshotAgentRouterDayBalance() {
+    try {
+      const s = await (await getStore()).snapshot();
+      const key = String(s[PROVIDER_STORE_KEYS.agentrouter] || '').trim();
+      const uid = String(s[PROVIDER_STORE_USER_FIELDS.agentrouter] || '').trim();
+      const provider = providers.find((p) => p.id === 'agentrouter');
+      if (!key || !uid || !provider) return;
+      const result = await provider.getUsage(key, uid);
+      if (result.status !== 200) return;
+      const bal = Number((result.data && result.data.wallet || {}).balance_usd);
+      if (!Number.isFinite(bal)) return;
+      await (await getStore()).set(
+        AGENTROUTER_DAY_BALANCE_KEY,
+        JSON.stringify({ date: todayStr(), balance_usd: bal }),
+      );
+    } catch {}
+  }
+
+  /**
+   * Планировщик снимка: проверяет раз в минуту, не сменились ли сутки,
+   * и если для сегодняшнего дня снимка ещё нет — делает его (один раз).
+   * Реальный снимок берётся в 00:00; перезапуск сервера днём не
+   * переснимает баланс. Возвращает функцию остановки интервала.
+   */
+  function startDailyAgentRouterTracker() {
+    let busy = false;
+    const interval = setInterval(async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const s = await (await getStore()).snapshot();
+        const saved = s[AGENTROUTER_DAY_BALANCE_KEY];
+        let savedDate = null;
+        if (saved) { try { savedDate = JSON.parse(saved).date; } catch {} }
+        if (savedDate !== todayStr()) await snapshotAgentRouterDayBalance();
+      } catch {} finally {
+        busy = false;
+      }
+    }, 60000);
+    snapshotAgentRouterDayBalance();
+    return () => clearInterval(interval);
+  }
+
+  /** Достаёт снимок баланса дня для карточки AgentRouter (если он за сегодня). */
+  async function getAgentRouterDayBalanceUsd() {
+    try {
+      const s = await (await getStore()).snapshot();
+      const saved = s[AGENTROUTER_DAY_BALANCE_KEY];
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      if (parsed.date !== todayStr()) return null;
+      const bal = Number(parsed.balance_usd);
+      return Number.isFinite(bal) ? bal : null;
+    } catch {
+      return null;
+    }
+  }
+
   async function handleRequest(req,res){
     const url=new URL(req.url,'http://localhost');
     if(url.pathname==='/proxy'||url.pathname.startsWith('/proxy/')){
@@ -126,7 +200,11 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
     if(apiMatch){
       if(req.method==='OPTIONS'){res.writeHead(204,{...CORS});return res.end()}
       const provider=providers.find(p=>p.id===apiMatch[1]); if(!provider){res.writeHead(404,{...CORS,'content-type':'application/json; charset=utf-8'});return res.end(JSON.stringify({error:'unknown_provider',message:'Провайдер не найден'}))}
-      let clientKey=req.headers['x-api-key']||''; let clientUserId=req.headers['x-agentrouter-user-id']||''; if(!clientKey||!clientUserId){ try{ const s=await (await getStore()).snapshot(); const storeField=PROVIDER_STORE_KEYS[apiMatch[1]]; if(!clientKey&&storeField&&s[storeField]) clientKey=s[storeField]; const userField=PROVIDER_STORE_USER_FIELDS[apiMatch[1]]; if(!clientUserId&&userField&&s[userField]) clientUserId=s[userField]; }catch{} } const fn=apiMatch[2]==='usage'?provider.getUsage:provider.getModels; const result=await fn(clientKey,clientUserId);
+      let clientKey=req.headers['x-api-key']||''; let clientUserId=req.headers['x-agentrouter-user-id']||''; if(!clientKey||!clientUserId){ try{ const s=await (await getStore()).snapshot(); const storeField=PROVIDER_STORE_KEYS[apiMatch[1]]; if(!clientKey&&storeField&&s[storeField]) clientKey=s[storeField]; const userField=PROVIDER_STORE_USER_FIELDS[apiMatch[1]]; if(!clientUserId&&userField&&s[userField]) clientUserId=s[userField]; }catch{} }       const fn=apiMatch[2]==='usage'?provider.getUsage:provider.getModels; const result=await fn(clientKey,clientUserId);
+      if(result.status===200 && apiMatch[1]==='agentrouter' && result.data){
+        const dayBal=await getAgentRouterDayBalanceUsd();
+        if(dayBal!==null) result.data.day_balance_usd=dayBal;
+      }
       res.writeHead(result.status,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'}); return res.end(JSON.stringify(result.data));
     }
     if(url.pathname==='/omniroute'||url.pathname.startsWith('/omniroute/')){
@@ -335,13 +413,16 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
       // hasKey провайдера — по его полю в хранилище (см. PROVIDER_STORE_KEYS)
       const providerInfo = providers.map(p=>{
         const storeField=PROVIDER_STORE_KEYS[p.id];
-        return {id:p.id,name:p.name,hasKey:storeField?Boolean(s[storeField]):Boolean(p.apiKey)};
+        return {id:p.id,name:p.name,site:p.site||'',hasKey:storeField?Boolean(s[storeField]):Boolean(p.apiKey)};
       });
       return res.end(JSON.stringify({ok:true,providers:providerInfo,activeProvider:activeProvider?activeProvider.id:null,hasOmniRoute:Boolean(s.omniUrl),hasOmniKey:Boolean(s.omniKey),hasGoogleToken:Boolean(googleAuth.token)||hasRefreshCreds()}));
     }
     serveStatic(req,res,url.pathname);
   }
-  return http.createServer((req,res)=>{handleRequest(req,res).catch(err=>{if(res.headersSent)return res.destroy(); res.writeHead(500,{...CORS,'content-type':'application/json; charset=utf-8'}); res.end(JSON.stringify({error:'server_error',message:err instanceof Error?err.message:String(err)}))})});
+  const server = http.createServer((req,res)=>{handleRequest(req,res).catch(err=>{if(res.headersSent)return res.destroy(); res.writeHead(500,{...CORS,'content-type':'application/json; charset=utf-8'}); res.end(JSON.stringify({error:'server_error',message:err instanceof Error?err.message:String(err)}))})});
+  server.startDailyAgentRouterTracker = startDailyAgentRouterTracker;
+  server.snapshotAgentRouterDayBalance = snapshotAgentRouterDayBalance;
+  return server;
 }
 module.exports = { createApp };
 // CLI-запуск (node server.js): порт — единственная переменная окружения
@@ -350,6 +431,7 @@ if (require.main === module) {
   const PORT = process.env.PORT || 8765;
   const providers = loadProviders();
   const app = createApp({ providers });
+  if (typeof app.startDailyAgentRouterTracker === 'function') app.startDailyAgentRouterTracker();
   app.on('error',err=>{console.error('Не удалось запустить сервер:',err.message);process.exit(1)});
   app.listen(PORT,()=>{console.log(`AI Панель · http://localhost:${PORT}`); for(const p of providers) console.log('  провайдер '+p.name+' ('+p.id+'): '+p.upstream)});
 }

@@ -65,7 +65,7 @@ const DIRECT_PATHS = {
 
 // Провайдер по умолчанию — когда /api/config недоступен (режим file://).
 // Список провайдеров и активный приходят с сервера (/api/config).
-const PROVIDER_FALLBACK = { id: 'xkiro', name: 'xKiro', hasKey: false };
+const PROVIDER_FALLBACK = { id: 'xkiro', name: 'xKiro', site: 'https://xkiro.com/dashboard', hasKey: false };
 
 // OmniRoute API: базовый адрес и пути.
 // Адрес и ключ хранятся в localStorage (настройки), иначе — прокси /omniroute.
@@ -326,7 +326,19 @@ function setStatus(type, text) {
 function renderProviderLabel() {
   if (!$statsProvider) return;
   const p = state.activeProvider || PROVIDER_FALLBACK;
-  $statsProvider.textContent = p.name || p.id;
+  const name = p.name || p.id;
+  if (p.site) {
+    $statsProvider.textContent = '';
+    const a = document.createElement('a');
+    a.className = 'provider-site-link';
+    a.href = p.site;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.textContent = name;
+    $statsProvider.appendChild(a);
+  } else {
+    $statsProvider.textContent = name;
+  }
 }
 
 function showBanner(msg) {
@@ -1296,15 +1308,31 @@ function renderAgentRouterCard(data) {
   if (balance) balance.textContent = fmtUsd((data.wallet || {}).balance_usd);
 
   const group = $id('ar-group');
-  if (group) group.textContent = data.plan ? String(data.plan).toUpperCase() : '';
+  const planLabel = data.plan ? String(data.plan).trim() : '';
+  // У new-api группа по умолчанию называется "default" — такую надпись не показываем
+  if (group) {
+    const show = planLabel && planLabel.toLowerCase() !== 'default';
+    group.textContent = show ? planLabel.toUpperCase() : '';
+    group.hidden = !show;
+  }
 
-  const sub = [];
+  const todayEl = $id('ar-today');
+  const totalEl = $id('ar-total');
+
+  // Потребление за текущие сутки: стартовый баланс дня (снимок в 00:00) минус текущий.
+  const dayBal = Number(data.day_balance_usd);
+  const bal = Number((data.wallet || {}).balance_usd);
+  const hasDay = Number.isFinite(dayBal) && Number.isFinite(bal) && dayBal > 0;
+  const today = hasDay ? Math.max(0, dayBal - bal) : null;
+  if (todayEl) {
+    todayEl.textContent = today !== null ? fmtUsd(today) : '—';
+    if (today !== null) {
+      todayEl.classList.toggle('val-used', today > 0);
+    }
+  }
+
   const used = Number(data.used_usd) || 0;
-  if (used > 0) sub.push('Израсходовано: ' + fmtUsd(used));
-  const requests = Number(data.requests) || 0;
-  if (requests > 0) sub.push('Запросов: ' + requests.toLocaleString('ru-RU'));
-  const $sub = $id('ar-sub');
-  if ($sub) $sub.textContent = sub.join(' · ');
+  if (totalEl) totalEl.textContent = used > 0 ? fmtUsd(used) : '—';
 }
 
 async function loadModels() {

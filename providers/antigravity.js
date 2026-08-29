@@ -168,6 +168,7 @@ function createAntigravityProvider(config = {}) {
   return {
     id: 'antigravity',
     name,
+    site: 'https://aistudio.google.com',
     upstream,
     getQuota,
     getQuotaSummary,

@@ -519,6 +519,18 @@ main {
   background: var(--surface);
 }
 
+/* Имя провайдера как ссылка на его сайт — без подчёркивания, в цвете ссылки */
+.provider-site-link {
+  color: inherit;
+  text-decoration: none;
+  font-weight: 600;
+}
+.provider-site-link:hover,
+.provider-site-link:focus-visible {
+  text-decoration: underline;
+  color: var(--accent);
+}
+
 /* «Google AI Pro» + email аккаунта прижаты вправо от имени провайдера */
 .ag-head-meta {
   display: flex;
@@ -578,7 +590,8 @@ main {
   gap: 12px;
 }
 
-#cards > .stats-row {
+#cards > .stats-row,
+#ar-card > .stats-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }
@@ -586,6 +599,30 @@ main {
 .provider-card-wallet .provider-card-head {
   margin-bottom: -20px;
   border-bottom: 0;
+}
+
+/* --- AgentRouter: баланс в начале карточки --- */
+.ar-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 24px;
+  margin: -20px -24px 20px;
+  padding: 20px 24px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.ar-hero .provider-name-row {
+  align-self: flex-start;
+}
+
+/* Название провайдера в карточке AgentRouter — как у Antigravity
+   (в provider-card-head бейдж получает background: var(--surface);
+   здесь ar-hero без этого класса, поэтому повторяем правило). */
+.ar-hero .provider-name-badge {
+  background: var(--surface);
 }
 
 /* Подсказки и ошибки внутри карточек — контрастнее на подложке карточки */
@@ -1721,6 +1758,11 @@ body[data-page="cheatsheet"] #status-dot { display: none; }
 
   .provider-card-wallet .provider-card-head {
     margin: -14px -16px;
+  }
+
+  .ar-hero {
+    margin: -14px -16px 16px;
+    padding: 16px;
   }
 
   .provider-balance {

@@ -74,6 +74,7 @@ function createXKiroProvider(config = {}) {
   return {
     id: 'xkiro',
     name,
+    site: 'https://xkiro.com/dashboard',
     upstream,
     apiKey,
     authScheme,

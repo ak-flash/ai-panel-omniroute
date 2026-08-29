@@ -166,6 +166,7 @@ function createAgentRouterProvider(config = {}) {
   return {
     id: 'agentrouter',
     name,
+    site: 'https://agentrouter.org',
     upstream,
     apiKey,
     authScheme,
