@@ -21,6 +21,24 @@ const { loadProviders } = require('./providers');
 const { createAntigravityProvider } = require('./providers/antigravity');
 const { createGoogleOauth, getBuiltinClientId, getBuiltinClientSecret } = require('./providers/google-oauth');
 const { createStore } = require('./store');
+const {
+  AppError,
+  createRequestContext,
+  handleError,
+  readBody,
+  readJson,
+  sendError,
+  sendJson,
+  sendNoContent,
+} = require('./http');
+const { Router } = require('./router');
+const {
+  applyRequestSecurity,
+  getServerConfig,
+  parseAllowedOrigins,
+  validateMasterKey,
+  validateUpstreamUrl,
+} = require('./security');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 // Поле серверного хранилища с ключом провайдера (клиент секреты не
@@ -33,17 +51,41 @@ const PROVIDER_STORE_USER_FIELDS = { agentrouter: 'agentrouterUserId' };
 // Ключ ежедневного снимка баланса AgentRouter в хранилище. храним JSON
 // { date: 'YYYY-MM-DD', balance_usd } — только последний (больше суток не нужно).
 const AGENTROUTER_DAY_BALANCE_KEY = 'agentrouterDayBalance';
-const MAX_BODY = 2 * 1024 * 1024;
+
 const MIME = { '.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.woff2':'font/woff2','.txt':'text/plain; charset=utf-8' };
-const CORS = { 'access-control-allow-origin':'*','access-control-allow-methods':'GET, POST, PUT, PATCH, DELETE, OPTIONS','access-control-allow-headers':'authorization, x-api-key, content-type, accept, x-ag-refresh-token, x-ag-client-id, x-ag-client-secret' };
+const CORS = {};
 function resolveStaticPath(pathname){ const relative=pathname==='/'?'index.html':pathname.slice(1); let decoded; try{decoded=decodeURIComponent(relative)}catch{return null} const resolved=path.normalize(path.join(PUBLIC_DIR,decoded)); if(resolved!==PUBLIC_DIR && !resolved.startsWith(PUBLIC_DIR+path.sep)) return null; return resolved; }
 function serveStatic(req,res,pathname){ const filePath=resolveStaticPath(pathname); if(!filePath){res.writeHead(403,{'content-type':'text/plain; charset=utf-8'});return res.end('403 Forbidden')} fs.stat(filePath,(err,stats)=>{ if(err||!stats.isFile()){res.writeHead(404,{'content-type':'text/plain; charset=utf-8'});return res.end('404 Not Found')} const ext=path.extname(filePath).toLowerCase(); const mime=MIME[ext]||'application/octet-stream'; res.writeHead(200,{'content-type':mime,'cache-control':ext==='.html'?'no-store':'max-age=3600'}); const s=fs.createReadStream(filePath); s.on('error',()=>res.destroy()); s.pipe(res); });}
-function readBody(req){return new Promise((resolve,reject)=>{const chunks=[];let size=0;let done=false; req.on('data',c=>{if(done)return; size+=c.length; if(size>MAX_BODY){done=true;return resolve(null)} chunks.push(c)}); req.on('end',()=>{if(!done)resolve(Buffer.concat(chunks))}); req.on('error',e=>{if(!done)reject(e)});});}
-async function handleProxy(req,res,url,{prefix,upstream}){ if(req.method==='OPTIONS'){res.writeHead(204,{...CORS});return res.end()} let body; try{body=await readBody(req)}catch{if(!res.headersSent)res.writeHead(400,{'content-type':'text/plain'});return res.end()} if(body===null){res.writeHead(413,{...CORS,'content-type':'application/json; charset=utf-8','connection':'close'});return res.end(JSON.stringify({error:'payload_too_large',message:'Тело запроса превышает лимит 2 МБ'}))} const suffix=url.pathname.replace(new RegExp('^'+prefix.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')),'')+url.search; const target=upstream+suffix; const fwdHeaders={}; for(const n of ['authorization','x-api-key','content-type','accept']) if(req.headers[n]) fwdHeaders[n]=req.headers[n]; const ac=new AbortController(); res.on('close',()=>ac.abort()); try{ const upstreamRes=await fetch(target,{method:req.method,headers:fwdHeaders,body:body.length>0?body:undefined,signal:ac.signal}); const resHeaders={...CORS}; const ct=upstreamRes.headers.get('content-type'); if(ct) resHeaders['content-type']=ct; res.writeHead(upstreamRes.status,resHeaders); if(upstreamRes.body){for await(const chunk of upstreamRes.body){if(!res.writable)break; res.write(chunk)}} res.end(); }catch(err){ if(res.headersSent)return res.destroy(); res.writeHead(502,{...CORS,'content-type':'application/json; charset=utf-8'}); res.end(JSON.stringify({error:'proxy_error',message:err instanceof Error?err.message:String(err)})); } }
+
+async function handleProxy(req,res,url,{prefix,upstream}){
+  if(req.method==='OPTIONS') return sendNoContent(res);
+  const body=await readBody(req);
+  const suffix=url.pathname.replace(new RegExp('^'+prefix.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')),'')+url.search;
+  const target=upstream+suffix;
+  const fwdHeaders={};
+  for(const name of ['authorization','x-api-key','content-type','accept']) if(req.headers[name]) fwdHeaders[name]=req.headers[name];
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),30000);
+  res.on('close',()=>controller.abort());
+  try{
+    const upstreamRes=await fetch(target,{method:req.method,headers:fwdHeaders,body:body.length>0?body:undefined,signal:controller.signal,redirect:'error'});
+    const responseHeaders={};
+    const contentType=upstreamRes.headers.get('content-type');
+    if(contentType) responseHeaders['content-type']=contentType;
+    res.writeHead(upstreamRes.status,responseHeaders);
+    if(upstreamRes.body) for await(const chunk of upstreamRes.body){if(!res.writable) break;res.write(chunk)}
+    res.end();
+  }catch(error){
+    if(res.headersSent) return res.destroy();
+    throw new AppError(502,'proxy_error','Upstream недоступен',{cause:error});
+  }finally{
+    clearTimeout(timeout);
+  }
+}
 // createApp собирает HTTP-сервер панели с переданным списком провайдеров
 // (по умолчанию — вшитые из loadProviders()). Тесты инжектят сюда
 // адаптеры с mock-upstream; CLI-блок ниже запускает то же самое на PORT.
-function createApp({ providers = loadProviders(), antigravity = createAntigravityProvider(), googleOauth = createGoogleOauth(), store } = {}){
+function createApp({ providers = loadProviders(), antigravity = createAntigravityProvider(), googleOauth = createGoogleOauth(), store, allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS), remoteMode = false, logger = console, requestTimeoutMs = 30000 } = {}){
   const activeProvider = providers[0] || null;
   // Хранилище ключей/настроек: SQLite на сервере (зашифровано AES-256-GCM).
   // Если не передано (CLI/тесты передают напрямую), создаётся лениво —
@@ -59,6 +101,10 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
   const googleAuth = { token: '', refreshToken: '', clientId: '', clientSecret: '', project: '', tokenExpiresAt: 0, email: '' };
   let agCache = { ts: 0, result: null, project: null }; // серверный кеш квот, 60 с
   const AG_CACHE_TTL_MS = 60000;
+  const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+  const oauthStates = new Map();
+  const router = new Router();
+  router.add(['GET','HEAD'],'/api/health',({res})=>sendJson(res,200,{ok:true},{'cache-control':'no-store'}));
 
   /** Сохраняет токены после успешного обмена кода (paste) или refresh. */
   function storeExchangedTokens(r) {
@@ -190,7 +236,9 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
   }
 
   async function handleRequest(req,res){
+    if(!applyRequestSecurity(req,res,allowedOrigins)) return;
     const url=new URL(req.url,'http://localhost');
+    if(url.pathname==='/api/health') return router.dispatch(req,res,{});
     if(url.pathname==='/proxy'||url.pathname.startsWith('/proxy/')){
       if(!activeProvider){res.writeHead(503,{...CORS,'content-type':'application/json; charset=utf-8'});return res.end(JSON.stringify({error:'no_provider',message:'Провайдер не настроен'}))}
       let provider=activeProvider; let prefix='/proxy'; const m=url.pathname.match(/^\/proxy\/([a-z0-9-]+)(?:\/|$)/); if(m&&providers.some(p=>p.id===m[1])){provider=providers.find(p=>p.id===m[1]); prefix='/proxy/'+m[1]}
@@ -208,10 +256,17 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
       res.writeHead(result.status,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'}); return res.end(JSON.stringify(result.data));
     }
     if(url.pathname==='/omniroute'||url.pathname.startsWith('/omniroute/')){
-      // OmniRoute: URL берёт клиент, но если запрос пришёл на /omniroute — требуем заголовок x-omniroute-url или пробрасываем как есть
-      const omniUrl = req.headers['x-omniroute-url'] || '';
+      const s=await (await getStore()).snapshot();
+      const omniUrl=String(s.omniUrl||'').trim();
       if(!omniUrl){ res.writeHead(400,{...CORS,'content-type':'application/json; charset=utf-8'}); return res.end(JSON.stringify({error:'no_omniroute_url',message:'Укажите OmniRoute URL в Настройках'})); }
-      return handleProxy(req,res,url,{prefix:'/omniroute',upstream:omniUrl.replace(/\/+$/,'')});
+      let upstream;
+      try{ upstream=await validateUpstreamUrl(omniUrl,{allowPrivate:!remoteMode}); }
+      catch{ res.writeHead(400,{...CORS,'content-type':'application/json; charset=utf-8'}); return res.end(JSON.stringify({error:'invalid_omniroute_url',message:'Некорректный или запрещённый OmniRoute URL'})); }
+      const headers={...req.headers};
+      if(s.omniKey) headers.authorization='Bearer '+s.omniKey;
+      delete headers['x-omniroute-url'];
+      req.headers=headers;
+      return handleProxy(req,res,url,{prefix:'/omniroute',upstream});
     }
     if(url.pathname==='/api/antigravity-auth/start'){
       if(req.method==='OPTIONS'){res.writeHead(204,{...CORS});return res.end()}
@@ -232,8 +287,11 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
       const redirectUri = isLocal
         ? 'http://127.0.0.1:'+listenPort+'/api/antigravity-auth/callback'
         : 'http://127.0.0.1:44127/callback';
+      const state=crypto.randomUUID();
+      oauthStates.set(state,Date.now()+OAUTH_STATE_TTL_MS);
+      for(const [key,expiresAt] of oauthStates) if(expiresAt<Date.now()) oauthStates.delete(key);
       res.writeHead(200,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
-      return res.end(JSON.stringify({url:googleOauth.buildAuthUrl({redirectUri,state:crypto.randomUUID()})}));
+      return res.end(JSON.stringify({url:googleOauth.buildAuthUrl({redirectUri,state})}));
     }
     if(url.pathname==='/api/antigravity-auth/callback'){
       // Страница-подсказка после входа в Google: код остаётся в адресе,
@@ -257,15 +315,22 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
       // из этой ссылки — обмен выполняем с тем же origin+path.
       if(req.method==='OPTIONS'){res.writeHead(204,{...CORS});return res.end()}
       if(req.method!=='POST'){res.writeHead(405,{...CORS,'content-type':'application/json; charset=utf-8'});return res.end(JSON.stringify({error:'method_not_allowed'}))}
-      let raw; try{raw=await readBody(req)}catch{raw=null}
-      let body={}; try{body=JSON.parse(raw&&raw.toString()||'{}')}catch{}
+      const body=await readJson(req);
       let pasted='';
       try{pasted=new URL(String(body.url||'').trim())}catch{}
       const code=pasted?pasted.searchParams.get('code'):null;
+      const state=pasted?pasted.searchParams.get('state'):null;
       if(!pasted||!code){
         res.writeHead(400,{...CORS,'content-type':'application/json; charset=utf-8'});
         return res.end(JSON.stringify({error:'bad_callback_url',message:'Нужна ссылка вида http://127.0.0.1:…/callback?code=…'}));
       }
+      const stateExpiresAt=state?oauthStates.get(state):null;
+      if(!stateExpiresAt||stateExpiresAt<Date.now()){
+        if(state) oauthStates.delete(state);
+        res.writeHead(400,{...CORS,'content-type':'application/json; charset=utf-8'});
+        return res.end(JSON.stringify({error:'invalid_oauth_state',message:'OAuth state отсутствует, истёк или уже использован'}));
+      }
+      oauthStates.delete(state);
       pasted.hash=''; pasted.searchParams.delete('hash');
       const redirectUri=pasted.origin+pasted.pathname;
       const r=await googleOauth.exchangeCode({code,redirectUri});
@@ -326,17 +391,7 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
     }
     if(url.pathname==='/api/antigravity-quota'){
       if(req.method==='OPTIONS'){res.writeHead(204,{...CORS});return res.end()}
-      // Refresh-связка — в серверном хранилище; для совместимости со старым
-      // клиентом (localStorage → заголовки x-ag-*) принимаем её и из заголовков.
       if(!agLoaded){ agLoaded=true; await loadAgFromStore(); }
-      const hdrRt=(req.headers['x-ag-refresh-token']||'').trim();
-      if(hdrRt && hdrRt!==googleAuth.refreshToken){
-        googleAuth.token=''; googleAuth.tokenExpiresAt=0; agCache={ts:0,result:null,project:null};
-        googleAuth.refreshToken=hdrRt;
-        googleAuth.clientId=(req.headers['x-ag-client-id']||'').trim()||getBuiltinClientId();
-        googleAuth.clientSecret=(req.headers['x-ag-client-secret']||'').trim()||getBuiltinClientSecret();
-        try{ await (await getStore()).set('agRefreshToken', hdrRt); }catch{}
-      }
       if(!googleAuth.token && !hasRefreshCreds()){
         res.writeHead(400,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
         return res.end(JSON.stringify({error:'no_token',message:'Задайте Antigravity OAuth-токен или refresh-связку в настройках'}));
@@ -380,46 +435,36 @@ function createApp({ providers = loadProviders(), antigravity = createAntigravit
       res.writeHead(result.status,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
       return res.end(JSON.stringify(result.data));
     }
-    if(url.pathname==='/api/settings/vault'){
-      if(req.method==='OPTIONS'){res.writeHead(204,{...CORS});return res.end()}
-      if(req.method==='GET'){
-        const data = await (await getStore()).snapshot();
-        res.writeHead(200,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
-        return res.end(JSON.stringify({ok:true,data}));
-      }
-      if(req.method!=='POST' && req.method!=='PUT'){res.writeHead(405,{...CORS,'content-type':'application/json; charset=utf-8'});return res.end(JSON.stringify({error:'method_not_allowed'}))}
-      let raw; try{raw=await readBody(req)}catch{raw=null}
-      let body={}; try{body=JSON.parse(raw&&raw.toString()||'{}')}catch{}
-      // Принимаем { key, value } (одна запись) или объект ключ→значение.
-      // Пустое/undefined значение удаляет ключ.
-      const entries = [];
-      if('key' in body && typeof body.key==='string'){
-        entries.push([body.key, body.value==null?'':String(body.value)]);
-      } else {
-        for(const k of Object.keys(body)){ if(k==='ok'||k==='data') continue; entries.push([k, body[k]==null?'':String(body[k])]); }
-      }
-      for(const [k,v] of entries) await (await getStore()).set(k,v);
-      // Antigravity refresh связку/проект обновляем в памяти сразу
-      syncAgFromStore(entries);
-      res.writeHead(200,{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
-      return res.end(JSON.stringify({ok:true}));
-    }
+
     if(url.pathname==='/api/config'){
-      // hasKey провайдеров и наличие OmniRoute/Antigravity — из серверного
-      // хранилища (клиент больше не держит секреты в localStorage).
+      if(req.method==='OPTIONS') return sendNoContent(res);
       if(!agLoaded){ agLoaded=true; await loadAgFromStore(); }
-      const s = await (await getStore()).snapshot();
-      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'});
-      // hasKey провайдера — по его полю в хранилище (см. PROVIDER_STORE_KEYS)
-      const providerInfo = providers.map(p=>{
-        const storeField=PROVIDER_STORE_KEYS[p.id];
-        return {id:p.id,name:p.name,site:p.site||'',hasKey:storeField?Boolean(s[storeField]):Boolean(p.apiKey)};
-      });
-      return res.end(JSON.stringify({ok:true,providers:providerInfo,activeProvider:activeProvider?activeProvider.id:null,hasOmniRoute:Boolean(s.omniUrl),hasOmniKey:Boolean(s.omniKey),hasGoogleToken:Boolean(googleAuth.token)||hasRefreshCreds()}));
+      const st=await getStore();
+      if(req.method==='PUT'){
+        const body=await readJson(req);
+        if(!body||typeof body!=='object'||Array.isArray(body)) throw new AppError(400,'bad_json','Ожидается JSON-объект');
+        const writable=['xkiroKey','agentrouterKey','agentrouterUserId','omniUrl','omniKey','agRefreshToken','agProject','aliases','comboActive','dlgProvider','modelsProvider','statsProvider'];
+        if(Object.hasOwn(body,'omniUrl')&&body.omniUrl){
+          try{body.omniUrl=await validateUpstreamUrl(body.omniUrl,{allowPrivate:!remoteMode});}
+          catch{throw new AppError(400,'invalid_omniroute_url','Некорректный или запрещённый OmniRoute URL');}
+        }
+        const entries=[];
+        for(const key of writable) if(Object.hasOwn(body,key)){const value=body[key]==null?'':String(body[key]);await st.set(key,value);entries.push([key,value]);}
+        syncAgFromStore(entries);
+        return sendJson(res,200,{ok:true},{'cache-control':'no-store'});
+      }
+      if(req.method!=='GET') throw new AppError(405,'method_not_allowed','Метод не поддерживается',{headers:{allow:'GET, PUT'}});
+      const s=await st.snapshot();
+      const providerInfo=providers.map(p=>{const storeField=PROVIDER_STORE_KEYS[p.id];return {id:p.id,name:p.name,site:p.site||'',hasKey:storeField?Boolean(s[storeField]):Boolean(p.apiKey)};});
+      const data={aliases:s.aliases||'',comboActive:s.comboActive||'',dlgProvider:s.dlgProvider||'',modelsProvider:s.modelsProvider||'',statsProvider:s.statsProvider||'',agentrouterUserId:s.agentrouterUserId||'',omniUrl:s.omniUrl||'',hasXkiroKey:Boolean(s.xkiroKey),hasAgentrouterKey:Boolean(s.agentrouterKey),hasOmniRoute:Boolean(s.omniUrl),hasOmniKey:Boolean(s.omniKey),hasGoogleToken:Boolean(googleAuth.token)||hasRefreshCreds()};
+      return sendJson(res,200,{ok:true,data,providers:providerInfo,activeProvider:activeProvider?activeProvider.id:null,...data},{'cache-control':'no-store'});
     }
     serveStatic(req,res,url.pathname);
   }
-  const server = http.createServer((req,res)=>{handleRequest(req,res).catch(err=>{if(res.headersSent)return res.destroy(); res.writeHead(500,{...CORS,'content-type':'application/json; charset=utf-8'}); res.end(JSON.stringify({error:'server_error',message:err instanceof Error?err.message:String(err)}))})});
+  const server = http.createServer((req,res)=>{
+    const context=createRequestContext(req,res,{timeoutMs:requestTimeoutMs});
+    handleRequest(req,res).catch(err=>handleError(err,req,res,context,logger));
+  });
   server.startDailyAgentRouterTracker = startDailyAgentRouterTracker;
   server.snapshotAgentRouterDayBalance = snapshotAgentRouterDayBalance;
   return server;
@@ -428,10 +473,11 @@ module.exports = { createApp };
 // CLI-запуск (node server.js): порт — единственная переменная окружения
 if (require.main === module) {
   loadEnvFile('.env');
-  const PORT = process.env.PORT || 8765;
+  const {port:PORT,host:HOST,remoteMode}=getServerConfig();
+  try{validateMasterKey(process.env.AIPANEL_MASTER_KEY)}catch(err){console.error(err.message);process.exit(1)}
   const providers = loadProviders();
-  const app = createApp({ providers });
+  const app = createApp({ providers, remoteMode });
   if (typeof app.startDailyAgentRouterTracker === 'function') app.startDailyAgentRouterTracker();
   app.on('error',err=>{console.error('Не удалось запустить сервер:',err.message);process.exit(1)});
-  app.listen(PORT,()=>{console.log(`AI Панель · http://localhost:${PORT}`); for(const p of providers) console.log('  провайдер '+p.name+' ('+p.id+'): '+p.upstream)});
+  app.listen(PORT,HOST,()=>{console.log(`AI Панель · http://${HOST}:${PORT}`); for(const p of providers) console.log('  провайдер '+p.name+' ('+p.id+'): '+p.upstream)});
 }

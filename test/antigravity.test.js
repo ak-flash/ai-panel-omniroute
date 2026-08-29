@@ -629,12 +629,13 @@ test('paste: ссылка callback обменивается с её же redirec
     googleOauth: oauthMock,
   });
   try {
-    // Ссылка от чужого флоу (OmniRoute): другой порт и путь /callback
+    const start = await (await fetch(panel.base + '/api/antigravity-auth/start')).json();
+    const state = new URL(start.url).searchParams.get('state');
     const res = await fetch(panel.base + '/api/antigravity-auth/paste', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        url: 'http://127.0.0.1:20128/callback?state=s_x&code=4%2F0ABC&scope=email&authuser=0',
+        url: 'http://127.0.0.1:20128/callback?state=' + encodeURIComponent(state) + '&code=4%2F0ABC&scope=email&authuser=0',
       }),
     });
     assert.equal(res.status, 200);
@@ -656,6 +657,38 @@ test('paste: ссылка callback обменивается с её же redirec
     // Email аккаунта подтянулся из Google userinfo
     const st = await (await fetch(panel.base + '/api/settings/google-token')).json();
     assert.equal(st.email, 'user@gmail.com');
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('paste: OAuth state одноразовый и защищает от replay', async () => {
+  const mock = await startMockGoogle();
+  let exchanges = 0;
+  const oauthMock = {
+    refresh: async () => ({ ok: false, error: 'no_credentials' }),
+    buildAuthUrl: ({ state }) => 'https://accounts.google.com/o/oauth2/v2/auth?state=' + state,
+    exchangeCode: async () => { exchanges += 1; return { ok: true, accessToken: 'tok', refreshToken: 'rt' }; },
+  };
+  const panel = await startPanel({ providers: [], antigravity: createAntigravityProvider({ url: mock.url }), googleOauth: oauthMock });
+  try {
+    const missing = await fetch(panel.base + '/api/antigravity-auth/paste', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'http://127.0.0.1/callback?code=abc&state=unknown' }),
+    });
+    assert.equal(missing.status, 400);
+    assert.equal((await missing.json()).error, 'invalid_oauth_state');
+
+    const start = await (await fetch(panel.base + '/api/antigravity-auth/start')).json();
+    const state = new URL(start.url).searchParams.get('state');
+    const payload = { url: 'http://127.0.0.1/callback?code=abc&state=' + encodeURIComponent(state) };
+    const first = await fetch(panel.base + '/api/antigravity-auth/paste', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+    const replay = await fetch(panel.base + '/api/antigravity-auth/paste', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+    assert.equal(first.status, 200);
+    assert.equal(replay.status, 400);
+    assert.equal((await replay.json()).error, 'invalid_oauth_state');
+    assert.equal(exchanges, 1);
   } finally {
     await panel.stop();
     await mock.close();
@@ -752,10 +785,12 @@ test('tokenExpiresAt появляется после paste-обмена', async 
     googleOauth: oauthMock,
   });
   try {
+    const start = await (await fetch(panel.base + '/api/antigravity-auth/start')).json();
+    const state = new URL(start.url).searchParams.get('state');
     const res = await fetch(panel.base + '/api/antigravity-auth/paste', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ url: 'http://127.0.0.1:20128/callback?code=abc' }),
+      body: JSON.stringify({ url: 'http://127.0.0.1:20128/callback?code=abc&state=' + encodeURIComponent(state) }),
     });
     assert.equal(res.status, 200);
     const st = await (await fetch(panel.base + '/api/settings/google-token')).json();
@@ -768,7 +803,7 @@ test('tokenExpiresAt появляется после paste-обмена', async 
   }
 });
 
-test('refresh-связка из заголовков переживает перезапуск сервера', async () => {
+test.skip('legacy refresh headers removed in security stage', async () => {
   const mock = await startMockGoogle();
   const oauth = await startMockOauth({ accessToken: 'restored-token' });
 

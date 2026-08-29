@@ -161,7 +161,14 @@ async function startPanel(opts = {}) {
     [createXKiroProvider({ url: opts.upstream || 'http://127.0.0.1:1' })];
   const { createStore } = require('../store');
   const store = opts.store || await createStore({ memory: true });
-  const app = createApp({ providers, antigravity: opts.antigravity, googleOauth: opts.googleOauth, store });
+  const app = createApp({
+    providers,
+    antigravity: opts.antigravity,
+    googleOauth: opts.googleOauth,
+    store,
+    logger: opts.logger,
+    requestTimeoutMs: opts.requestTimeoutMs,
+  });
 
   await new Promise((resolve) => app.listen(port, '127.0.0.1', resolve));
 

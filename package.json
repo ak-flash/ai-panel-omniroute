@@ -5,10 +5,19 @@
   "description": "Дашборд статистики AI-провайдеров (xKiro), каталог моделей и combo OmniRoute",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "node --test test/http.test.js test/model-match.test.js test/providers-registry.test.js test/security.test.js test/xkiro-adapter.test.js test/agentrouter-adapter.test.js",
+    "test:integration": "node --test test/server.test.js test/antigravity.test.js",
+    "test:coverage": "node --test --experimental-test-coverage"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "22.x"
+    }
   },
   "dependencies": {
     "sql.js": "^1.14.2"

@@ -7,10 +7,94 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { startMockUpstream, startAgentRouterUpstream, startPanel, startServerProcess } = require('./helpers');
+const { createStore } = require('../store');
 
 const CLIENT_KEY = 'client-key-456';
 const STORED_TOKEN = 'stored-agentrouter-token';
 const STORED_USER_ID = '49521';
+
+test('HTTP boundary: request ID, malformed JSON и безопасные ошибки', async () => {
+  const logs = [];
+  const panel = await startPanel({ logger: { error: (event, fields) => logs.push({ event, fields }) } });
+  try {
+    const badJson = await fetch(panel.base + '/api/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: '{',
+    });
+    assert.equal(badJson.status, 400);
+    assert.ok(badJson.headers.get('x-request-id'));
+    const badBody = await badJson.json();
+    assert.equal(badBody.error, 'bad_json');
+    assert.equal(badBody.requestId, badJson.headers.get('x-request-id'));
+
+    const wrongMethod = await fetch(panel.base + '/api/health', { method: 'POST' });
+    assert.equal(wrongMethod.status, 405);
+    assert.equal((await wrongMethod.json()).error, 'method_not_allowed');
+
+    const oversized = await fetch(panel.base + '/api/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: 'x'.repeat(2 * 1024 * 1024 + 1),
+    });
+    assert.equal(oversized.status, 413);
+    assert.equal((await oversized.json()).error, 'payload_too_large');
+
+    assert.ok(logs.every(({ fields }) => !JSON.stringify(fields).includes('Unexpected token')));
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('security: same-origin, headers и write-only config', async () => {
+  const store = await createStore({ memory: true });
+  await store.set('xkiroKey', 'secret-xkiro');
+  await store.set('omniKey', 'secret-omni');
+  await store.set('omniUrl', 'https://omniroute.example/api');
+  const panel = await startPanel({ store });
+  try {
+    const forbidden = await fetch(panel.base + '/api/config', { headers: { origin: 'https://evil.example' } });
+    assert.equal(forbidden.status, 403);
+    assert.equal(forbidden.headers.get('access-control-allow-origin'), null);
+
+    const response = await fetch(panel.base + '/api/config');
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(response.headers.get('x-frame-options'), 'DENY');
+    assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+    assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+    const text = await response.text();
+    assert.ok(!text.includes('secret-xkiro'));
+    assert.ok(!text.includes('secret-omni'));
+    const config = JSON.parse(text);
+    assert.equal(config.data.hasXkiroKey, true);
+    assert.equal(config.data.hasOmniKey, true);
+    assert.equal(config.data.omniUrl, 'https://omniroute.example/api');
+
+    const oldVault = await fetch(panel.base + '/api/settings/vault');
+    assert.equal(oldVault.status, 404);
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('security: OmniRoute URL берётся с сервера, клиентский URL игнорируется', async () => {
+  const mock = await startMockUpstream({ requireKey: false });
+  const store = await createStore({ memory: true });
+  await store.set('omniUrl', mock.url);
+  await store.set('omniKey', 'server-omni-key');
+  const panel = await startPanel({ store });
+  try {
+    const response = await fetch(panel.base + '/omniroute/v1/usage', {
+      headers: { 'x-omniroute-url': 'http://169.254.169.254', authorization: 'Bearer client-key' },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.plan, 'pro');
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
 
 test('интеграция: /api/config, адаптеры, статика', async () => {
   const mock = await startMockUpstream();

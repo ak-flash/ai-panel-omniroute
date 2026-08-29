@@ -464,10 +464,16 @@ main {
 .provider-card-head {
   align-items: flex-start;
   gap: 16px 24px;
-  margin: -20px -24px 20px;
-  padding: 20px 24px;
+  margin: -20px -24px 16px;
+  padding: 14px 24px;
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
+}
+
+/* xKiro: элементы шапки по вертикали по центру, компактнее по высоте */
+#cards > .provider-card-head {
+  align-items: center;
+  padding: 12px 24px;
 }
 
 .provider-identity {
@@ -597,7 +603,7 @@ main {
 }
 
 .provider-card-wallet .provider-card-head {
-  margin-bottom: -20px;
+  margin-bottom: -16px;
   border-bottom: 0;
 }
 
@@ -608,8 +614,8 @@ main {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px 24px;
-  margin: -20px -24px 20px;
-  padding: 20px 24px;
+  margin: -20px -24px 16px;
+  padding: 14px 24px;
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
 }
@@ -1752,8 +1758,8 @@ body[data-page="cheatsheet"] #status-dot { display: none; }
   }
 
   .provider-card-head {
-    margin: -14px -16px 16px;
-    padding: 16px;
+    margin: -14px -16px 12px;
+    padding: 12px 16px;
   }
 
   .provider-card-wallet .provider-card-head {
@@ -1761,8 +1767,8 @@ body[data-page="cheatsheet"] #status-dot { display: none; }
   }
 
   .ar-hero {
-    margin: -14px -16px 16px;
-    padding: 16px;
+    margin: -14px -16px 12px;
+    padding: 12px 16px;
   }
 
   .provider-balance {

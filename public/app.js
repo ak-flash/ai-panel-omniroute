@@ -21,15 +21,15 @@ let vaultLoaded = false;
 async function loadVault(){
   if(vaultLoaded) return vaultCache;
   if(location.protocol==='file:'){ vaultLoaded=true; vaultCache={}; return vaultCache; }
-  try{ const r=await fetch('/api/settings/vault'); const j=await r.json(); vaultCache=(j&&j.data)||{}; }catch{ vaultCache={}; }
+  try{ const r=await fetch('/api/config'); const j=await r.json(); vaultCache=(j&&j.data)||{}; }catch{ vaultCache={}; }
   vaultLoaded=true; return vaultCache;
 }
 function vaultGet(key, fallback=''){ if(vaultCache&&key in vaultCache) return vaultCache[key]; return fallback; }
 async function vaultSet(key, value){
   const v=value==null?'':String(value);
   if(vaultCache) vaultCache[key]=v;
-  if(location.protocol==='file:'){ try{ if(v) localStorage.setItem(key,v); else localStorage.removeItem(key);}catch{} return; }
-  try{ await fetch('/api/settings/vault',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key,value:v})}); }catch{}
+  if(location.protocol==='file:') return;
+  try{ await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({[key]:v})}); }catch{}
 }
 async function vaultRemove(key){ return vaultSet(key,''); }
 
@@ -69,7 +69,7 @@ const PROVIDER_FALLBACK = { id: 'xkiro', name: 'xKiro', site: 'https://xkiro.com
 
 // OmniRoute API: базовый адрес и пути.
 // Адрес и ключ хранятся в localStorage (настройки), иначе — прокси /omniroute.
-function getOmniBase() { return normalizeOmniUrl(getOmniUrl()); }
+function getOmniBase() { return ''; }
 const COMBO_LIST_PATH = '/api/combos';
 const COMBO_PATH = (id) => '/api/combos/' + encodeURIComponent(id);
 
@@ -113,7 +113,7 @@ function keyForProvider(id) {
   return '';
 }
 function getOmniUrl(){ return vaultLoaded ? (vaultGet('omniUrl')||'') : (()=>{try{return localStorage.getItem(LS_OMNI_URL)||'';}catch{return '';}})(); }
-function getOmniKey(){ return vaultLoaded ? (vaultGet('omniKey')||'') : (()=>{try{const v=localStorage.getItem(LS_OMNI_KEY);return v&&v.startsWith('enc:')?atob(v.slice(4)):v||'';}catch{return '';}})(); }
+function getOmniKey(){ return ''; }
 function getAgRefreshToken(){ return vaultGet('agRefreshToken')||''; }
 function setAgRefreshToken(t){ vaultSet('agRefreshToken', t); }
 
@@ -618,21 +618,7 @@ function activeCombo() {
 async function omniFetch(path, opts = {}) {
   const headers = {};
   if (opts.body !== undefined) headers['content-type'] = 'application/json';
-  const omniKey = getOmniKey();
-  if (omniKey) headers['authorization'] = 'Bearer ' + omniKey;
-
-  const omniBase = getOmniBase();
-  let url;
-  if (location.protocol !== 'file:') {
-    // Через прокси server.js: адрес инстанса передаём заголовком
-    url = '/omniroute' + path;
-    if (omniBase) headers['x-omniroute-url'] = omniBase;
-  } else if (omniBase) {
-    // Прямой запрос (режим file://) — OmniRoute должен разрешать CORS
-    url = omniBase + path;
-  } else {
-    throw new Error('Адрес OmniRoute не задан — откройте Настройки и укажите URL');
-  }
+  const url = '/omniroute' + path;
 
   const response = await fetch(url, {
     method: opts.method || 'GET',
@@ -1472,14 +1458,14 @@ function renderDlgProviderFields() {
 }
 
 on($btnSettings, 'click', () => {
-  $dlgKey.value = getKey() || '';
-  if ($dlgArKey) $dlgArKey.value = getAgentRouterKey();
+  $dlgKey.value = '';
+  if ($dlgArKey) $dlgArKey.value = '';
   if ($dlgArUser) $dlgArUser.value = getAgentRouterUserId();
   renderAliasRows();
   const $omniUrl = $id('dlg-omni-url');
   const $omniKey = $id('dlg-omni-key');
   if ($omniUrl) $omniUrl.value = getOmniUrl();
-  if ($omniKey) $omniKey.value = getOmniKey();
+  if ($omniKey) $omniKey.value = '';
   // Статус токена — с сервера (сами секреты клиенту не возвращаются)
   refreshAgStatus();
   $dlgResult.textContent = '';
@@ -1696,9 +1682,8 @@ on($dlgSave, 'click', () => {
   }
   if ($omniUrl || $omniKey) setOmniConfig(omniUrlClean, $omniKey ? $omniKey.value.trim() : '');
 
-  // Ключи всех провайдеров: непустые поля сохраняем (поля предзаполнены
-  // хранимыми значениями, так что неизменённое поле просто перезапишется).
-  // User ID сохраняем всегда: пустое значение просто удаляется из хранилища
+  // Секреты write-only: пустое поле означает «не изменять».
+  // User ID не секретен и сохраняется всегда.
   const xkiroCandidate = $dlgKey.value.trim();
   const arCandidate = $dlgArKey ? $dlgArKey.value.trim() : '';
   const arUserCandidate = $dlgArUser ? $dlgArUser.value.trim() : '';
