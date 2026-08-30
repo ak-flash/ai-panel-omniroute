@@ -35,6 +35,23 @@ test('same-origin учитывает reverse proxy headers и PUBLIC_ORIGIN', ()
   assert.equal(isSameOrigin({ headers: { host: 'ai-panel:8765' } }, 'https://ai-panel.home.ak-vps.ru', 'https://ai-panel.home.ak-vps.ru'), true);
 });
 
+test('same-origin разрешает прямой loopback-доступ при настроенном PUBLIC_ORIGIN', () => {
+  // Регрессия: локальный PUT/POST (браузер всегда шлёт Origin) к панели,
+  // развёрнутой за reverse proxy, не должен отбиваться как origin_forbidden
+  assert.equal(isSameOrigin({ headers: { host: 'localhost:8765' } }, 'http://localhost:8765', 'https://panel.example'), true);
+  assert.equal(isSameOrigin({ headers: { host: '127.0.0.1:8765' } }, 'http://127.0.0.1:8765', 'https://panel.example'), true);
+  assert.equal(isSameOrigin({ headers: { host: '[::1]:8765' } }, 'http://[::1]:8765', 'https://panel.example'), true);
+  // Локальный режим без PUBLIC_ORIGIN: Origin сравнивается с Host напрямую
+  assert.equal(isSameOrigin({ headers: { host: 'localhost:8765' } }, 'http://localhost:8765'), true);
+});
+
+test('same-origin отклоняет DNS rebinding при настроенном PUBLIC_ORIGIN', () => {
+  // Доверяется только loopback Host: evil.com, указывающий на 127.0.0.1,
+  // и LAN-адрес без allowlist не пройдут
+  assert.equal(isSameOrigin({ headers: { host: 'evil.example:8765' } }, 'http://evil.example:8765', 'https://panel.example'), false);
+  assert.equal(isSameOrigin({ headers: { host: '192.168.1.5:8765' } }, 'http://192.168.1.5:8765', 'https://panel.example'), false);
+});
+
 test('CORS allowlist нормализует origins', () => {
   assert.deepEqual(
     parseAllowedOrigins('https://panel.example/path, http://localhost:8765'),

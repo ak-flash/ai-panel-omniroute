@@ -36,16 +36,16 @@
 
     <div id="combo-details" hidden>
       <div class="combo-info">
-        <span class="badge" id="combo-strategy-badge"></span>
-        <span class="combo-meta" id="combo-targets-count"></span>
-      </div>
-      <div class="combo-toolbar">
-        <label for="combo-model-select">Модель:</label>
-        <select id="combo-model-select" class="select"></select>
-        <button id="combo-move-top" class="btn btn-primary" disabled><svg class="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18"/></svg> Переставить первой</button>
+        <div class="combo-info-meta">
+          <span class="badge" id="combo-strategy-badge"></span>
+          <span class="combo-meta" id="combo-targets-count"></span>
+        </div>
+        <span id="combo-reorder-hint" class="combo-reorder-hint">
+          Перетащите модель за значок слева, чтобы изменить порядок. Изменения сохраняются автоматически.
+        </span>
       </div>
       <div class="table-wrap">
-        <ol id="combo-models-list" class="combo-list"></ol>
+        <ol id="combo-models-list" class="combo-list" aria-describedby="combo-reorder-hint"></ol>
       </div>
     </div>
   </section>

@@ -33,9 +33,29 @@ function getExternalOrigin(req, publicOrigin = '') {
   try { return new URL(protocol + '://' + host).origin; } catch { return ''; }
 }
 
+/**
+ * Loopback-hostname (localhost / 127.0.0.0/8 / ::1) — прямой доступ
+ * к серверу с той же машины. Отличать loopback от прочих Host нужно,
+ * чтобы разрешение «Origin совпадает с Host» не открывало дверь
+ * DNS rebinding: чужой домен, указывающий на 127.0.0.1, не пройдёт.
+ */
+function isLoopbackHostname(hostname) {
+  // WHATWG URL не снимает скобки с IPv6-hostname ([::1])
+  if (hostname === 'localhost' || hostname === '::1' || hostname === '[::1]') return true;
+  return net.isIPv4(hostname) && hostname.startsWith('127.');
+}
+
 function isSameOrigin(req, origin, publicOrigin = '') {
   try {
-    return new URL(origin).origin === getExternalOrigin(req, publicOrigin);
+    const parsed = new URL(origin);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    // Прямой loopback-доступ: работает и когда панель развёрнута за
+    // reverse proxy (задан PUBLIC_ORIGIN), — локальная разработка/админка.
+    if (req.headers.host && parsed.host === req.headers.host && isLoopbackHostname(parsed.hostname)) {
+      return true;
+    }
+    // Доступ через reverse proxy (x-forwarded-*) или PUBLIC_ORIGIN.
+    return parsed.origin === getExternalOrigin(req, publicOrigin);
   } catch {
     return false;
   }

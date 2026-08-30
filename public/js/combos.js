@@ -37,7 +37,7 @@ export function extractComboTargets(combo) {
 
   return raw.map((t) => {
     if (typeof t === 'string') {
-      return { key: t, display: t };
+      return { key: t, display: t, _raw: t };
     }
     const model = t.model || '';
     // «provider/model» без длинного префикса провайдера вида openai-compatible-chat-…
@@ -49,6 +49,7 @@ export function extractComboTargets(combo) {
       display: applyAliases(model, loadAliases()) + (t.label ? '  [' + t.label + ']' : ''),
       modelId: model || shortModel,
       weight: t.weight,
+      _raw: t,
     };
   });
 }

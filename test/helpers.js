@@ -178,6 +178,7 @@ async function startPanel(opts = {}) {
     googleOauth: opts.googleOauth,
     store,
     logger: opts.logger,
+    publicOrigin: opts.publicOrigin,
     requestTimeoutMs: opts.requestTimeoutMs,
   });
 

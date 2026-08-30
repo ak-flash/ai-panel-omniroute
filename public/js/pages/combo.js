@@ -12,6 +12,7 @@ import { vaultSet, vaultGet } from '../settings.js';
 import { start } from '../boot.js';
 import { extractComboTargets, combosFromResponse } from '../combos.js';
 import { matchModel } from '../../model-match.js';
+import { showToast } from '../toast.js';
 
 // Статичные элементы страницы — доступны на момент eval модуля
 const $comboSelect = $id('combo-select');
@@ -21,8 +22,6 @@ const $comboStatus = $id('combo-status');
 const $comboDetails = $id('combo-details');
 const $comboStrategyBadge = $id('combo-strategy-badge');
 const $comboTargetsCount = $id('combo-targets-count');
-const $comboModelSelect = $id('combo-model-select');
-const $comboMoveTop = $id('combo-move-top');
 const $comboList = $id('combo-models-list');
 
 // Состояние страницы Combo (локальное — другим страницам не нужно)
@@ -81,12 +80,64 @@ function findModel(id) {
   return matchModel(session.models, id);
 }
 
+let dragSrcIdx = null;
+
+function saveReorderedCombo() {
+  const combo = activeCombo();
+  if (!combo || !activeComboData) return;
+
+  // Определяем целевой массив внутри activeComboData
+  const arr = Array.isArray(activeComboData.models)
+    ? activeComboData.models
+    : Array.isArray(activeComboData.targets)
+      ? activeComboData.targets
+      : activeComboData.config && activeComboData.config.auto && Array.isArray(activeComboData.config.auto.candidatePool)
+        ? activeComboData.config.auto.candidatePool
+        : null;
+  if (!arr) {
+    console.warn('[Combo] saveReorderedCombo: no models/targets/candidatePool array found');
+    return;
+  }
+
+  // Пересобираем массив в новом порядке из _raw
+  const reordered = comboModels.map((t) => t._raw);
+  if (reordered.some((r) => r == null)) {
+    console.warn('[Combo] saveReorderedCombo: some _raw entries are missing', reordered);
+    return;
+  }
+
+  // Заменяем содержимое исходного массива in-place
+  arr.length = 0;
+  reordered.forEach((item) => arr.push(item));
+
+  $comboStatus.textContent = 'Сохраняю порядок…';
+  omniFetch(COMBO_PATH(combo.id), {
+    method: 'PUT',
+    body: activeComboData,
+  }).then(() => {
+    $comboStatus.textContent = '';
+    showToast('Порядок сохранён');
+  }).catch((err) => {
+    console.error('[Combo] saveReorderedCombo PUT failed:', err);
+    showToast('Не удалось сохранить порядок: ' + (err && err.message ? err.message : err), { type: 'error', timeout: 6000 });
+    loadComboModels();
+  });
+}
+
 function renderComboList() {
   if (!$comboList) return; // элемент есть только на странице Combo
   $comboList.replaceChildren();
   comboModels.forEach((t, i) => {
     const li = document.createElement('li');
     if (i === 0) li.classList.add('top');
+    li.draggable = true;
+    li.dataset.idx = String(i);
+
+    const dragHandle = document.createElement('span');
+    dragHandle.className = 'combo-drag-handle';
+    dragHandle.title = 'Перетащить модель';
+    dragHandle.setAttribute('aria-hidden', 'true');
+    dragHandle.innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" focusable="false"><circle cx="5" cy="3" r="1.25"/><circle cx="11" cy="3" r="1.25"/><circle cx="5" cy="8" r="1.25"/><circle cx="11" cy="8" r="1.25"/><circle cx="5" cy="13" r="1.25"/><circle cx="11" cy="13" r="1.25"/></svg>';
 
     const rank = document.createElement('span');
     rank.className = 'combo-rank num';
@@ -98,7 +149,7 @@ function renderComboList() {
     name.textContent = t.display;
     if (m && m.display_name) name.title = m.display_name;
 
-    li.append(rank, name);
+    li.append(dragHandle, rank, name);
 
     if (m) {
       const tier = m.access_tier || 'paid';
@@ -121,6 +172,41 @@ function renderComboList() {
       badge.textContent = 'первая';
       li.appendChild(badge);
     }
+
+    li.addEventListener('dragstart', (e) => {
+      dragSrcIdx = i;
+      li.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(i));
+    });
+
+    li.addEventListener('dragend', () => {
+      li.classList.remove('dragging');
+      $comboList.querySelectorAll('.drag-over').forEach((el) => el.classList.remove('drag-over'));
+      dragSrcIdx = null;
+    });
+
+    li.addEventListener('dragover', (e) => {
+      if (dragSrcIdx == null || dragSrcIdx === i) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      li.classList.add('drag-over');
+    });
+
+    li.addEventListener('dragleave', () => {
+      li.classList.remove('drag-over');
+    });
+
+    li.addEventListener('drop', (e) => {
+      e.preventDefault();
+      li.classList.remove('drag-over');
+      if (dragSrcIdx == null || dragSrcIdx === i) return;
+      const moved = comboModels.splice(dragSrcIdx, 1)[0];
+      comboModels.splice(i, 0, moved);
+      renderComboList();
+      saveReorderedCombo();
+    });
+
     $comboList.appendChild(li);
   });
 }
@@ -135,21 +221,6 @@ function renderComboDetails() {
   $comboDetails.hidden = false;
 
   renderComboList();
-
-  $comboModelSelect.replaceChildren();
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = '— выберите target —';
-  $comboModelSelect.appendChild(placeholder);
-  for (let i = 0; i < comboModels.length; i++) {
-    const t = comboModels[i];
-    const opt = document.createElement('option');
-    opt.value = String(i);
-    opt.textContent = t.display;
-    $comboModelSelect.appendChild(opt);
-  }
-  $comboModelSelect.value = '';
-  $comboMoveTop.disabled = true;
 }
 
 async function loadComboModels() {
@@ -237,69 +308,5 @@ export async function init() {
 on($comboSelect, 'change', () => selectCombo($comboSelect.value));
 
 on($comboRefresh, 'click', () => loadCombos());
-
-on($comboModelSelect, 'change', () => {
-  $comboMoveTop.disabled = !$comboModelSelect.value;
-});
-
-// Главная функция: выбранный target встаёт первым, отправляем PUT в OmniRoute
-on($comboMoveTop, 'click', async () => {
-  const selectedIdx = parseInt($comboModelSelect.value, 10);
-  const combo = activeCombo();
-  if (isNaN(selectedIdx) || !combo || !activeComboData) return;
-
-  $comboModelSelect.value = '';
-  if (selectedIdx <= 0) {
-    $comboMoveTop.disabled = true;
-    return;
-  }
-
-  // Оптимистично переставляем models
-  const target = comboModels.splice(selectedIdx, 1)[0];
-  comboModels.unshift(target);
-  renderComboList();
-  $comboStatus.textContent = 'Сохраняю порядок…';
-
-  $comboMoveTop.disabled = true;
-  $comboModelSelect.disabled = true;
-  $comboSelect.disabled = true;
-
-  // Тот же порядок — в полном объекте combo для PUT.
-  // Реальное поле OmniRoute — models; на всякий случай умеем targets/candidatePool.
-  const updatedCombo = Object.assign({}, activeComboData);
-  const arr = Array.isArray(updatedCombo.models)
-    ? updatedCombo.models
-    : Array.isArray(updatedCombo.targets)
-      ? updatedCombo.targets
-      : updatedCombo.config && Array.isArray(updatedCombo.config.auto && updatedCombo.config.auto.candidatePool)
-        ? updatedCombo.config.auto.candidatePool
-        : null;
-  if (arr) {
-    const m = arr.splice(selectedIdx, 1)[0];
-    arr.unshift(m);
-  }
-
-  try {
-    await omniFetch(COMBO_PATH(combo.id), {
-      method: 'PUT',
-      body: updatedCombo,
-    });
-    activeComboData = updatedCombo;
-    $comboStatus.textContent =
-      'Порядок сохранён: «' + target.display + '» теперь первая.';
-  } catch (err) {
-    $comboStatus.textContent =
-      'Не удалось сохранить порядок: ' +
-      (err && err.message ? err.message : err) +
-      ' — перечитываю с сервера.';
-    await loadComboModels();
-    return;
-  } finally {
-    $comboModelSelect.disabled = false;
-    $comboSelect.disabled = false;
-  }
-
-  renderComboDetails();
-});
 
 start();

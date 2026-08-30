@@ -96,6 +96,30 @@ test('security: OmniRoute URL берётся с сервера, клиентск
   }
 });
 
+test('security: PUT через /omniroute с loopback Origin проходит при настроенном PUBLIC_ORIGIN', async () => {
+  // Регрессия: панель за reverse proxy (PUBLIC_ORIGIN), но локальный
+  // браузер шлёт PUT с Origin http://127.0.0.1:<port> — раньше это
+  // отбивалось 403 origin_forbidden (combo drag-and-drop не сохранялся)
+  const mock = await startMockUpstream({ requireKey: false });
+  const store = await createStore({ memory: true });
+  await store.set('omniUrl', mock.url);
+  await store.set('omniKey', 'server-omni-key');
+  const panel = await startPanel({ store, publicOrigin: 'https://panel.example' });
+  try {
+    const response = await fetch(panel.base + '/omniroute/v1/usage', {
+      method: 'PUT',
+      headers: { origin: panel.base, 'content-type': 'application/json' },
+      body: JSON.stringify({ models: [] }),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.plan, 'pro');
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
 test('интеграция: /api/config, адаптеры, статика', async () => {
   const mock = await startMockUpstream();
   const panel = await startPanel({ upstream: mock.url });
