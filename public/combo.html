@@ -49,6 +49,30 @@
       </div>
     </div>
   </section>
+
+  <!-- Последние combo-запросы: реальная модель за каждым запросом -->
+  <section id="combo-recent" class="stats combos-panel" hidden>
+    <div class="stats-head">
+      <span class="stats-provider">Последние combo-запросы</span>
+      <span class="combo-recent-meta" id="combo-recent-meta"></span>
+    </div>
+    <p id="combo-recent-status" class="hint" style="margin:0 0 8px"></p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Время</th>
+            <th scope="col">Combo</th>
+            <th scope="col">Реальная модель</th>
+            <th scope="col">Провайдер</th>
+            <th scope="col" class="num-col">Статус</th>
+          </tr>
+        </thead>
+        <tbody id="combo-recent-body"></tbody>
+      </table>
+    </div>
+    <p id="combo-recent-summary" class="hint" style="margin:8px 0 0"></p>
+  </section>
 </main>
 
 

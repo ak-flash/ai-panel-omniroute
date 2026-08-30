@@ -4,7 +4,7 @@
 
 ## Возможности
 
-**Управление Combo (OmniRoute)** — в IDE достаточно указать одну модель с именем Combo из OmniRoute, а панель удалённо управляет порядком моделей внутри него. Выбираете нужный combo из списка, видите все targets и их веса, ставите приоритетную модель на первое место — и OmniRoute сразу начинает маршрутизировать запросы на неё. Переключение модели в IDE не требуется.
+**Управление Combo (OmniRoute)** — в IDE достаточно указать одну модель с именем Combo из OmniRoute, а панель удалённо управляет порядком моделей внутри него. Выбираете нужный combo из списка, видите все targets и их веса, ставите приоритетную модель на первое место — и OmniRoute сразу начинает маршрутизировать запросы на неё. Переключение модели в IDE не требуется. Ниже — таблица «Последние combo-запросы»: какая модель реально ответила на каждый запрос через combo.
 
 **Статистика провайдеров** — мониторинг потребления и лимитов: баланс кошелька, зарезервированные средства, окна расхода (короткое ~5 ч и длинное ~7 д) с обратным отсчётом до сброса, бесплатные токены (xKiro), квоты по моделям Google AI Pro (Antigravity), баланс кошелька AgentRouter.
 
@@ -195,6 +195,7 @@ Access token хранится в памяти, refresh token — в encrypted st
 | `GET {omniUrl}/api/combos` | Список всех combo OmniRoute | — |
 | `GET {omniUrl}/api/combos/{id}` | Детали combo (targets, strategy) | — |
 | `PUT {omniUrl}/api/combos/{id}` | Обновить combo (перестановка targets) | — |
+| `GET {omniUrl}/api/usage/call-logs?limit=200` | Последние запросы: реальная модель (`model`) за combo-запросами; требует management-ключ | — |
 | `POST https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels` | Квоты Antigravity по моделям (нужен заголовок User-Agent `vscode/… (Antigravity/…)`) | Бесплатно |
 | `POST https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` | Групповые окна Antigravity (weekly / 5h) | Бесплатно |
 | `POST https://oauth2.googleapis.com/token` | Обмен кода / обновление access-token | Бесплатно |
@@ -217,6 +218,7 @@ npm test        # или: node --test
 - `test/providers-registry.test.js` — реестр вшитых провайдеров: список по умолчанию
 - `test/xkiro-adapter.test.js` — фабрика адаптера xKiro против mock-upstream: пути, приоритет ключей, ошибки сети и формата ответа
 - `test/model-match.test.js` — сопоставление модели из combo с каталогом (префикс провайдера, «:free»-варианты, тарифные бейджи)
+- `test/call-logs.test.js` — разбор call logs OmniRoute: combo-строки, реальная модель, сортировка, сводка по моделям
 - `test/server.test.js` — интеграционные: сервер поднимается через `createApp` с адаптерами на mock-upstream (плюс smoke-тест CLI-запуска), проверяются `/api/config`, `/api/providers/…`, оба формата прокси и статика
 - `test/antigravity.test.js` — квоты Antigravity против mock-Google: заголовки (Bearer + User-Agent), fallback `{}` при 403, кеш 60 с, все коды ошибок, refresh-token flow (автообновление, повтор после 401, invalid_grant), групповые окна weekly/5h и тесты «токен/секреты не попадают в ответы/логи»
 
@@ -235,7 +237,8 @@ npm test        # или: node --test
 1. Выбор combo из списка — панель загружает все combo через `GET /api/combos`, при выборе — детали через `GET /api/combos/{id}`.
 2. Просмотр списка targets (provider/model) с нумерацией и стратегией роутинга.
 3. **Переставить первой** — выберите target в списке и нажмите кнопку; порядок обновится через `PUT /api/combos/{id}`.
-4. **Алиасы провайдеров** — настройте-readable имена для provider ID из OmniRoute (в Настройках).
+4. **Последние combo-запросы → реальная модель** — таблица последних 10 запросов через combo (из `GET /api/usage/call-logs?limit=200` OmniRoute): время, имя combo, модель которая реально ответила (`model`), провайдер и статус; под таблицей — сводка «какая модель сколько раз».
+5. **Алиасы провайдеров** — настройте-readable имена для provider ID из OmniRoute (в Настройках).
 
 Combo создаются и удаляются в самом OmniRoute (Dashboard → Combos). Панель только отображает и переставляет targets.
 
@@ -277,6 +280,7 @@ ai-panel/
 │   ├── agentrouter-adapter.test.js
 │   ├── antigravity.test.js
 │   ├── model-match.test.js
+│   ├── call-logs.test.js # разбор call logs (combo → реальная модель)
 │   └── server.test.js
 ├── package.json       # скрипты start/test — зависимостей нет
 ├── logs/              # диагностика провайдеров (ai-panel.log) — не коммитится
@@ -303,6 +307,7 @@ ai-panel/
     │   ├── events.js  # мини-шина событий (диалог ↔ страницы)
     │   ├── aliases.js # сопоставление имён OmniRoute (хранилище + UI)
     │   ├── combos.js  # разбор combo-объектов OmniRoute
+    │   ├── call-logs.js # разбор call logs OmniRoute (combo → реальная модель)
     │   ├── formatters.js # чистые форматтеры (unit-тесты)
     │   └── pages/     # entry и логика каждой страницы:
     │                  #   index, models, combo, cheatsheet

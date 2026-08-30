@@ -452,6 +452,11 @@ main {
   margin-bottom: 16px;
 }
 
+/* Секция «Последние combo-запросы» на странице Combo */
+#combo-recent {
+  margin-top: 16px;
+}
+
 .stats-head {
   display: flex;
   align-items: center;
@@ -1302,6 +1307,27 @@ li.top .combo-model-id {
 .badge.top {
   margin-left: auto;
   color: var(--accent);
+  border-color: currentColor;
+}
+
+/* Последние combo-запросы → реальная модель */
+.combo-recent-meta {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.badge.status-ok {
+  color: var(--ok);
+  border-color: currentColor;
+}
+
+.badge.status-err {
+  color: var(--danger);
+  border-color: currentColor;
+}
+
+.badge.status-other {
+  color: var(--text-muted);
   border-color: currentColor;
 }
 

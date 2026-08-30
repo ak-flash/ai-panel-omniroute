@@ -24,6 +24,12 @@ const DIRECT_PATHS = {
 export const COMBO_LIST_PATH = '/api/combos';
 export const COMBO_PATH = (id) => '/api/combos/' + encodeURIComponent(id);
 
+// Call logs OmniRoute: список последних запросов с реальной моделью,
+// которая обслужила запрос (поле model), и запрошенной (requestedModel).
+export const CALL_LOGS_PATH = '/api/usage/call-logs';
+export const CALL_LOGS_URL = (limit) =>
+  CALL_LOGS_PATH + '?limit=' + encodeURIComponent(limit);
+
 /**
  * Запрос к API активного провайдера (resource: 'usage' | 'models').
  * Ключ: явный (проверка в настройках) → ключ этого провайдера из
