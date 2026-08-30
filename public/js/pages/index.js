@@ -5,7 +5,7 @@
    ============================================================ */
 
 import { session, PROVIDER_FALLBACK } from '../session.js';
-import { $id, on } from '../dom.js';
+import { $id } from '../dom.js';
 import { icon } from '../../icons.js';
 import { setStatus, touchUpdated } from '../topbar.js';
 import { showBanner, hideBanner } from '../banner.js';
@@ -26,7 +26,6 @@ const $walletHeld = $id('wallet-held');
 const $shortCard = $id('card-short');
 const $longCard = $id('card-long');
 const $freeCard = $id('card-free');
-const $btnRefresh = $id('btn-refresh');
 const $live = $id('live');
 const $agSection = $id('antigravity-quota');
 const $agCards = $id('ag-cards');
@@ -204,8 +203,13 @@ function renderUsage(data) {
 
 async function loadUsage() {
   setStatus('loading', 'Обновляю…');
-  $btnRefresh.disabled = true;
-  $btnRefresh.classList.add('spinning');
+  // Кнопка «Обновить» появляется вместе с topbar (partials.js) уже после
+  // eval модуля — ищем в момент использования, а не на уровне модуля
+  const btn = $id('btn-refresh');
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('spinning');
+  }
   try {
     const data = await providerRequest('usage');
     renderUsage(data);
@@ -216,8 +220,10 @@ async function loadUsage() {
     if (err && err.status === 401) msg += ' — проверьте ключ';
     showBanner(msg);
   } finally {
-    $btnRefresh.disabled = false;
-    $btnRefresh.classList.remove('spinning');
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('spinning');
+    }
   }
 }
 
@@ -582,7 +588,11 @@ function refreshAll() {
   loadAgentRouterCard();
 }
 
-on($btnRefresh, 'click', refreshAll);
+// Кнопка «Обновить» создаётся при инъекции topbar (на eval модуля
+// её ещё нет), поэтому клик ловим делегированием
+document.addEventListener('click', (e) => {
+  if (e.target instanceof Element && e.target.closest('#btn-refresh')) refreshAll();
+});
 
 // Обновление при возврате на вкладку
 document.addEventListener('visibilitychange', () => {

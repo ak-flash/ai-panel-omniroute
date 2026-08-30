@@ -15,6 +15,7 @@ const { getServerConfig, validateMasterKey } = require('../security');
 const { loadProviders } = require('../providers');
 const { createApp } = require('./app');
 const { createStore } = require('./store');
+const { createFileLogger } = require('./file-logger');
 
 /** Читает .env рядом с корнем проекта (не перезаписывает уже заданное). */
 function loadEnvFile(fileName) {
@@ -57,7 +58,14 @@ async function main() {
     process.exit(1);
   }
 
-  const providers = loadProviders();
+  // Диагностика провайдеров (не-JSON ответы, отказы токенов) — в файл
+  // logs/ai-panel.log (рядом с data/ хранилища) и в консоль; история
+  // переживёт перезапуск. Путь вшит намеренно — без настроек в .env
+  const providerLog = createFileLogger({
+    file: path.join(__dirname, '..', 'logs', 'ai-panel.log'),
+  });
+
+  const providers = loadProviders({ log: providerLog });
 
   // Хранилище открываем до старта сервера: неверный master key или
   // повреждённая база видны сразу в логе, а не на первом запросе

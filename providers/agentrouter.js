@@ -27,6 +27,10 @@ const QUOTA_PER_UNIT = 500000;
 // Таймаут запросов к API провайдера
 const REQUEST_TIMEOUT_MS = 20000;
 
+// CDN периодически отдаёт HTML-заглушку с HTTP 200 вместо JSON. Повторяем
+// такой запрос сразу: это временный сбой upstream, а не невалидный токен.
+const NON_JSON_RETRY_COUNT = 2;
+
 /**
  * Создаёт адаптер провайдера AgentRouter.
  *
@@ -49,6 +53,9 @@ function createAgentRouterProvider(config = {}) {
   const upstream = String(config.url || DEFAULT_URL).replace(/\/+$/, '');
   const apiKey = config.apiKey || '';
   const configUserId = config.userId || '';
+  // Диагностика уходит в log из config (в CLI — файловый логгер,
+  // см. src/file-logger.js); по умолчанию — консоль (тесты, dev)
+  const log = typeof config.log === 'function' ? config.log : console.warn;
 
   // Авторизация: Authorization: Bearer <access-токен> + New-Api-User <id>
   const authScheme = 'authorization';
@@ -60,40 +67,62 @@ function createAgentRouterProvider(config = {}) {
   };
 
   async function apiGet(pathname, key = '', userId = '') {
-    const headers = { accept: 'application/json', ...buildHeaders(key || apiKey, userId) };
-    try {
-      const response = await fetch(upstream + pathname, {
-        headers,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
+    const headers = {
+      accept: 'application/json',
+      'user-agent': 'AI-Panel/0.1 (+https://agentrouter.org)',
+      ...buildHeaders(key || apiKey, userId),
+    };
 
-      const text = await response.text();
-      if (!text) return { status: response.status, data: {} };
-
+    for (let attempt = 0; attempt <= NON_JSON_RETRY_COUNT; attempt += 1) {
       try {
-        return { status: response.status, data: JSON.parse(text) };
-      } catch {
-        // Не-JSON вместо JSON — обычно HTML-заглушка защиты (Cloudflare и
-        // т.п.) или страница ошибки: показываем статус и content-type
-        // upstream, чтобы диагноз был виден прямо в интерфейсе панели.
-        const contentType = response.headers.get('content-type') || 'content-type отсутствует';
+        const response = await fetch(upstream + pathname, {
+          headers,
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+
+        const text = await response.text();
+        if (!text) return { status: response.status, data: {} };
+
+        try {
+          return { status: response.status, data: JSON.parse(text) };
+        } catch {
+          // Не-JSON с HTTP 200 обычно является временной HTML-заглушкой
+          // CDN/WAF. Повторять HTTP-ошибки нельзя: их статус уже описывает
+          // постоянную для этого запроса проблему.
+          const contentType = response.headers.get('content-type') || 'content-type отсутствует';
+          if (response.status === 200 && attempt < NON_JSON_RETRY_COUNT) {
+            log(
+              `[AgentRouter] ${pathname}: не-JSON ответ (HTTP ${response.status}, ${contentType}) —` +
+                ` повтор ${attempt + 1} из ${NON_JSON_RETRY_COUNT}`,
+            );
+            continue;
+          }
+
+          // Тело заглушки — в консоль сервера (одной строкой, с обрезкой):
+          // по нему видно, кто отвечает (Cloudflare, страница провайдера,
+          // анти-бот проверка), а в интерфейс панели HTML-мусор не попадает.
+          const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 300);
+          log(
+            `[AgentRouter] ${pathname}: не-JSON ответ (HTTP ${response.status}, ${contentType}):`,
+            snippet || '(пустое тело)',
+          );
+          return {
+            status: 502,
+            data: {
+              error: 'bad_response',
+              message: `Провайдер вернул не-JSON ответ (HTTP ${response.status}, ${contentType})`,
+            },
+          };
+        }
+      } catch (err) {
         return {
           status: 502,
           data: {
-            error: 'bad_response',
-            message: `Провайдер вернул не-JSON ответ (HTTP ${response.status}, ${contentType})`,
+            error: 'provider_error',
+            message: err instanceof Error ? err.message : String(err),
           },
         };
       }
-    } catch (err) {
-      // Ошибка сети / DNS / таймаут
-      return {
-        status: 502,
-        data: {
-          error: 'provider_error',
-          message: err instanceof Error ? err.message : String(err),
-        },
-      };
     }
   }
 
@@ -110,8 +139,8 @@ function createAgentRouterProvider(config = {}) {
     const authFailed =
       status === 401 || (status === 200 && data && data.success === false);
     if (authFailed) {
-      // Причина отклонения от new-api (китайский текст) — только в лог сервера
-      if (upstreamMsg) console.warn('[AgentRouter] токен отклонён:', upstreamMsg);
+      // Причина отклонения от new-api (китайский текст) — только в лог
+      if (upstreamMsg) log('[AgentRouter] токен отклонён:', upstreamMsg);
       // Разные причины отклонения — разные подсказки (проверено на живом
       // сайте): токен не найден / нет заголовка New-Api-User / ID не совпал
       const message = /New-Api-User/i.test(upstreamMsg)

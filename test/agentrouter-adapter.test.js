@@ -3,7 +3,7 @@
 // Юнит-тесты фабрики адаптера AgentRouter (providers/agentrouter.js)
 // против mock-upstream: путь, Authorization, формула квоты, ошибки.
 
-const test = require('node:test');
+const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const { createAgentRouterProvider } = require('../providers/agentrouter');
 const { startAgentRouterUpstream, getFreePort } = require('./helpers');
@@ -114,20 +114,106 @@ test('в ответе нет quota → 502 bad_response', async () => {
   }
 });
 
-test('не-JSON ответ → 502 bad_response с диагнозом upstream', async () => {
-  const mock = await startAgentRouterUpstream({ raw: '<html>502 Bad Gateway</html>' });
+test('временный не-JSON ответ с HTTP 200 повторяется', async () => {
+  const mock = await startAgentRouterUpstream({
+    responses: [
+      { raw: '<html>Checking your browser</html>', contentType: 'text/html' },
+      { body: { success: true, data: { group: 'vip', quota: 500000 } } },
+    ],
+  });
+  try {
+    const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN });
+    const { status, data } = await provider.getUsage();
+    assert.equal(status, 200);
+    assert.equal(data.wallet.balance_usd, 1);
+    assert.equal(mock.seen.length, 2);
+    assert.equal(mock.seen[0].accept, 'application/json');
+  } finally {
+    await mock.close();
+  }
+});
+
+test('постоянный не-JSON ответ → 502 после трёх попыток', async () => {
+  const mock = await startAgentRouterUpstream({
+    raw: '<html>502 Bad Gateway</html>',
+    contentType: 'text/html',
+  });
   try {
     const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN });
     const { status, data } = await provider.getUsage();
     assert.equal(status, 502);
     assert.equal(data.error, 'bad_response');
-    // В сообщении — HTTP-статус и content-type upstream (диагностика
-    // HTML-заглушек защиты вроде Cloudflare без доступа к серверу)
-    assert.match(data.message, /HTTP 200, text\/plain/);
-    // Запрос помечен как ожидающий JSON
-    assert.equal(mock.seen[0].accept, 'application/json');
+    assert.match(data.message, /HTTP 200, text\/html/);
+    assert.equal(mock.seen.length, 3);
   } finally {
     await mock.close();
+  }
+});
+
+test('не-JSON HTTP-ошибка не повторяется', async () => {
+  const mock = await startAgentRouterUpstream({
+    code: 503,
+    raw: '<html>Service Unavailable</html>',
+    contentType: 'text/html',
+  });
+  try {
+    const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN });
+    const { status, data } = await provider.getUsage();
+    assert.equal(status, 502);
+    assert.equal(data.error, 'bad_response');
+    assert.match(data.message, /HTTP 503, text\/html/);
+    assert.equal(mock.seen.length, 1);
+  } finally {
+    await mock.close();
+  }
+});
+
+// Тело HTML-заглушки — только в консоль сервера (диагностика), в интерфейс
+// панели попадает короткое сообщение со статусом и content-type
+test('не-JSON ответ логируется в консоль сервера с телом заглушки', async () => {
+  const warn = mock.method(console, 'warn');
+  const upstream = await startAgentRouterUpstream({
+    raw: '<html>Request blocked by WAF</html>',
+    contentType: 'text/html',
+  });
+  try {
+    const provider = createAgentRouterProvider({ url: upstream.url, apiKey: TOKEN });
+    await provider.getUsage();
+    const lines = warn.mock.calls.map((c) => c.arguments.join(' '));
+    assert.ok(
+      lines.some((l) => l.includes('/api/user/self') && l.includes('text/html') && l.includes('Request blocked by WAF')),
+    );
+  } finally {
+    warn.mock.restore();
+    await upstream.close();
+  }
+});
+
+// В CLI вместо console.warn внедряется файловый логгер (src/main.js):
+// все диагностические строки адаптера должны уходить в него
+test('log из config используется вместо console.warn (включая отказ токена)', async () => {
+  const warn = mock.method(console, 'warn');
+  const logs = [];
+  const upstream = await startAgentRouterUpstream({
+    body: { message: '无权进行此操作，access token 无效', success: false },
+  });
+  try {
+    const provider = createAgentRouterProvider({
+      url: upstream.url,
+      apiKey: 'bad-token',
+      log: (...args) => logs.push(args.join(' ')),
+    });
+    await provider.getUsage();
+    assert.equal(logs.length, 1);
+    assert.match(logs[0], /\[AgentRouter\] токен отклонён: 无权/);
+    // Внедрённый log перехватил всё — в консоль адаптер не писал
+    assert.equal(
+      warn.mock.calls.filter((c) => c.arguments.join(' ').includes('[AgentRouter]')).length,
+      0,
+    );
+  } finally {
+    warn.mock.restore();
+    await upstream.close();
   }
 });
 

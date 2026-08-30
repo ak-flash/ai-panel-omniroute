@@ -106,6 +106,7 @@ function startMockUpstream(opts = {}) {
  * Опции:
  *   code / body — переопределить код и JSON-ответ
  *   raw         — отдать сырую строку вместо JSON (тесты не-JSON ответов)
+ *   responses   — последовательность объектов { code, body, raw, contentType }
  *
  * Возвращает { url, seen, close }: seen — лог запросов { url, auth, accept }.
  */
@@ -121,11 +122,16 @@ function startAgentRouterUpstream(opts = {}) {
       accept: req.headers['accept'] || '',
     });
 
-    if (opts.raw !== undefined) {
-      res.writeHead(opts.code || 200, { 'content-type': 'text/plain' });
-      return res.end(opts.raw);
+    const responseOpts = Array.isArray(opts.responses)
+      ? opts.responses[Math.min(seen.length - 1, opts.responses.length - 1)]
+      : opts;
+    if (responseOpts.raw !== undefined) {
+      res.writeHead(responseOpts.code || 200, {
+        'content-type': responseOpts.contentType || 'text/plain',
+      });
+      return res.end(responseOpts.raw);
     }
-    return json(res, opts.code || 200, opts.body || {
+    return json(res, responseOpts.code || 200, responseOpts.body || {
       success: true,
       message: '',
       data: {

@@ -247,6 +247,7 @@ ai-panel/
 ├── src/               # серверная часть (этап 3 рефакторинга)
 │   ├── app.js         # createApp: сборка приложения, security-периметр, error boundary, lifecycle
 │   ├── main.js        # CLI-запуск: .env, проверка конфига, listen, graceful shutdown
+│   ├── file-logger.js # файловый лог диагностики провайдеров (logs/ai-panel.log)
 │   ├── routes/        # модули маршрутов: providers, proxy, omniroute, antigravity, config
 │   ├── antigravity-service.js # состояние Google-авторизации и кеш квот
 │   ├── agentrouter-tracker.js # ежедневный снимок баланса AgentRouter
@@ -278,6 +279,7 @@ ai-panel/
 │   ├── model-match.test.js
 │   └── server.test.js
 ├── package.json       # скрипты start/test — зависимостей нет
+├── logs/              # диагностика провайдеров (ai-panel.log) — не коммитится
 ├── .env               # настройки (порт) — не коммитится
 ├── .env.example       # шаблон настроек
 ├── .gitignore

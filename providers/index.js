@@ -13,9 +13,12 @@ const { createAgentRouterProvider } = require('./agentrouter');
 
 const FACTORIES = { xkiro: createXKiroProvider, agentrouter: createAgentRouterProvider };
 
-/** Собирает адаптеры вшитых провайдеров в порядке FACTORIES. */
-function loadProviders() {
-  return Object.keys(FACTORIES).map((id) => FACTORIES[id]());
+/**
+ * Собирает адаптеры вшитых провайдеров в порядке FACTORIES.
+ * opts пробрасываются в фабрики (сейчас — log: функция логирования).
+ */
+function loadProviders(opts = {}) {
+  return Object.keys(FACTORIES).map((id) => FACTORIES[id](opts));
 }
 
 module.exports = { loadProviders, FACTORIES };

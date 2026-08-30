@@ -4,6 +4,7 @@
 // против mock-upstream: пути, ключи, ошибки сети и формата ответа.
 
 const test = require('node:test');
+const { mock } = require('node:test');
 const assert = require('node:assert/strict');
 const { createXKiroProvider } = require('../providers/xkiro');
 const { startMockUpstream, getFreePort } = require('./helpers');
@@ -99,6 +100,31 @@ test('пустое тело ответа → 200 и {}', async () => {
     assert.deepEqual(data, {});
   } finally {
     await mock.close();
+  }
+});
+
+test('не-JSON ответ логируется через log из config, а не в консоль', async () => {
+  const warn = mock.method(console, 'warn');
+  const logs = [];
+  const mockUpstream = await startMockUpstream({ usageRaw: '<html>Request blocked by WAF</html>' });
+  try {
+    const provider = createXKiroProvider({
+      url: mockUpstream.url,
+      apiKey: CONFIG_KEY,
+      log: (...args) => logs.push(args.join(' ')),
+    });
+    const { status, data } = await provider.getUsage();
+    assert.equal(status, 502);
+    assert.equal(data.error, 'bad_response');
+    assert.match(logs[0], /\[xKiro\] \/v1\/usage: не-JSON ответ \(HTTP 200, text\/plain\):/);
+    assert.match(logs[0], /Request blocked by WAF/);
+    assert.equal(
+      warn.mock.calls.filter((c) => c.arguments.join(' ').includes('[xKiro]')).length,
+      0,
+    );
+  } finally {
+    warn.mock.restore();
+    await mockUpstream.close();
   }
 });
 

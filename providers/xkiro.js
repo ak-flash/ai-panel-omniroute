@@ -32,6 +32,9 @@ function createXKiroProvider(config = {}) {
   const name = config.name || DEFAULT_NAME;
   const upstream = String(config.url || DEFAULT_URL).replace(/\/+$/, '');
   const apiKey = config.apiKey || '';
+  // Диагностика уходит в log из config (в CLI — файловый логгер,
+  // см. src/file-logger.js); по умолчанию — консоль (тесты, dev)
+  const log = typeof config.log === 'function' ? config.log : console.warn;
 
   // xKiro авторизует запросы заголовком x-api-key
   const authScheme = 'x-api-key';
@@ -53,8 +56,14 @@ function createXKiroProvider(config = {}) {
       } catch {
         // Не-JSON вместо JSON — обычно HTML-заглушка защиты (Cloudflare и
         // т.п.) или страница ошибки: показываем статус и content-type
-        // upstream, чтобы диагноз был виден прямо в интерфейсе панели.
+        // upstream в интерфейсе панели, а тело заглушки (одной строкой,
+        // с обрезкой) — в лог сервера, по нему видно, кто отвечает.
         const contentType = response.headers.get('content-type') || 'content-type отсутствует';
+        const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 300);
+        log(
+          `[xKiro] ${pathname}: не-JSON ответ (HTTP ${response.status}, ${contentType}):`,
+          snippet || '(пустое тело)',
+        );
         return {
           status: 502,
           data: {
