@@ -37,6 +37,8 @@ npm start
 
 Прямой запуск через `file://` не поддерживается: интерфейс зависит от серверного API и encrypted vault.
 
+Панель работает и без OmniRoute, но странице **Combo** нужен отдельно установленный OmniRoute — см. раздел [«Combo (OmniRoute)»](#combo-omniroute).
+
 ### Вариант Б — за reverse proxy
 
 Если reverse proxy работает в другом контейнере или сетевом namespace, задайте публичный origin:
@@ -113,6 +115,17 @@ Baseline HTTP-контракта и принятые решения описан
 
 ## Провайдеры
 
+Поддерживаемые провайдеры и что панель умеет для каждого:
+
+| Провайдер | Что показывает панель | Ключ / авторизация | Заводится в |
+|---|---|---|---|
+| **xKiro** | План, окна расхода (5 ч / 7 д), бесплатные токены, баланс кошелька; каталог моделей с ценами | API-ключ (`sk-xt-…`) | `FACTORIES` (реестр) |
+| **AgentRouter** | Баланс кошелька, израсходовано, число запросов, группа аккаунта, расход за сутки | Access-токен + User ID (`New-Api-User`) | `FACTORIES` (реестр) |
+| **Antigravity** | Квоты Google AI Pro по моделям + групповые окна (5 ч / неделя) | Google OAuth (refresh-token) | Отдельный сервис `src/antigravity-service.js` |
+| **OmniRoute** | Combo: список, targets, порядок; последние combo-запросы и реальная модель | Management-ключ (Bearer) | Прокси `src/routes/omniroute.js` |
+
+xKiro и AgentRouter — вшитые провайдеры реестра (селектор в шапке, `/proxy/{id}/…`); Antigravity и OmniRoute подключаются отдельно через ⚙ Настройки.
+
 Логика работы с API конкретного провайдера — фабрика адаптера в каталоге `providers/`:
 
 ### Архитектура
@@ -131,6 +144,8 @@ flowchart TD
 
 - `providers/xkiro.js` — `createXKiroProvider(config)` возвращает адаптер с функциями `getUsage(key)`, `getModels(key)` и авторизацией `x-api-key`
 - `providers/agentrouter.js` — `createAgentRouterProvider(config)` — пока только баланс кошелька: `getUsage(key)` читает профиль `GET /api/user/self`, авторизация `Authorization: Bearer <access-токен>`
+- `providers/antigravity.js` — `createAntigravityProvider(config)`: `getQuota({token, project})` и `getQuotaSummary({token, project})` для квот Google AI Pro; токен берётся из OAuth-flow, а не из ключа. В `FACTORIES` не входит — адаптер использует `src/antigravity-service.js`
+- `providers/google-oauth.js` — `createGoogleOauth(config)`: `exchangeCode(…)` (обмен одноразового кода после входа) и `refresh(…)` (автообновление access-token по refresh-token)
 - `providers/index.js` — реестр: `FACTORIES` (id → фабрика) и `loadProviders()`, возвращает список вшитых адаптеров
 
 Набор провайдеров вшит в код: активен каждый из `FACTORIES`, первый — активный по умолчанию. Настройки провайдеров в окружении не задаются (в `.env` — только `PORT`): адрес API вшит в фабрику, ключ всегда присылает клиент.
@@ -227,6 +242,24 @@ npm test        # или: node --test
 ## Combo (OmniRoute)
 
 Страница **Combo** (`/combo.html`) управляет routing combo из вашего OmniRoute-инстанса. Ключ xKiro для неё не нужен — запросы идут через OmniRoute.
+
+**Требуется установленный OmniRoute.** OmniRoute — отдельное приложение (open-source AI-gateway, MIT, [github.com/diegosouzapw/OmniRoute](https://github.com/diegosouzapw/OmniRoute)), которое нужно установить и запустить самостоятельно: панель подключается к уже работающему инстансу и сама его не поднимает. Без OmniRoute страница Combo работать не будет.
+
+Установка (нужен Node.js ≥ 22.22.2, поддерживаются также 24–26):
+
+```bash
+npm install -g omniroute
+omniroute            # дашборд и API появятся на http://localhost:20128
+```
+
+Вариант через Docker:
+
+```bash
+docker run -d --name omniroute --restart unless-stopped --stop-timeout 40 \
+  -p 127.0.0.1:20128:20128 -v omniroute-data:/app/data diegosouzapw/omniroute:latest
+```
+
+В примере выше Docker публикует порт только на `127.0.0.1` хоста; если панель работает в другом контейнере/namespace, откройте порт на нужный интерфейс и укажите доступный URL в Настройках.
 
 **Настройка:** откройте **⚙ Настройки** в панели, введите URL OmniRoute (например `http://localhost:20128`) и, если инстанс требует management-авторизацию, ключ с правами management. URL и ключ хранятся в encrypted store сервера. Клиент обращается только к `/omniroute/…`; сервер валидирует сохранённый URL и добавляет management key в `Authorization: Bearer …`.
 
