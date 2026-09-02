@@ -38,11 +38,11 @@ export function topbarHTML(page) {
       ${nav}
     </nav>
     <div class="topbar-actions"><span id="status-dot" class="dot"></span><span id="status-text" class="status-label">${statusText}</span><span id="updated-wrap" class="updated"><time id="updated" hidden></time></span>${refreshBtn}
-      <button id="btn-theme" class="btn" aria-label="Переключить тему" title="Переключить тему">${icon('moon')}</button>
       <button id="btn-settings" class="btn btn-primary" aria-haspopup="dialog">${icon('cog')} Настройки</button>
     </div>
   </div>
   <div class="topbar-end">
+    <button id="btn-theme" class="btn" aria-label="Переключить тему" title="Переключить тему">${icon('moon')}</button>
     <button id="btn-topbar-toggle" class="topbar-toggle" aria-expanded="false" aria-controls="topbar-collapse" aria-label="Меню">${icon('bars-3')}</button>
   </div>
 </header>`;

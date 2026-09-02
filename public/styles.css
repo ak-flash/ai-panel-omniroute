@@ -1755,6 +1755,35 @@ body[data-page="cheatsheet"] #status-dot { display: none; }
 
   .topbar-end {
     position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .topbar-end #btn-theme {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .topbar-end #btn-theme svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .topbar-end #btn-theme:hover {
+    background: var(--surface);
   }
 
   .topbar-collapse {
