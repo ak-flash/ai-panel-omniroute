@@ -27,11 +27,24 @@ function registerProviderRoutes(router, {
     let clientUserId = req.headers['x-agentrouter-user-id'] || '';
     if (!clientKey || !clientUserId) {
       try {
-        const s = await (await getStore()).snapshot();
-        const storeField = storeKeys[params.id];
-        if (!clientKey && storeField && s[storeField]) clientKey = s[storeField];
-        const userField = userFields[params.id];
-        if (!clientUserId && userField && s[userField]) clientUserId = s[userField];
+        const st = await getStore();
+        // Сначала пробуем активный аккаунт (RFC-0003)
+        if (!clientKey) {
+          const active = await st.accounts.getActiveCredential(params.id);
+          if (active) {
+            if (active.api_key) clientKey = active.api_key;
+            else if (active.key) clientKey = active.key;
+            if (!clientUserId && active.user_id) clientUserId = active.user_id;
+          }
+        }
+        // Фолбэк на legacy kv-ключи (для обратной совместимости)
+        if (!clientKey || !clientUserId) {
+          const s = await st.snapshot();
+          const storeField = storeKeys[params.id];
+          if (!clientKey && storeField && s[storeField]) clientKey = s[storeField];
+          const userField = userFields[params.id];
+          if (!clientUserId && userField && s[userField]) clientUserId = s[userField];
+        }
       } catch {}
     }
 

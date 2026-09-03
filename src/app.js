@@ -33,6 +33,7 @@ const { registerProxyRoutes } = require('./routes/proxy');
 const { registerOmnirouteRoutes } = require('./routes/omniroute');
 const { registerAntigravityRoutes } = require('./routes/antigravity');
 const { registerConfigRoutes } = require('./routes/config');
+const { registerAccountRoutes } = require('./routes/accounts');
 
 /**
  * Собирает HTTP-сервер панели. Провайдеры/адаптеры передаются
@@ -129,6 +130,7 @@ function createApp({
     storeKeys: PROVIDER_STORE_KEYS,
     validateUpstreamUrl,
   });
+  registerAccountRoutes(router, { getStore });
   const serveStatic = createStaticHandler({ publicDir: path.join(__dirname, '..', 'public') });
   router.add(['GET', 'HEAD'], '*', ({ req, res, url }) => serveStatic(req, res, url.pathname));
 

@@ -58,10 +58,61 @@ AES-256-GCM, IV 12 байт, тег аутентичности 16 байт. Фо
 `agentrouterUserId`), OmniRoute (`omniUrl`, `omniKey`), Antigravity
 (`agRefreshToken`, `agProject`, `agEmail`), настройки UI и служебные снимки
 (`aliases`, `comboActive`, `dlgProvider`, `modelsProvider`,
-`statsProvider`, `agentrouterDayBalance`).
+`statsProvider`, `agentrouterDayBalance`), `notificationThresholds`,
+`activeAccount` (имя активного аккаунта для multi-account credentials,
+RFC-0003).
 
 Произвольное имя записать нельзя — попытка вернёт `unknown_key`. Чтение
 (`snapshot`) терпимо к унаследованным записям из старых версий.
+
+## Multi-Account Credentials (RFC-0003)
+
+Начиная с версии 2026-09-03 в базе есть вторая таблица — `credentials` —
+для хранения credentials нескольких профилей (аккаунтов) на каждый
+провайдер. Это позволяет держать, например, два xKiro-аккаунта или
+несколько OmniRoute-инстансов и переключаться между ними без
+перезапуска панели.
+
+### Структура
+
+```sql
+CREATE TABLE credentials (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_name TEXT NOT NULL,           -- псевдоним, [a-z0-9_-]{1,32}
+  provider_id TEXT NOT NULL,            -- xkiro | agentrouter | omniroute | antigravity
+  credential_type TEXT NOT NULL,        -- api_key | user_id | oauth_refresh | url | key | ...
+  encrypted_value TEXT NOT NULL,        -- v1:<iv>:<tag>:<data> (AES-256-GCM)
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(account_name, provider_id, credential_type)
+);
+CREATE INDEX idx_credentials_account ON credentials(account_name);
+```
+
+Каждое значение зашифровано тем же master-ключом, что и поля в `kv`. Секреты
+наружу не возвращаются — только булевы `has*` поля и `account_name`.
+
+### Лимиты
+
+- Имя аккаунта: 1–32 символа из `[a-z0-9_-]`.
+- Максимум 10 аккаунтов в базе.
+- Внутри одного аккаунта один провайдер может иметь несколько полей:
+  `agentrouter` — `api_key` + `user_id`; `antigravity` — `oauth_refresh` +
+  `project_id` + `email`; `omniroute` — `url` + `key`.
+
+### API
+
+См. `src/routes/accounts.js` и раздел 11.1 плана. Эндпоинты
+`/api/accounts`, `/api/accounts/:name`, `/api/accounts/active`.
+
+### Миграция с плоских ключей
+
+При первом открытии базы с новой версией, если в `kv` есть
+`xkiroKey`/`agentrouterKey`+`agentrouterUserId`/`omniUrl`+`omniKey`/
+`agRefreshToken`+`agProject`+`agEmail`, они переносятся в аккаунт
+`default`. Legacy-ключи в `kv` остаются для обратной совместимости
+(старый фолбэк в `/api/providers/:id/*`), но новый API использует только
+таблицу `credentials` + поле `activeAccount`.
 
 ## Гарантии записи
 

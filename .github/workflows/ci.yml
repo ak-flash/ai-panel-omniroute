@@ -6,7 +6,23 @@ on:
   pull_request:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run stylelint
+      - run: npm run test:ci
+      - run: npm run lint:docs
+      - run: npm run check:secrets
+
   check:
+    needs: lint
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -18,11 +34,10 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - run: npm run lint
-      - run: npm run stylelint
       - run: npm test
 
   smoke:
+    needs: check
     # Браузерные smoke-тесты: Playwright сам поднимает сервер (webServer в конфиге)
     runs-on: ubuntu-latest
     steps:
@@ -34,3 +49,27 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run test:playwright
+
+  security:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:security
+
+  deps:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high

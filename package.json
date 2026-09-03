@@ -14,9 +14,13 @@
     "test:playwright:headed": "playwright test --headed",
     "start": "node server.js",
     "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "node --test test/http.test.js test/model-match.test.js test/formatters.test.js test/call-logs.test.js test/providers-registry.test.js test/security.test.js test/store.test.js test/file-logger.test.js test/xkiro-adapter.test.js test/agentrouter-adapter.test.js test/notifications.test.js",
-    "test:integration": "node --test test/server.test.js test/antigravity.test.js",
-    "test:coverage": "node --test --experimental-test-coverage"
+    "test:unit": "node --test test/http.test.js test/model-match.test.js test/formatters.test.js test/call-logs.test.js test/providers-registry.test.js test/security.test.js test/store.test.js test/accounts.test.js test/accounts-merge.test.js test/file-logger.test.js test/xkiro-adapter.test.js test/agentrouter-adapter.test.js test/notifications.test.js",
+    "test:integration": "node --test test/server.test.js test/antigravity.test.js test/accounts-api.test.js",
+    "test:ci": "node --test --experimental-test-coverage --test-coverage-include='src/**/*.js,public/js/**/*.js,security.js,http.js,router.js' --test-coverage-lines=95 --test-coverage-functions=95 --test-coverage-branches=95 --test-reporter=spec",
+    "test:coverage": "node --test --experimental-test-coverage",
+    "test:security": "npm run test:unit -- --test-name-pattern security",
+    "check:secrets": "node scripts/check-secrets.js",
+    "lint:docs": "node scripts/check-docs.js"
   },
   "engines": {
     "node": ">=18"

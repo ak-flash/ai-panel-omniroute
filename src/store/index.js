@@ -22,6 +22,7 @@ const path = require('path');
 const { StoreError, encryptValue, decryptValue } = require('./crypto');
 const { resolveMasterKey } = require('./master-key');
 const { openDatabase, createPersistQueue } = require('./persistence');
+const { createAccountStore } = require('./accounts');
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 
@@ -29,6 +30,10 @@ const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 // master-ключом. Не расшифровывается → ключ неверный.
 const VERIFY_KEY = '__verify';
 const VERIFY_MAGIC = 'ai-panel-store-ok';
+
+// Ключ, под которым хранится имя активного аккаунта (RFC-0003).
+// Добавлен в allowlist, чтобы не падать на unknown_key при миграции.
+const ACTIVE_ACCOUNT_KEY = 'activeAccount';
 
 // Allowlist ключей панели (схема хранилища). Писать можно только их;
 // чтение (snapshot) остаётся терпимым к унаследованным записям.
@@ -39,6 +44,7 @@ const STORE_KEYS = [
   'aliases', 'comboActive', 'dlgProvider', 'modelsProvider', 'statsProvider',
   'agentrouterDayBalance',
   'notificationThresholds',
+  ACTIVE_ACCOUNT_KEY,
 ];
 
 const UPSERT_SQL =
@@ -77,6 +83,75 @@ async function createStore({ dbPath, keyPath, memory = false, masterKey: explici
   const { db } = await openDatabase({ dbPath: resolvedDbPath, inMemory });
   db.run('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
   const queue = createPersistQueue({ db, dbPath: resolvedDbPath, inMemory });
+
+  // ---------- Multi-Account Credentials (RFC-0003) ----------
+  // Создаём аккаунт-стор и мигрируем legacy-ключи в аккаунт 'default',
+  // если это первая инициализация. Делаем это до assertOpen-логики.
+  const legacySnapshot = (() => {
+    try {
+      const rows = readRows(db, 'SELECT key, value FROM kv');
+      const out = {};
+      for (const [k, v] of rows) {
+        if (k === VERIFY_KEY) continue;
+        const r = decryptValue(masterKey, v);
+        if (r.ok) out[k] = r.value;
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  })();
+
+  const accountStore = createAccountStore({
+    db,
+    queue,
+    masterKey,
+    ensureSchema: () => {
+      db.run(
+        'CREATE TABLE IF NOT EXISTS credentials (' +
+          'id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
+          'account_name TEXT NOT NULL, ' +
+          'provider_id TEXT NOT NULL, ' +
+          'credential_type TEXT NOT NULL, ' +
+          'encrypted_value TEXT NOT NULL, ' +
+          'created_at INTEGER NOT NULL, ' +
+          'updated_at INTEGER NOT NULL, ' +
+          'UNIQUE(account_name, provider_id, credential_type)' +
+          ')',
+      );
+      db.run('CREATE INDEX IF NOT EXISTS idx_credentials_account ON credentials(account_name)');
+    },
+    hasLegacyCredential: () =>
+      Boolean(
+        legacySnapshot.xkiroKey ||
+          legacySnapshot.agentrouterKey ||
+          legacySnapshot.omniUrl ||
+          legacySnapshot.agRefreshToken,
+      ),
+    migrateFromLegacy: () => legacySnapshot,
+    getActiveAccountName: async () => {
+      try {
+        const v = await get(ACTIVE_ACCOUNT_KEY);
+        return v || 'default';
+      } catch {
+        return 'default';
+      }
+    },
+    setActiveAccountName: async (name) => {
+      if (typeof name !== 'string' || !/^[a-z0-9_-]{1,32}$/.test(name)) {
+        throw new StoreError('invalid_account_name', 'Имя активного аккаунта недопустимо');
+      }
+      await set(ACTIVE_ACCOUNT_KEY, name);
+    },
+  });
+
+  // Запускаем миграцию, если она ещё не выполнена
+  try {
+    await accountStore.migrateFromLegacyIfNeeded();
+  } catch (err) {
+    // Миграция не критична — продолжаем без неё, лог выведется наверху
+    if (process.env.AIPANEL_DEBUG) console.warn('[store] legacy migration skipped:', err.message);
+  }
 
   // ---------- Проверка целостности и master-ключа при открытии ----------
   // Неверный ключ не расшифровывает ни одну запись разом; повреждение
@@ -213,8 +288,9 @@ async function createStore({ dbPath, keyPath, memory = false, masterKey: explici
     snapshot,
     flush,
     close,
+    accounts: accountStore,
     _masterKey: masterKey,
   };
 }
 
-module.exports = { createStore, DATA_DIR, STORE_KEYS, StoreError };
+module.exports = { createStore, DATA_DIR, STORE_KEYS, StoreError, ACTIVE_ACCOUNT_KEY };
