@@ -1,0 +1,11 @@
+Add threshold notification service
+
+- Pure evaluator in public/js/notifications.js: xKiro, AgentRouter,
+  Antigravity thresholds with stable ids for dedup
+- Notifications section in settings dialog (public/partials.js,
+  public/js/dialog.js) with four numeric inputs
+- Toast dispatch and per-session dedup in pages/index.js
+  after loadUsage/loadAgentRouterCard/loadAntigravityQuota
+- 22 unit tests (test/notifications.test.js) plus schema and
+  writability of notificationThresholds in the store/config
+- Documented in RFC-0002 and marked stage 9 item 2 as done

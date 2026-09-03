@@ -54,11 +54,63 @@ async function refreshAgStatus(prefix) {
   } catch { /* нет API — статусную строку не трогаем */ }
 }
 
+function readNotificationThresholds() {
+  try {
+    const raw = vaultGet('notificationThresholds', '');
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch { return {}; }
+}
+
+function fillNotificationFields(t) {
+  const x = (t && t.xkiro) || {};
+  const ar = (t && t.agentrouter) || {};
+  const ag = (t && t.antigravity) || {};
+  const set = (id, v) => { const el = $id(id); if (el) el.value = v == null ? '' : String(v); };
+  set('dlg-th-xkiro-short', x.short_window_pct);
+  set('dlg-th-xkiro-long', x.long_window_pct);
+  set('dlg-th-ar-balance', ar.balance_below_usd);
+  set('dlg-th-ag-remaining', ag.remaining_below_pct);
+}
+
+function collectNotificationFields() {
+  const num = (id) => {
+    const el = $id(id);
+    if (!el) return undefined;
+    const v = el.value.trim();
+    if (v === '') return undefined;
+    const n = Number(v.replace(',', '.'));
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const t = {
+    xkiro: {
+      short_window_pct: num('dlg-th-xkiro-short'),
+      long_window_pct: num('dlg-th-xkiro-long'),
+    },
+    agentrouter: {
+      balance_below_usd: num('dlg-th-ar-balance'),
+    },
+    antigravity: {
+      remaining_below_pct: num('dlg-th-ag-remaining'),
+    },
+  };
+  // Дропаем пустые блоки: не указан ни один порог — порог-объект не
+  // сохраняем (evaluateXKiro/Agent/Antigravity возвращают [] для undefined)
+  for (const k of Object.keys(t)) {
+    const block = t[k];
+    if (!Object.values(block).some((v) => v != null)) delete t[k];
+    else for (const f of Object.keys(block)) if (block[f] == null) delete block[f];
+  }
+  return t;
+}
+
 function openDialog() {
   $dlgKey.value = '';
   if ($dlgArKey) $dlgArKey.value = '';
   if ($dlgArUser) $dlgArUser.value = getAgentRouterUserId();
   renderAliasRows();
+  fillNotificationFields(readNotificationThresholds());
   const $omniUrl = $id('dlg-omni-url');
   const $omniKey = $id('dlg-omni-key');
   if ($omniUrl) $omniUrl.value = getOmniUrl();
@@ -190,6 +242,10 @@ async function saveDialog() {
   if (xkiroCandidate) entries.xkiroKey = xkiroCandidate;
   if (arCandidate) entries.agentrouterKey = arCandidate;
   const candidate = dlgProvider === 'agentrouter' ? arCandidate : xkiroCandidate;
+
+  // Пороги уведомлений: собираем числа из полей, сериализуем JSON
+  const thresholds = collectNotificationFields();
+  entries.notificationThresholds = JSON.stringify(thresholds);
 
   const saved = await saveSettings(entries);
   if (!saved.ok) {

@@ -601,7 +601,7 @@ flowchart TD
 **Порядок:**
 
 1. ✅ AgentRouter models/usage windows как расширение адаптера (реализовано, [RFC-0001](RFC-0001-agentrouter-models.md)).
-2. Пороговые уведомления как отдельный notification service.
+2. ✅ Пороговые уведомления как отдельный notification service (реализовано, [RFC-0002](RFC-0002-notifications.md)): чистая логика в `public/js/notifications.js`, секция в диалоге, тосты на главной с дедупликацией за сессию.
 3. Несколько аккаунтов через сущности `account` и `credential`, а не новые KV-поля.
 4. Управление процессами — только local-only, с allowlist команд и аудитом.
 

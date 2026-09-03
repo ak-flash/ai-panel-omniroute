@@ -284,6 +284,15 @@ test('нет New-Api-User → подсказка про поле User ID', async
 });
 
 // Живой сайт: ID не совпадает с владельцем токена → своя подсказка
+test('New-Api-User не совпал с токеном → подсказка про User ID', async () => {
+  const mock = await startAgentRouterUpstream({
+    body: { message: '无权进行此操作，与登录用户不匹配', success: false },
+  });
+  try {
+    const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN, userId: '1' });
+    const { status, data } = await provider.getUsage();
+    assert.equal(status, 401);
+    assert.match(data.message, /не совпадает/);
   } finally {
     await mock.close();
   }

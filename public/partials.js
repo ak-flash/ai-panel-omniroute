@@ -138,6 +138,25 @@ const _DIALOG_HTML = `<dialog id="dlg">
     </div>
     <div class="dlg-card">
       <div class="dlg-card-head">
+        <span class="dlg-card-icon" aria-hidden="true">${icon('sparkles')}</span>
+        <div>
+          <h3 class="dlg-card-title">Уведомления</h3>
+          <p class="dlg-card-sub">Тост при достижении порога; пусто — не проверять</p>
+        </div>
+      </div>
+      <div class="dlg-th-grid">
+        <label for="dlg-th-xkiro-short">xKiro: короткое окно ≥, %</label>
+        <input type="number" id="dlg-th-xkiro-short" min="1" max="100" placeholder="80" autocomplete="off">
+        <label for="dlg-th-xkiro-long">xKiro: длинное окно ≥, %</label>
+        <input type="number" id="dlg-th-xkiro-long" min="1" max="100" placeholder="80" autocomplete="off">
+        <label for="dlg-th-ar-balance">AgentRouter: баланс ниже, $</label>
+        <input type="number" id="dlg-th-ar-balance" min="0" step="0.5" placeholder="10" autocomplete="off">
+        <label for="dlg-th-ag-remaining">Antigravity: остаток &lt;, %</label>
+        <input type="number" id="dlg-th-ag-remaining" min="1" max="100" placeholder="20" autocomplete="off">
+      </div>
+    </div>
+    <div class="dlg-card">
+      <div class="dlg-card-head">
         <span class="dlg-card-icon" aria-hidden="true">${icon('tag')}</span>
         <div>
           <h3 class="dlg-card-title">Сопоставление имён</h3>

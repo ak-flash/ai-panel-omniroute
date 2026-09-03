@@ -12,7 +12,7 @@ const { AppError, readJson, sendJson } = require('../../http');
 const WRITABLE_KEYS = [
   'xkiroKey', 'agentrouterKey', 'agentrouterUserId', 'omniUrl', 'omniKey',
   'agRefreshToken', 'agProject', 'aliases', 'comboActive', 'dlgProvider',
-  'modelsProvider', 'statsProvider',
+  'modelsProvider', 'statsProvider', 'notificationThresholds',
 ];
 
 function registerConfigRoutes(router, {
@@ -68,6 +68,7 @@ function registerConfigRoutes(router, {
       dlgProvider: s.dlgProvider || '',
       modelsProvider: s.modelsProvider || '',
       statsProvider: s.statsProvider || '',
+      notificationThresholds: s.notificationThresholds || '',
       agentrouterUserId: s.agentrouterUserId || '',
       omniUrl: s.omniUrl || '',
       hasXkiroKey: Boolean(s.xkiroKey),

@@ -10,11 +10,13 @@ import { icon } from '../../icons.js';
 import { setStatus, touchUpdated } from '../topbar.js';
 import { showBanner, hideBanner } from '../banner.js';
 import { providerRequest, fetchAntigravityQuota, AG_ERROR_MESSAGES, omniFetch, COMBO_LIST_PATH, COMBO_PATH } from '../api.js';
-import { keyForProvider, getAgentRouterKey } from '../settings.js';
+import { keyForProvider, getAgentRouterKey, vaultGet } from '../settings.js';
 import { onEvent } from '../events.js';
 import { start } from '../boot.js';
 import { fmtUsd, compact, dur, num, pct, barClass } from '../formatters.js';
 import { extractComboTargets, combosFromResponse } from '../combos.js';
+import { showToast } from '../toast.js';
+import { evaluateAll } from '../notifications.js';
 
 // Статичные элементы страницы — доступны на момент eval модуля
 const $cards = $id('cards');
@@ -41,6 +43,38 @@ let deadlineLong = null;
 let deadlineFree = null;
 let antigravityQuota = null; // квоты Antigravity (модели Google AI Pro)
 let antigravityEmail = '';   // email аккаунта Google (из сервера, после входа)
+let agentRouterUsage = null; // последний ответ /api/providers/agentrouter/usage (для порогов)
+
+// Множество id уведомлений, уже показанных в этой сессии — чтобы
+// один и тот же тост не появлялся после каждой кнопки «Обновить».
+// Дропается при перезагрузке страницы (сессия = текущий запуск).
+const notified = new Set();
+
+function readThresholds() {
+  try {
+    const raw = vaultGet('notificationThresholds', '');
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === 'object' ? obj : null;
+  } catch {
+    return null;
+  }
+}
+
+function checkNotifications() {
+  const thresholds = readThresholds();
+  if (!thresholds) return;
+  const data = {
+    xkiro: usage,
+    agentrouter: agentRouterUsage,
+    antigravity: antigravityQuota,
+  };
+  for (const note of evaluateAll(data, thresholds)) {
+    if (notified.has(note.id)) continue;
+    notified.add(note.id);
+    showToast(note.message, { type: note.level });
+  }
+}
 
 // Бейдж имени провайдера в шапке карточки статистики. Сам выбор
 // провайдера выполняется в boot() по сохранённому значению (statsProvider).
@@ -213,6 +247,7 @@ async function loadUsage() {
   try {
     const data = await providerRequest('usage');
     renderUsage(data);
+    checkNotifications();
     hideBanner();
   } catch (err) {
     setStatus('err', 'Ошибка');
@@ -245,7 +280,9 @@ async function loadAgentRouterCard() {
     const data = await providerRequest('usage', {
       provider: { id: 'agentrouter', name: 'AgentRouter' },
     });
+    agentRouterUsage = data;
     renderAgentRouterCard(data);
+    checkNotifications();
   } catch (err) {
     $card.hidden = false;
     const $err = $id('ar-error');
@@ -317,6 +354,7 @@ async function loadAntigravityQuota() {
     antigravityQuota = { error: 'network' };
   }
   renderAntigravityQuota();
+  checkNotifications();
   return antigravityQuota;
 }
 

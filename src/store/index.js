@@ -38,6 +38,7 @@ const STORE_KEYS = [
   'agRefreshToken', 'agProject', 'agEmail',
   'aliases', 'comboActive', 'dlgProvider', 'modelsProvider', 'statsProvider',
   'agentrouterDayBalance',
+  'notificationThresholds',
 ];
 
 const UPSERT_SQL =
