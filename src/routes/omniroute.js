@@ -12,7 +12,7 @@ const { handleProxy } = require('../proxy');
 
 const PROXY_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'];
 
-function registerOmnirouteRoutes(router, { getStore, validateUpstreamUrl }) {
+function registerOmnirouteRoutes(router, { getStore, validateUpstreamUrl, logger }) {
   async function handle({ req, res, url }) {
     const s = await (await getStore()).snapshot();
     const omniUrl = String(s.omniUrl || '').trim();
@@ -28,7 +28,7 @@ function registerOmnirouteRoutes(router, { getStore, validateUpstreamUrl }) {
     if (s.omniKey) headers.authorization = 'Bearer ' + s.omniKey;
     delete headers['x-omniroute-url'];
     req.headers = headers;
-    return handleProxy(req, res, url, { prefix: '/omniroute', upstream });
+    return handleProxy(req, res, url, { prefix: '/omniroute', upstream, logger });
   }
 
   router.add(PROXY_METHODS, '/omniroute', handle);

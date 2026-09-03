@@ -12,7 +12,7 @@ const { handleProxy } = require('../proxy');
 
 const PROXY_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'];
 
-function registerProxyRoutes(router, { providers, activeProvider }) {
+function registerProxyRoutes(router, { providers, activeProvider, logger }) {
   function handle({ req, res, url }) {
     if (!activeProvider) throw new AppError(503, 'no_provider', 'Провайдер не настроен');
     let provider = activeProvider;
@@ -22,7 +22,7 @@ function registerProxyRoutes(router, { providers, activeProvider }) {
       provider = providers.find((p) => p.id === m[1]);
       prefix = '/proxy/' + m[1];
     }
-    return handleProxy(req, res, url, { prefix, upstream: provider.upstream });
+    return handleProxy(req, res, url, { prefix, upstream: provider.upstream, logger });
   }
 
   router.add(PROXY_METHODS, '/proxy', handle);

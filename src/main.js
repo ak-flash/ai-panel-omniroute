@@ -37,33 +37,59 @@ function loadEnvFile(fileName) {
       const hash = value.indexOf(' #');
       if (hash !== -1) value = value.slice(0, hash).trim();
     }
+    // Не перезаписываем уже заданные переменные: окружение (PM2, docker,
+    // системные) имеет приоритет над .env (стандартное поведение dotenv).
+    // Если в окружении остался устаревший PORT — обновите PM2:
+    // `pm2 restart ai-panel --update-env` (см. README).
     if (!(name in process.env)) process.env[name] = value;
   }
 }
 
 async function main() {
+  // Диагностика источника конфигурации: было ли PORT/HOST задано в
+  // окружении ДО загрузки .env (если да — окружение приоритетнее).
+  const envBefore = { PORT: process.env.PORT, HOST: process.env.HOST };
   loadEnvFile('.env');
+  const envFromFile = { PORT: process.env.PORT, HOST: process.env.HOST };
+
+  // Ранний логгер: создаётся ДО проверок конфигурации, чтобы любое
+  // падение на этапе старта (неверный HOST, повреждённая база, нет
+  // .env) попадало в logs/ai-panel.log, а не только в stdout/stderr
+  // PM2. Путь намеренно вшит — файл рядом с data/ хранилища.
+  const logDir = path.join(__dirname, '..', 'logs');
+  const logFile = path.join(logDir, 'ai-panel.log');
+  const bootLog = createFileLogger({ file: logFile });
+
   let serverConfig;
   try {
     serverConfig = getServerConfig();
   } catch (err) {
-    console.error(err.message);
+    bootLog.error('[boot] Ошибка конфигурации:', err.message);
     process.exit(1);
   }
   const { port: PORT, host: HOST, publicOrigin } = serverConfig;
+
+  // Откуда взят PORT/HOST: если окружение задало значение до загрузки
+  // .env — оно победило. Расхождение обычно означает устаревший env в
+  // PM2/docker: лечится `pm2 restart ai-panel --update-env`.
+  const portSource = envFromFile.PORT !== envBefore.PORT
+    ? '.env'
+    : (envBefore.PORT != null ? 'окружение (pm2/docker)' : 'по умолчанию (.env/8765)');
+  const hostSource = envFromFile.HOST !== envBefore.HOST
+    ? '.env'
+    : (envBefore.HOST != null ? 'окружение' : 'по умолчанию (127.0.0.1/0.0.0.0)');
+  if (bootLog.warnFile && typeof bootLog.warnFile === 'function') {
+    bootLog.warnFile(`[boot] конфигурация: HOST=${HOST} (${hostSource}), PORT=${PORT} (${portSource})`);
+  }
   try {
     validateMasterKey(process.env.AIPANEL_MASTER_KEY);
   } catch (err) {
-    console.error(err.message);
+    bootLog.error('[boot] Ошибка master key:', err.message);
     process.exit(1);
   }
 
-  // Диагностика провайдеров (не-JSON ответы, отказы токенов) — в файл
-  // logs/ai-panel.log (рядом с data/ хранилища) и в консоль; история
-  // переживёт перезапуск. Путь вшит намеренно — без настроек в .env
-  const providerLog = createFileLogger({
-    file: path.join(__dirname, '..', 'logs', 'ai-panel.log'),
-  });
+  // Провайдеры ждут функцию log(...args) (не-JSON ответы, отказы токенов).
+  const providerLog = bootLog.log.bind(bootLog);
 
   const providers = loadProviders({ log: providerLog });
 
@@ -73,20 +99,26 @@ async function main() {
   try {
     store = await createStore({});
   } catch (err) {
-    console.error('Хранилище: ' + (err && err.message ? err.message : err));
+    bootLog.error('[boot] Хранилище:', err && err.message ? err.message : err);
     process.exit(1);
   }
 
-  const app = createApp({ providers, publicOrigin, store });
+  const app = createApp({ providers, publicOrigin, store, logger: bootLog });
   if (typeof app.startDailyAgentRouterTracker === 'function') app.startDailyAgentRouterTracker();
 
   app.on('error', (err) => {
-    console.error('Не удалось запустить сервер:', err.message);
+    bootLog.error('[boot] Не удалось запустить сервер:', err.message);
     process.exit(1);
   });
   app.listen(PORT, HOST, () => {
-    console.log(`AI Панель · http://${HOST}:${PORT}`);
-    for (const p of providers) console.log('  провайдер ' + p.name + ' (' + p.id + '): ' + p.upstream);
+    const msg = `AI Панель · http://${HOST}:${PORT}`;
+    console.log(msg);
+    bootLog.infoFile(msg);
+    for (const p of providers) {
+      const line = '  провайдер ' + p.name + ' (' + p.id + '): ' + p.upstream;
+      console.log(line);
+      bootLog.infoFile(line);
+    }
   });
 
   // Graceful shutdown: остановить трекер и закрыть слушатель
@@ -102,6 +134,14 @@ async function main() {
 
 module.exports = { main, loadEnvFile };
 if (require.main === module) main().catch((err) => {
-  console.error(err && err.message ? err.message : err);
+  const msg = err && err.message ? err.message : String(err);
+  console.error(msg);
+  // Финальный fallback: если ошибка всплыла за пределами main()
+  // (bootLog уже не доступен), пишем в файл напрямую
+  try {
+    const logFile = path.join(__dirname, '..', 'logs', 'ai-panel.log');
+    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+    fs.appendFileSync(logFile, new Date().toISOString() + ' [ERROR] [boot] ' + msg + '\n');
+  } catch {}
   process.exit(1);
 });

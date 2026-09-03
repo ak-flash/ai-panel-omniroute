@@ -29,6 +29,9 @@ const REQUEST_TIMEOUT_MS = 15000;
 function createAntigravityProvider(config = {}) {
   const name = config.name || DEFAULT_NAME;
   const upstream = String(config.url || DEFAULT_URL).replace(/\/+$/, '');
+  // Диагностика сети/токенов в log из config (в CLI — файловый логгер);
+  // по умолчанию — консоль (тесты, dev)
+  const log = typeof config.log === 'function' ? config.log : console.warn;
 
   /** Один POST к указанному internal-методу Google. */
   async function callInternal(method, token, project) {
@@ -46,8 +49,11 @@ function createAntigravityProvider(config = {}) {
       let body = null;
       try { body = await response.json(); } catch {}
       return { status: response.status, body };
-    } catch {
+    } catch (err) {
       // Сеть / DNS / таймаут — наружу мапится в 502 (см. getQuota)
+      const msg = err instanceof Error ? err.message : String(err);
+      const cause = err instanceof Error && err.cause ? err.cause.message : '';
+      log(`[Antigravity] ${method}: сеть/таймаут — ${msg}${cause ? ' (причина: ' + cause + ')' : ''}`);
       return { status: 0, body: null };
     }
   }

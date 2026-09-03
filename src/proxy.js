@@ -13,8 +13,10 @@ const { AppError, readBody, sendNoContent } = require('../http');
 
 const PROXY_TIMEOUT_MS = 30000;
 
-async function handleProxy(req, res, url, { prefix, upstream }) {
+async function handleProxy(req, res, url, { prefix, upstream, logger }) {
   if (req.method === 'OPTIONS') return sendNoContent(res);
+  // Логгер — объект с error/warn/info (файловый логгер) либо console
+  const log = logger || console;
   const body = await readBody(req);
   const suffix = url.pathname.replace(new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '') + url.search;
   const target = upstream + suffix;
@@ -46,6 +48,8 @@ async function handleProxy(req, res, url, { prefix, upstream }) {
     res.end();
   } catch (error) {
     if (res.headersSent) return res.destroy();
+    const msg = error instanceof Error ? error.message : String(error);
+    log.error(`[proxy] fetch упал: ${req.method} ${target} — ${msg}`, { cause: error });
     throw new AppError(502, 'proxy_error', 'Upstream недоступен', { cause: error });
   } finally {
     clearTimeout(timeout);

@@ -74,11 +74,14 @@ function createXKiroProvider(config = {}) {
       }
     } catch (err) {
       // Ошибка сети / DNS / таймаут
+      const msg = err instanceof Error ? err.message : String(err);
+      const cause = err instanceof Error && err.cause ? err.cause.message : '';
+      log(`[xKiro] ${pathname}: сеть/таймаут — ${msg}${cause ? ' (причина: ' + cause + ')' : ''}`);
       return {
         status: 502,
         data: {
           error: 'provider_error',
-          message: err instanceof Error ? err.message : String(err),
+          message: msg,
         },
       };
     }

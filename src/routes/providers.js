@@ -17,6 +17,7 @@ function registerProviderRoutes(router, {
   storeKeys,
   userFields,
   getDayBalanceUsd,
+  logger = console,
 }) {
   async function handle(action, { req, res, params }) {
     const provider = providers.find((p) => p.id === params.id);
@@ -36,6 +37,12 @@ function registerProviderRoutes(router, {
 
     const fn = action === 'usage' ? provider.getUsage : provider.getModels;
     const result = await fn(clientKey, clientUserId);
+    if (result.status === 502 || result.status === 0) {
+      logger.warn(
+        `[providers] ${params.id} ${action}: HTTP ${result.status}` +
+          (result.data && result.data.message ? ` — ${result.data.message}` : ''),
+      );
+    }
     if (result.status === 200 && params.id === 'agentrouter' && result.data) {
       const dayBal = await getDayBalanceUsd();
       if (dayBal !== null) result.data.day_balance_usd = dayBal;

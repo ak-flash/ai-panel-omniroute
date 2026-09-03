@@ -115,11 +115,14 @@ function createAgentRouterProvider(config = {}) {
           };
         }
       } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const cause = err instanceof Error && err.cause ? err.cause.message : '';
+        log(`[AgentRouter] ${pathname}: сеть/таймаут — ${msg}${cause ? ' (причина: ' + cause + ')' : ''}`);
         return {
           status: 502,
           data: {
             error: 'provider_error',
-            message: err instanceof Error ? err.message : String(err),
+            message: msg,
           },
         };
       }

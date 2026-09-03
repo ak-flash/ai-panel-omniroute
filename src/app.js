@@ -41,8 +41,8 @@ const { registerConfigRoutes } = require('./routes/config');
  */
 function createApp({
   providers = loadProviders(),
-  antigravity = createAntigravityProvider(),
-  googleOauth = createGoogleOauth(),
+  antigravity,
+  googleOauth,
   store,
   allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
   publicOrigin = process.env.PUBLIC_ORIGIN || '',
@@ -51,6 +51,13 @@ function createApp({
   authLoopbackPort = process.env.PORT || '8765',
 } = {}) {
   const activeProvider = providers[0] || null;
+  // Логгер провайдеров (функция warn-уровня): включает файл при запуске CLI.
+  // Не перетираем явно переданный antigravity/googleOauth (тесты передают mock).
+  const providerLog = typeof logger.log === 'function'
+    ? logger.log.bind(logger)
+    : (typeof logger === 'function' ? logger : console.warn);
+  if (!antigravity) antigravity = createAntigravityProvider({ log: providerLog });
+  if (!googleOauth) googleOauth = createGoogleOauth({ log: providerLog });
 
   // Хранилище ключей/настроек: SQLite на сервере (зашифровано AES-256-GCM).
   // createStore — async, поэтому store может прийти Promise; нормализуем
@@ -88,9 +95,10 @@ function createApp({
     storeKeys: PROVIDER_STORE_KEYS,
     userFields: PROVIDER_STORE_USER_FIELDS,
     getDayBalanceUsd: tracker.getDayBalanceUsd,
+    logger,
   });
-  registerProxyRoutes(router, { providers, activeProvider });
-  registerOmnirouteRoutes(router, { getStore, validateUpstreamUrl });
+  registerProxyRoutes(router, { providers, activeProvider, logger });
+  registerOmnirouteRoutes(router, { getStore, validateUpstreamUrl, logger });
   registerAntigravityRoutes(router, {
     service: antigravityService,
     googleOauth,
@@ -114,6 +122,15 @@ function createApp({
 
   const server = http.createServer((req, res) => {
     const context = createRequestContext(req, res, { timeoutMs: requestTimeoutMs });
+    const startedAt = Date.now();
+    res.on('finish', () => {
+      let level = 'info';
+      if (res.statusCode >= 500) level = 'error';
+      else if (res.statusCode >= 400) level = 'warn';
+      const fn = typeof logger[level] === 'function' ? logger[level].bind(logger) : null;
+      const method = req.method || '?';
+      if (fn) fn(`[access] ${method} ${new URL(req.url, 'http://localhost').pathname} → ${res.statusCode} (${Date.now() - startedAt} ms)`);
+    });
     handleRequest(req, res).catch((err) => handleError(err, req, res, context, logger));
   });
 

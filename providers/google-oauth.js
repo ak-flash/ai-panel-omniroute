@@ -63,6 +63,7 @@ function buildAuthUrl({ redirectUri, state, clientId = getBuiltinClientId(), aut
 function createGoogleOauth(config = {}) {
   const url = String(config.url || DEFAULT_TOKEN_URL);
   const userinfoUrl = String(config.userinfoUrl || DEFAULT_USERINFO_URL);
+  const log = typeof config.log === 'function' ? config.log : console.warn;
 
   /**
    * Обновляет access-token.
@@ -104,6 +105,7 @@ function createGoogleOauth(config = {}) {
       }
       return { ok: false, error: 'oauth_error' };
     } catch {
+      log(`[google-oauth] refresh: сеть/таймаут`);
       return { ok: false, error: 'network' };
     }
   }
@@ -145,6 +147,7 @@ function createGoogleOauth(config = {}) {
       }
       return { ok: false, error: 'oauth_error' };
     } catch {
+      log(`[google-oauth] exchangeCode: сеть/таймаут`);
       return { ok: false, error: 'network' };
     }
   }
@@ -172,6 +175,7 @@ function createGoogleOauth(config = {}) {
       }
       return { ok: false, error: 'userinfo_error' };
     } catch {
+      log(`[google-oauth] getUserInfo: сеть/таймаут`);
       return { ok: false, error: 'network' };
     }
   }
