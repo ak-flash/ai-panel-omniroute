@@ -315,7 +315,9 @@ ai-panel/
 │   ├── model-match.test.js
 │   ├── call-logs.test.js # разбор call logs (combo → реальная модель)
 │   └── server.test.js
-├── package.json       # скрипты start/test — зависимостей нет
+├── package.json       # скрипты start/test/lint/stylelint/check:secrets;
+│                      #   prod-зависимость одна (sql.js), остальное — dev-инструменты
+├── .github/workflows/ # CI: lint, stylelint, тесты (Node 20/22), Playwright smoke
 ├── logs/              # диагностика провайдеров (ai-panel.log) — не коммитится
 ├── .env               # настройки (порт) — не коммитится
 ├── .env.example       # шаблон настроек
@@ -344,7 +346,9 @@ ai-panel/
     │   ├── formatters.js # чистые форматтеры (unit-тесты)
     │   └── pages/     # entry и логика каждой страницы:
     │                  #   index, models, combo, cheatsheet
-    ├── styles.css     # темы, навигация, полоса статистики, прогресс-бары
+    ├── css/           # стили (этап 6 рефакторинга), порядок подключения важен:
+    │                  #   themes, base, layout, components,
+    │                  #   pages, dialogs, responsive
     ├── favicon.svg
     └── assets/imgs/   # скриншоты интерфейса
 ```

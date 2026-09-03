@@ -8,7 +8,7 @@
 // где data.quota — остаток во внутренних единицах; $1 = 500000
 // единиц (quota_per_unit из GET /api/status этого сайта).
 //
-// Пока поддерживается только баланс кошелька. Авторизация — двойная:
+// Баланс кошелька и каталог моделей. Авторизация — двойная:
 // System Access Token (Security Settings) в Authorization Bearer +
 // числовой ID пользователя заголовком New-Api-User (анти-кража токенов
 // в новых версиях new-api). API-ключ (sk-…) не подходит — он
@@ -43,8 +43,8 @@ const NON_JSON_RETRY_COUNT = 2;
  *   userId — числовой ID пользователя (New-Api-User); тоже от клиента
  *
  * Адаптер предоставляет функции взаимодействия с API:
- *   getUsage(key, userId) → GET /api/user/self (баланс кошелька)
- *   getModels()           → каталог моделей пока не подключён (501)
+ *   getUsage(key, userId)  → GET /api/user/self (баланс кошелька)
+ *   getModels(key, userId) → GET /api/user/models (каталог моделей)
  *
  * Успешный ответ нормализуется в формат панели (как у xKiro):
  *   { plan, wallet: { balance_usd }, windows: [], used_usd, requests }
@@ -122,33 +122,31 @@ function createAgentRouterProvider(config = {}) {
     }
   }
 
+  // new-api на неудачной авторизации ведёт себя по-разному: без
+  // заголовка — HTTP 401, с невалидным токеном — HTTP 200 +
+  // success:false (проверено на живом сайте). Наружу — понятная
+  // подсказка с оригинальным сообщением сайта; причина отклонения
+  // (китайский текст) — только в лог.
+  const isAuthFailure = (status, data) =>
+    status === 401 || (status === 200 && data && data.success === false);
+
+  function authFailure(data) {
+    const upstreamMsg = data && typeof data.message === 'string' ? data.message : '';
+    if (upstreamMsg) log('[AgentRouter] токен отклонён:', upstreamMsg);
+    // Разные причины отклонения — разные подсказки (проверено на живом
+    // сайте): токен не найден / нет заголовка New-Api-User / ID не совпал
+    const message = /New-Api-User/i.test(upstreamMsg)
+      ? 'Сайту нужен ещё и числовой ID пользователя — укажите его в настройках AgentRouter в поле «User ID»'
+      : /不匹配/.test(upstreamMsg)
+        ? 'ID пользователя не совпадает с владельцем токена — проверьте поле «User ID» в настройках AgentRouter'
+        : 'Сайт не принял токен — нужен System Access Token из Security Settings на agentrouter.org, API-ключ sk-… не подходит';
+    return { status: 401, data: { error: 'unauthorized', message } };
+  }
+
   // GET /api/user/self → { success, data: { quota, group, … } }
   async function getUsage(key = '', userId = '') {
     const { status, data } = await apiGet('/api/user/self', key, userId);
-
-    // new-api на неудачной авторизации ведёт себя по-разному: без
-    // заголовка — HTTP 401, с невалидным токеном — HTTP 200 +
-    // success:false (проверено на живом сайте). Наружу — понятная
-    // подсказка с оригинальным сообщением сайта.
-    const upstreamMsg =
-      data && typeof data.message === 'string' ? data.message : '';
-    const authFailed =
-      status === 401 || (status === 200 && data && data.success === false);
-    if (authFailed) {
-      // Причина отклонения от new-api (китайский текст) — только в лог
-      if (upstreamMsg) log('[AgentRouter] токен отклонён:', upstreamMsg);
-      // Разные причины отклонения — разные подсказки (проверено на живом
-      // сайте): токен не найден / нет заголовка New-Api-User / ID не совпал
-      const message = /New-Api-User/i.test(upstreamMsg)
-        ? 'Сайту нужен ещё и числовой ID пользователя — укажите его в настройках AgentRouter в поле «User ID»'
-        : /不匹配/.test(upstreamMsg)
-          ? 'ID пользователя не совпадает с владельцем токена — проверьте поле «User ID» в настройках AgentRouter'
-          : 'Сайт не принял токен — нужен System Access Token из Security Settings на agentrouter.org, API-ключ sk-… не подходит';
-      return {
-        status: 401,
-        data: { error: 'unauthorized', message },
-      };
-    }
+    if (isAuthFailure(status, data)) return authFailure(data);
     if (status !== 200) return { status, data };
 
     const user = (data && data.data) || {};
@@ -181,14 +179,38 @@ function createAgentRouterProvider(config = {}) {
     };
   }
 
-  // Каталог моделей пока не подключается (только баланс кошелька)
-  async function getModels() {
+  // GET /api/user/models → список id моделей, доступных аккаунту
+  // (UserAuth — те же заголовки, что у /api/user/self; маршрут есть
+  // на живом сайте: без токена отдаёт 401 «未提供 access token»).
+  // Каталог в формате панели (как у xKiro): { data: [{ id, access_tier }] };
+  // цены и контекст new-api здесь не отдаёт — фронтенд покажет прочерки.
+  async function getModels(key = '', userId = '') {
+    const { status, data } = await apiGet('/api/user/models', key, userId);
+    if (isAuthFailure(status, data)) return authFailure(data);
+    if (status !== 200) return { status, data };
+
+    // new-api отдаёт массив строк либо обёртку { data: [...] } —
+    // нормализуем оба формата в единый каталог панели
+    const raw = Array.isArray(data)
+      ? data
+      : data && Array.isArray(data.data)
+        ? data.data
+        : null;
+    if (!raw) {
+      return {
+        status: 502,
+        data: {
+          error: 'bad_response',
+          message: 'В ответе /api/user/models нет списка моделей',
+        },
+      };
+    }
+    const ids = raw
+      .map((item) => (typeof item === 'string' ? item : item && item.id))
+      .filter((id) => typeof id === 'string' && id);
     return {
-      status: 501,
-      data: {
-        error: 'not_implemented',
-        message: 'Каталог моделей AgentRouter пока не подключён',
-      },
+      status: 200,
+      data: { data: ids.map((id) => ({ id, access_tier: 'paid' })) },
     };
   }
 

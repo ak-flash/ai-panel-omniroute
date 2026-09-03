@@ -107,6 +107,7 @@ function startMockUpstream(opts = {}) {
  *   code / body — переопределить код и JSON-ответ
  *   raw         — отдать сырую строку вместо JSON (тесты не-JSON ответов)
  *   responses   — последовательность объектов { code, body, raw, contentType }
+ *   routes      — ответы по конкретным URL: { '/api/user/models': { code, body, raw } }
  *
  * Возвращает { url, seen, close }: seen — лог запросов { url, auth, accept }.
  */
@@ -121,6 +122,18 @@ function startAgentRouterUpstream(opts = {}) {
       uid: req.headers['new-api-user'] || '',
       accept: req.headers['accept'] || '',
     });
+
+    // Ответ по конкретному URL (routes) приоритетнее общего сценария
+    const route = opts.routes && opts.routes[req.url];
+    if (route) {
+      if (route.raw !== undefined) {
+        res.writeHead(route.code || 200, {
+          'content-type': route.contentType || 'text/plain',
+        });
+        return res.end(route.raw);
+      }
+      return json(res, route.code || 200, route.body);
+    }
 
     const responseOpts = Array.isArray(opts.responses)
       ? opts.responses[Math.min(seen.length - 1, opts.responses.length - 1)]

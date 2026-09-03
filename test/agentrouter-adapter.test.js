@@ -225,7 +225,7 @@ test('ошибка сети (upstream не отвечает) → 502 provider_er
   assert.equal(data.error, 'provider_error');
 });
 
-test('конфигурация: имя, upstream, схема авторизации; getModels → 501', async () => {
+test('конфигурация: имя, upstream, схема авторизации', () => {
   const provider = createAgentRouterProvider({});
   assert.equal(provider.id, 'agentrouter');
   assert.equal(provider.name, 'AgentRouter');
@@ -234,10 +234,6 @@ test('конфигурация: имя, upstream, схема авторизац�
   assert.equal(provider.authScheme, 'authorization');
   assert.deepEqual(provider.buildHeaders('k'), { authorization: 'Bearer k' });
   assert.deepEqual(provider.buildHeaders(''), {});
-
-  const { status, data } = await provider.getModels();
-  assert.equal(status, 501);
-  assert.equal(data.error, 'not_implemented');
 });
 
 // Новые версии new-api требуют вместе с токеном заголовок New-Api-User
@@ -288,15 +284,103 @@ test('нет New-Api-User → подсказка про поле User ID', async
 });
 
 // Живой сайт: ID не совпадает с владельцем токена → своя подсказка
-test('New-Api-User не совпал с токеном → подсказка про User ID', async () => {
+  } finally {
+    await mock.close();
+  }
+});
+
+// ============================================================
+// Каталог моделей: GET /api/user/models (этап 9, RFC-0001)
+// ============================================================
+
+test('getModels: GET /api/user/models, Authorization + New-Api-User', async () => {
   const mock = await startAgentRouterUpstream({
-    body: { message: '无权进行此操作，与登录用户不匹配', success: false },
+    routes: { '/api/user/models': { body: ['gpt-4o', 'claude-sonnet-4'] } },
   });
   try {
-    const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN, userId: '1' });
-    const { status, data } = await provider.getUsage();
+    const provider = createAgentRouterProvider({
+      url: mock.url,
+      apiKey: TOKEN,
+      userId: '42',
+    });
+    const { status, data } = await provider.getModels('', '42');
+    assert.equal(status, 200);
+    assert.equal(mock.seen[0].url, '/api/user/models');
+    assert.equal(mock.seen[0].auth, 'Bearer ' + TOKEN);
+    assert.equal(mock.seen[0].uid, '42');
+    assert.deepEqual(
+      data.data.map((m) => m.id),
+      ['gpt-4o', 'claude-sonnet-4'],
+    );
+    assert.equal(data.data[0].access_tier, 'paid');
+  } finally {
+    await mock.close();
+  }
+});
+
+test('getModels: обёртка { data: [...] } и объекты с id нормализуются', async () => {
+  const mock = await startAgentRouterUpstream({
+    routes: {
+      '/api/user/models': { body: { data: ['m1', { id: 'm2' }] } },
+    },
+  });
+  try {
+    const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN });
+    const { status, data } = await provider.getModels();
+    assert.equal(status, 200);
+    assert.deepEqual(data.data.map((m) => m.id), ['m1', 'm2']);
+  } finally {
+    await mock.close();
+  }
+});
+
+test('getModels: 401 без заголовков → unauthorized с подсказкой', async () => {
+  const mock = await startAgentRouterUpstream({
+    routes: {
+      '/api/user/models': {
+        code: 401,
+        body: { success: false, message: '无权进行此操作，未登录且未提供 access token' },
+      },
+    },
+  });
+  try {
+    const provider = createAgentRouterProvider({ url: mock.url, apiKey: '' });
+    const { status, data } = await provider.getModels();
     assert.equal(status, 401);
-    assert.match(data.message, /не совпадает/);
+    assert.equal(data.error, 'unauthorized');
+    assert.match(data.message, /System Access Token/);
+  } finally {
+    await mock.close();
+  }
+});
+
+test('getModels: не-JSON ответ → 502 bad_response', async () => {
+  const mock = await startAgentRouterUpstream({
+    routes: { '/api/user/models': { raw: '<html>blocked</html>' } },
+  });
+  try {
+    const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN });
+    const { status, data } = await provider.getModels();
+    assert.equal(status, 502);
+    assert.equal(data.error, 'bad_response');
+    assert.match(data.message, /HTTP 200, text\/plain/);
+  } finally {
+    await mock.close();
+  }
+});
+
+test('getModels: неожидаемая форма ответа → 502 bad_response', async () => {
+  const mock = await startAgentRouterUpstream({
+    routes: {
+      '/api/user/models': { body: { success: true, data: { nope: true } } },
+    },
+  });
+  try {
+    const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN });
+    const { status, data } = await provider.getModels();
+    assert.equal(status, 502);
+    assert.equal(data.error, 'bad_response');
+    assert.match(data.message, /нет списка моделей/);
   } finally {
     await mock.close();
   }
