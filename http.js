@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { recordRequest } = require('./src/metrics');
 
 const DEFAULT_MAX_BODY = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -13,6 +14,8 @@ class AppError extends Error {
     this.code = code;
     this.expose = options.expose !== false;
     this.headers = options.headers || {};
+    // Детали для диагностики в логах (в ответ клиенту не попадают)
+    this.details = options.details || {};
   }
 }
 
@@ -84,6 +87,7 @@ function createRequestContext(req, res, { timeoutMs = DEFAULT_TIMEOUT_MS } = {})
   const startedAt = Date.now();
   res.setHeader('x-request-id', requestId);
   req.setTimeout(timeoutMs);
+  res.on('finish', () => recordRequest(res.statusCode, Date.now() - startedAt));
   return { requestId, startedAt, timeoutMs };
 }
 

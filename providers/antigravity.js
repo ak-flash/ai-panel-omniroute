@@ -14,6 +14,8 @@
 const DEFAULT_NAME = 'Antigravity';
 const DEFAULT_URL = 'https://cloudcode-pa.googleapis.com';
 
+const { fetchJson } = require('../src/fetch-utils');
+
 // Требуемый User-Agent (Google отвергает запросы без него)
 const USER_AGENT = 'vscode/1.96.0 (Antigravity/4.3.0)';
 
@@ -36,24 +38,25 @@ function createAntigravityProvider(config = {}) {
   /** Один POST к указанному internal-методу Google. */
   async function callInternal(method, token, project) {
     try {
-      const response = await fetch(upstream + '/v1internal:' + method, {
-        method: 'POST',
-        headers: {
-          'authorization': 'Bearer ' + token,
-          'content-type': 'application/json',
-          'user-agent': USER_AGENT,
+      const { response, data } = await fetchJson(
+        upstream + '/v1internal:' + method,
+        {
+          method: 'POST',
+          headers: {
+            'authorization': 'Bearer ' + token,
+            'content-type': 'application/json',
+            'user-agent': USER_AGENT,
+          },
+          body: JSON.stringify(project ? { project } : {}),
         },
-        body: JSON.stringify(project ? { project } : {}),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
-      let body = null;
-      try { body = await response.json(); } catch {}
-      return { status: response.status, body };
+        REQUEST_TIMEOUT_MS,
+      );
+      return { status: response.status, body: data };
     } catch (err) {
-      // Сеть / DNS / таймаут — наружу мапится в 502 (см. getQuota)
+      // Сеть / DNS / таймаут / не-JSON — наружу мапится в 502 (см. getQuota);
+      // не-JSON при HTTP 200 тоже деградирует до provider_error
       const msg = err instanceof Error ? err.message : String(err);
-      const cause = err instanceof Error && err.cause ? err.cause.message : '';
-      log(`[Antigravity] ${method}: сеть/таймаут — ${msg}${cause ? ' (причина: ' + cause + ')' : ''}`);
+      log(`[Antigravity] ${method}: ${msg}`);
       return { status: 0, body: null };
     }
   }

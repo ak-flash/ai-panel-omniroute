@@ -1,0 +1,223 @@
+/* Адаптивность — восстановлено из styles.css @ 9ac1b32 */
+/* --------------------------------------------------------------------------
+   Responsive
+   -------------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  .topbar {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    padding: 10px 16px;
+    gap: 10px;
+  }
+
+  .brand {
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  .topbar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .topbar-toggle svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .topbar-toggle:hover {
+    background: var(--surface);
+  }
+
+  .topbar-end {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .topbar-end #btn-theme {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .topbar-end #btn-theme svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .topbar-end #btn-theme:hover {
+    background: var(--surface);
+  }
+
+  .topbar-collapse {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 40;
+    min-width: 220px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+  }
+
+  .topbar-collapse[data-open] {
+    display: block;
+  }
+
+  .topbar-collapse .topnav {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+  }
+
+  .topbar-collapse .topnav a {
+    display: block;
+    padding: 14px 16px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 15px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .topbar-collapse .topnav a:hover {
+    background: var(--surface-2);
+  }
+
+  .topbar-collapse .topnav a:focus-visible {
+    outline: none;
+  }
+
+  .topbar-collapse .topnav a[aria-current='page'] {
+    background: var(--accent);
+    color: var(--accent-text);
+  }
+
+  .topbar-collapse .topbar-actions {
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Точка статуса в мобильном меню не нужна */
+  .topbar-collapse #status-dot {
+    display: none;
+  }
+
+  .topbar-collapse .topbar-actions .updated {
+    display: none;
+  }
+
+  .topbar-collapse .topbar-actions .btn {
+    display: block;
+    width: 100%;
+    padding: 14px 16px;
+    text-align: left;
+    background: transparent;
+    color: var(--text);
+    border: none !important;
+    border-radius: 0 !important;
+    font-size: 15px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .topbar-collapse .topbar-actions .btn:hover {
+    background: var(--surface-2);
+  }
+
+  .topbar-collapse .topbar-actions .btn:focus-visible {
+    outline: none;
+  }
+
+  .topbar-collapse .topbar-actions .btn-primary {
+    background: transparent;
+    color: var(--text);
+  }
+
+  .topbar-collapse .topbar-actions .btn-primary:hover {
+    background: var(--surface-2);
+  }
+
+  #status-text {
+    display: none;
+  }
+
+  main {
+    padding: 16px;
+  }
+
+  .stats {
+    padding: 14px 16px;
+  }
+
+  .provider-card-head {
+    margin: -14px -16px 12px;
+    padding: 12px 16px;
+  }
+
+  .provider-card-wallet .provider-card-head {
+    margin: -14px -16px;
+  }
+
+  .ar-hero {
+    margin: -14px -16px 12px;
+    padding: 12px 16px;
+  }
+
+  .provider-balance {
+    justify-items: start;
+    width: 100%;
+    margin-inline-start: 0;
+    text-align: start;
+  }
+
+  .stats-row {
+    gap: 12px 20px;
+  }
+
+  .stat {
+    flex-basis: 100%;
+  }
+
+  .ag-group-body {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-card {
+    margin: 40px auto;
+  }
+}

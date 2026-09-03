@@ -1,0 +1,220 @@
+/* Диалоги — восстановлено из styles.css @ 9ac1b32 */
+/* --------------------------------------------------------------------------
+   Dialog
+   -------------------------------------------------------------------------- */
+dialog {
+  border: none;
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0;
+  max-width: 640px;
+  width: 92vw;
+}
+
+dialog::backdrop {
+  background: oklch(0% 0 0 / 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.dlg-form {
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dlg-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 4px;
+}
+
+.dlg-form h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.dlg-close {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted, var(--text));
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.dlg-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.dlg-close:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.dlg-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dlg-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.dlg-card-head .dlg-card-action {
+  margin-inline-start: auto;
+  padding: 6px 12px;
+}
+
+.dlg-card-icon {
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.dlg-card-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.dlg-card-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.dlg-card-sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.dlg-card .input-group input,
+.dlg-card input[type="text"],
+.dlg-card input[type="password"] {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 9px 12px;
+  border-radius: var(--radius-s);
+  font-family: inherit;
+  font-size: 14px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dlg-card .input-group input:focus,
+.dlg-card input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.dlg-card .select {
+  background-color: var(--surface);
+}
+
+.dlg-form label {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+#dlg-ag-fields label[for="dlg-ag-paste"] {
+  display: block;
+  margin-bottom: 8px;
+}
+/* AgentRouter: токен и User ID в одной строке (на узких экранах — в две) */
+.dlg-ar-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+.dlg-ar-row label {
+  display: block;
+  margin-bottom: 6px;
+}
+.dlg-ar-token {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.dlg-ar-user {
+  flex: 0 0 120px;
+}
+.dlg-ar-user input {
+  padding: 9px 12px;
+}
+@media (max-width: 480px) {
+  .dlg-ar-row {
+    flex-wrap: wrap;
+  }
+  .dlg-ar-user {
+    flex: 1 1 100%;
+  }
+}
+.alias-row{display:flex;gap:8px;margin-bottom:6px}
+.alias-row input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:var(--radius-s);font-size:13px}
+.alias-row input:focus{border-color:var(--accent);outline:none}
+.alias-row .btn-ghost{padding:6px 10px}
+.alias-row .btn-ghost svg{width:14px;height:14px}
+
+.input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.input-group input {
+  flex: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: var(--radius-m);
+  font-family: inherit;
+  font-size: 15px;
+}
+
+.input-group input:focus {
+  border-color: var(--accent);
+}
+
+.dlg-result {
+  font-size: 13px;
+  min-height: 20px;
+  color: var(--text-muted);
+  white-space: pre-line;
+}
+
+.dlg-result.ok {
+  color: var(--ok);
+}
+
+.dlg-result.err {
+  color: var(--danger);
+}
+
+.dlg-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}

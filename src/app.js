@@ -72,6 +72,23 @@ function createApp({
   router.add(['GET', 'HEAD'], '/api/health', ({ res }) =>
     sendJson(res, 200, { ok: true }, { 'cache-control': 'no-store' }));
 
+  router.add(['GET', 'HEAD'], '/api/ready', async ({ res }) => {
+    const store = await getStore();
+    const storeOk = store && typeof store.exec === 'function';
+    const trackerOk = tracker && typeof tracker.isRunning === 'function' ? tracker.isRunning() : true;
+    const antigravityOk = antigravityService && typeof antigravityService.checkHealth === 'function'
+      ? await antigravityService.checkHealth().catch(() => false)
+      : true;
+    const ready = storeOk && trackerOk && antigravityOk;
+    const status = ready ? 200 : 503;
+    sendJson(res, status, { ready, store: storeOk, tracker: trackerOk, antigravity: antigravityOk }, { 'cache-control': 'no-store' });
+  });
+
+  router.add(['GET', 'HEAD'], '/api/metrics', ({ res }) => {
+    const { getMetrics } = require('./metrics');
+    sendJson(res, 200, getMetrics(), { 'cache-control': 'no-store' });
+  });
+
   // ---------- Сервисы ----------
   const antigravityService = createAntigravityService({
     googleOauth,

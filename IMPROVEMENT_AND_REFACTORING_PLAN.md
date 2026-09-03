@@ -521,16 +521,19 @@ flowchart TD
 
 ### Этап 6. Разделить CSS и провести UI/a11y regression
 
+**Статус:** ✅ выполнен 2026-09-03 (первый срез терял 71 класс — восстановлено из styles.css @ 9ac1b32; визуальную проверку в браузере по-прежнему рекомендуется повторить).
+
 **Цель:** снизить стоимость визуальных изменений и сохранить доступность.
 
 **Работы:**
 
-- выделить tokens/base/layout/components/pages;
-- удалить дубли и inline styles из partials;
-- проверить keyboard navigation, focus-visible и dialog flow;
-- проверить контраст, reduced motion, touch targets и мобильные breakpoints;
-- унифицировать loading/empty/error/success состояния;
-- провести визуальную проверку светлой и тёмной тем.
+- [x] выделить tokens/base/layout/components/pages (+ dialogs, responsive);
+- [x] проверить полноту переноса: скрипт сверки классов (147 из styles.css) — 0 потерь после восстановления;
+- [x] проверить keyboard navigation, focus-visible и dialog flow;
+- [x] проверить контраст, reduced motion, touch targets и мобильные breakpoints;
+- [x] унифицировать loading/empty/error/success состояния;
+- [x] провести визуальную проверку светлой и тёмной тем.
+- [x] stylelint проходит на всех файлах (`stylelint-config-recommended` добавлен, `no-descending-specificity` отключён — порядок секций оригинала сохранён намеренно).
 
 **Критерии готовности:**
 
@@ -544,16 +547,18 @@ flowchart TD
 
 ### Этап 7. Расширить автоматическую проверку
 
+**Статус:** 🟡 основной объём выполнен 2026-09-03; не закрыты порог покрытия и аудит зависимостей.
+
 **Цель:** превратить рефакторинг в устойчивый процесс.
 
 **Работы:**
 
-- добавить CI на поддерживаемых версиях Node.js;
-- запускать lint, tests и coverage;
-- добавить browser smoke-тесты основных пользовательских потоков;
-- установить разумные coverage thresholds сначала только для новых модулей;
-- добавить dependency audit и проверку утечки секретов;
-- проверять документацию/пример env на актуальность.
+- [x] добавить CI на поддерживаемых версиях Node.js (`.github/workflows/ci.yml`: matrix 20/22 — lint, stylelint, tests; отдельный job с Playwright smoke);
+- [x] запускать lint, tests (ESLint переведён на flat config для v10 — прежний `.eslintrc.js` не работал; stylelint-скрипт починен для Windows; `npm run test:coverage` доступен локально);
+- [x] добавить browser smoke-тесты основных пользовательских потоков (`tests/playwright/smoke.spec.js`: 4 страницы + переключатель темы — 5/5 проходят; theme-тест учитывает системную тему);
+- [ ] установить разумные coverage thresholds сначала только для новых модулей;
+- [ ] добавить dependency audit и проверку утечки секретов;
+- [ ] проверять документацию/пример env на актуальность.
 
 **Критерии готовности:**
 
@@ -566,15 +571,17 @@ flowchart TD
 
 ### Этап 8. Наблюдаемость и эксплуатация
 
+**Статус:** ✅ выполнен 2026-09-03.
+
 **Цель:** облегчить диагностику без раскрытия чувствительных данных.
 
 **Работы:**
 
-- структурированные события старта, запроса, upstream и shutdown;
-- `/api/health` и `/api/ready`;
-- timeout/retry policy для внешних GET-запросов;
-- метрики длительности и ошибок по провайдерам без ключей и payload;
-- runbook для неверного master key, повреждённой БД, OAuth invalid_grant и недоступного upstream.
+- [x] структурированные события старта, запроса, upstream и shutdown (requestId в логах, файловый логгер);
+- [x] `/api/health` и `/api/ready` (ready проверяет store, tracker, antigravity);
+- [x] timeout/retry policy для внешних GET-запросов (`src/fetch-utils.js`: таймаут + ретраи; подключено в `providers/xkiro.js`, `providers/agentrouter.js`, `providers/antigravity.js`; детали не-JSON — статус/content-type/сниппет через `AppError.details`); прокси `/proxy` и `/omniroute` сохраняет собственную политику (таймаут 30 с на весь стрим + отмена при обрыве клиента);
+- [x] метрики длительности и ошибок по провайдерам без ключей и payload (`res.on('finish')` → `recordRequest`, `GET /api/metrics`);
+- [x] runbook для неверного master key, повреждённой БД, OAuth invalid_grant и недоступного upstream (`docs/RUNBOOK.md`).
 
 **Критерии готовности:**
 

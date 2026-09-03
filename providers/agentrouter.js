@@ -21,6 +21,8 @@
 const DEFAULT_NAME = 'AgentRouter';
 const DEFAULT_URL = 'https://agentrouter.org'; // вшит в фабрику — не выносится в настройки
 
+const { fetchJson } = require('../src/fetch-utils');
+
 // $1 = 500000 внутренних единиц (quota_per_unit из /api/status AgentRouter)
 const QUOTA_PER_UNIT = 500000;
 
@@ -75,24 +77,17 @@ function createAgentRouterProvider(config = {}) {
 
     for (let attempt = 0; attempt <= NON_JSON_RETRY_COUNT; attempt += 1) {
       try {
-        const response = await fetch(upstream + pathname, {
-          headers,
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        });
-
-        const text = await response.text();
-        if (!text) return { status: response.status, data: {} };
-
-        try {
-          return { status: response.status, data: JSON.parse(text) };
-        } catch {
+        const { response, data } = await fetchJson(upstream + pathname, { headers }, REQUEST_TIMEOUT_MS);
+        return { status: response.status, data: data || {} };
+      } catch (error) {
+        if (error.code === 'upstream_invalid_json') {
+          const { status, contentType, snippet } = error.details;
           // Не-JSON с HTTP 200 обычно является временной HTML-заглушкой
           // CDN/WAF. Повторять HTTP-ошибки нельзя: их статус уже описывает
           // постоянную для этого запроса проблему.
-          const contentType = response.headers.get('content-type') || 'content-type отсутствует';
-          if (response.status === 200 && attempt < NON_JSON_RETRY_COUNT) {
+          if (status === 200 && attempt < NON_JSON_RETRY_COUNT) {
             log(
-              `[AgentRouter] ${pathname}: не-JSON ответ (HTTP ${response.status}, ${contentType}) —` +
+              `[AgentRouter] ${pathname}: не-JSON ответ (HTTP ${status}, ${contentType}) —` +
                 ` повтор ${attempt + 1} из ${NON_JSON_RETRY_COUNT}`,
             );
             continue;
@@ -101,23 +96,21 @@ function createAgentRouterProvider(config = {}) {
           // Тело заглушки — в консоль сервера (одной строкой, с обрезкой):
           // по нему видно, кто отвечает (Cloudflare, страница провайдера,
           // анти-бот проверка), а в интерфейс панели HTML-мусор не попадает.
-          const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 300);
           log(
-            `[AgentRouter] ${pathname}: не-JSON ответ (HTTP ${response.status}, ${contentType}):`,
+            `[AgentRouter] ${pathname}: не-JSON ответ (HTTP ${status}, ${contentType}):`,
             snippet || '(пустое тело)',
           );
           return {
             status: 502,
             data: {
               error: 'bad_response',
-              message: `Провайдер вернул не-JSON ответ (HTTP ${response.status}, ${contentType})`,
+              message: `Провайдер вернул не-JSON ответ (HTTP ${status}, ${contentType})`,
             },
           };
         }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        const cause = err instanceof Error && err.cause ? err.cause.message : '';
-        log(`[AgentRouter] ${pathname}: сеть/таймаут — ${msg}${cause ? ' (причина: ' + cause + ')' : ''}`);
+        // Ошибка сети / DNS / таймаут
+        const msg = error.message || 'Ошибка запроса';
+        log(`[AgentRouter] ${pathname}: сеть/таймаут — ${msg}`);
         return {
           status: 502,
           data: {

@@ -1,0 +1,194 @@
+/* Каркас: топбар, навигация, подвал — восстановлено из styles.css @ 9ac1b32 */
+/* --------------------------------------------------------------------------
+   Topbar
+   -------------------------------------------------------------------------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px 24px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.logo {
+  width: 22px;
+  height: 22px;
+  color: var(--accent);
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.logo svg {
+  width: 100%;
+  height: 100%;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-end {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-inline-start: auto;
+}
+
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.dot.ok {
+  background: var(--ok);
+}
+
+.dot.err {
+  background: var(--danger);
+}
+
+.dot.loading {
+  background: var(--text-faint);
+  animation: pulse 1.2s infinite;
+}
+
+#status-text,
+.status-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+/* Generic icon class for inline SVG heroicons */
+.icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Navigation icons in topnav */
+.topnav .icon {
+  width: 16px;
+  height: 16px;
+  vertical-align: -2px;
+  margin-top: -1px;
+  margin-right: 2px;
+}
+
+/* Theme toggle button icon */
+#btn-theme {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px;
+}
+
+#btn-theme svg {
+  width: 18px;
+  height: 18px;
+}
+.topnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+}
+
+.topnav a {
+  padding: 6px 14px;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.topnav a:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.topnav a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Текущая страница: активная «пилюля» */
+.topnav a[aria-current='page'] {
+  background: var(--accent);
+  color: var(--accent-text);
+  pointer-events: none;
+}
+
+/* Desktop: collapse wrapper is invisible inline flex row */
+.topbar-collapse {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.topbar-toggle {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   Footer
+   -------------------------------------------------------------------------- */
+body[data-page="combo"] #updated-wrap { display: none; }
+body[data-page="combo"] .status-label { padding-right: 20px; }
+body[data-page="index"] #updated-wrap { padding-right: 20px; }
+body[data-page="models"] #updated-wrap { padding-right: 20px; }
+body[data-page="cheatsheet"] #status-text,
+body[data-page="cheatsheet"] #status-dot { display: none; }
+
+.updated {
+  display: inline-block;
+  min-width: 50px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}

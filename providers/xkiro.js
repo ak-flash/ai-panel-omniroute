@@ -6,6 +6,8 @@
 // mock-upstream) и будущим вшитым провайдерам.
 // ============================================================
 
+const { fetchJson } = require('../src/fetch-utils');
+
 const DEFAULT_NAME = 'xKiro';
 const DEFAULT_URL = 'https://api.xkiro.com'; // вшит в фабрику — не выносится в настройки
 
@@ -43,39 +45,30 @@ function createXKiroProvider(config = {}) {
   async function apiGet(pathname, key = '') {
     const headers = { accept: 'application/json', ...buildHeaders(key || apiKey) };
     try {
-      const response = await fetch(upstream + pathname, {
-        headers,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
-
-      const text = await response.text();
-      if (!text) return { status: response.status, data: {} };
-
-      try {
-        return { status: response.status, data: JSON.parse(text) };
-      } catch {
+      const { response, data } = await fetchJson(upstream + pathname, { headers }, REQUEST_TIMEOUT_MS);
+      return { status: response.status, data: data || {} };
+    } catch (error) {
+      if (error.code === 'upstream_invalid_json') {
         // Не-JSON вместо JSON — обычно HTML-заглушка защиты (Cloudflare и
         // т.п.) или страница ошибки: показываем статус и content-type
         // upstream в интерфейсе панели, а тело заглушки (одной строкой,
         // с обрезкой) — в лог сервера, по нему видно, кто отвечает.
-        const contentType = response.headers.get('content-type') || 'content-type отсутствует';
-        const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 300);
+        const { status, contentType, snippet } = error.details;
         log(
-          `[xKiro] ${pathname}: не-JSON ответ (HTTP ${response.status}, ${contentType}):`,
+          `[xKiro] ${pathname}: не-JSON ответ (HTTP ${status}, ${contentType}):`,
           snippet || '(пустое тело)',
         );
         return {
           status: 502,
           data: {
             error: 'bad_response',
-            message: `Провайдер вернул не-JSON ответ (HTTP ${response.status}, ${contentType})`,
+            message: `Провайдер вернул не-JSON ответ (HTTP ${status}, ${contentType})`,
           },
         };
       }
-    } catch (err) {
       // Ошибка сети / DNS / таймаут
-      const msg = err instanceof Error ? err.message : String(err);
-      const cause = err instanceof Error && err.cause ? err.cause.message : '';
+      const msg = error.message || 'Ошибка запроса';
+      const cause = error.cause instanceof Error ? error.cause.message : '';
       log(`[xKiro] ${pathname}: сеть/таймаут — ${msg}${cause ? ' (причина: ' + cause + ')' : ''}`);
       return {
         status: 502,
