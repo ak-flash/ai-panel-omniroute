@@ -242,6 +242,7 @@ function createAntigravityService({
     applyCredentials,
     clearCredentials,
     status,
+    syncFromStore, // /api/config: применяет записанные в STORE antg-поля (agRefreshToken/Project/Email)
     exchangeCallback,
     getQuota,
   };

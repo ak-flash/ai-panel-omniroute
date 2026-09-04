@@ -122,7 +122,7 @@ test('временный не-JSON ответ с HTTP 200 повторяется
     ],
   });
   try {
-    const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN });
+    const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN, retryDelayMs: 0 });
     const { status, data } = await provider.getUsage();
     assert.equal(status, 200);
     assert.equal(data.wallet.balance_usd, 1);
@@ -139,12 +139,35 @@ test('постоянный не-JSON ответ → 502 после трёх по
     contentType: 'text/html',
   });
   try {
-    const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN });
+    const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN, retryDelayMs: 0 });
     const { status, data } = await provider.getUsage();
     assert.equal(status, 502);
     assert.equal(data.error, 'bad_response');
     assert.match(data.message, /HTTP 200, text\/html/);
     assert.equal(mock.seen.length, 3);
+  } finally {
+    await mock.close();
+  }
+});
+
+// Aliyun WAF AgentRouter.org так реагировал на частые опросы панели: отдаёт
+// JS-челлендж с HTTP 200. Это не проблема токена — сообщение должно это
+// объяснять, а не пугать «не-JSON ответ»
+test('WAF-челлендж сайта → понятное сообщение про анти-бот, а не про токен', async () => {
+  const mock = await startAgentRouterUpstream({
+    raw: '<!doctype html><meta name="aliyun_waf_aa" content="ff926c7f">' +
+      '<meta name="aliyun_waf_bb" content="eade7145"><script>var __webpack_test__</script>',
+    contentType: 'text/html; charset=utf-8',
+  });
+  try {
+    const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN, retryDelayMs: 0 });
+    const { status, data } = await provider.getUsage();
+    assert.equal(status, 502);
+    assert.equal(data.error, 'bad_response');
+    assert.match(data.message, /анти-бот/);
+    assert.match(data.message, /Токен ни при чём/);
+    // Родовое сообщение с HTTP-статусом не должно показываться
+    assert.doesNotMatch(data.message, /HTTP 200/);
   } finally {
     await mock.close();
   }

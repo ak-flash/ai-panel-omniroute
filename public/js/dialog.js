@@ -1,10 +1,13 @@
 /* ============================================================
    AI Panel — диалог настроек (общий для всех страниц).
 
-   Сохранение — один батч PUT /api/config (saveSettings):
-   либо все ключи, либо ни один. Секреты write-only: пустое
-   поле секрета означает «не изменять», а после успешной
-   отправки поля очищаются — секреты не остаются в DOM.
+   Настройки разбиты на табы; каждый раздел сохраняется своей
+   кнопкой — отдельным батчем PUT /api/config (saveSettings):
+   либо весь набор ключей раздела, либо ни один. Сервер мержит
+   только переданные ключи, поэтому разделы независимы.
+   Секреты write-only: пустое поле секрета означает «не изменять»,
+   а после успешной отправки поля очищаются — секреты не остаются
+   в DOM.
    ============================================================ */
 
 import { $id, on, ICO_CHECK, ICO_X } from './dom.js';
@@ -16,7 +19,57 @@ import { renderAliasRows, collectAliasesFromUI } from './aliases.js';
 import { closeTopbar } from './topbar.js';
 import { emit } from './events.js';
 
-let $dlg, $dlgKey, $dlgArKey, $dlgArUser, $dlgToggle, $dlgArToggle, $dlgSave, $dlgRemove, $dlgResult;
+let $dlg, $dlgKey, $dlgArKey, $dlgArUser, $dlgToggle, $dlgArToggle, $dlgRemove;
+
+// Табы диалога: каждый раздел — своя панель и своя кнопка сохранения
+const DLG_TABS = [
+  { tab: 'dlg-tab-provider', panel: 'dlg-panel-provider', result: 'dlg-result-provider', save: 'dlg-save-provider' },
+  { tab: 'dlg-tab-omni', panel: 'dlg-panel-omni', result: 'dlg-result-omni', save: 'dlg-save-omni' },
+  { tab: 'dlg-tab-notifications', panel: 'dlg-panel-notifications', result: 'dlg-result-notifications', save: 'dlg-save-notifications' },
+  { tab: 'dlg-tab-aliases', panel: 'dlg-panel-aliases', result: 'dlg-result-aliases', save: 'dlg-save-aliases' },
+];
+
+// Переключение таба по паттерну ARIA tabs: aria-selected, hidden-панели,
+// roving tabindex; выбор запоминается в хранилище как dlgTab
+function selectDlgTab(tabId, { focus = false } = {}) {
+  const idx = DLG_TABS.findIndex((t) => t.tab === tabId);
+  if (idx < 0) return;
+  for (let i = 0; i < DLG_TABS.length; i++) {
+    const $tab = $id(DLG_TABS[i].tab);
+    const $panel = $id(DLG_TABS[i].panel);
+    if ($tab) {
+      $tab.setAttribute('aria-selected', String(i === idx));
+      $tab.tabIndex = i === idx ? 0 : -1;
+    }
+    if ($panel) $panel.hidden = i !== idx;
+  }
+  if (focus) {
+    const $tab = $id(DLG_TABS[idx].tab);
+    if ($tab) $tab.focus();
+  }
+  if (vaultGet('dlgTab') !== tabId) vaultSet('dlgTab', tabId);
+}
+
+// Стрелки/Home/End по таб-бару: выбор раздела + перенос фокуса
+function onDlgTabsKeydown(e) {
+  const step = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+  if (step === undefined && e.key !== 'Home' && e.key !== 'End') return;
+  const idx = DLG_TABS.findIndex((t) => document.activeElement && t.tab === document.activeElement.id);
+  if (idx < 0) return;
+  e.preventDefault();
+  const next = e.key === 'Home' ? 0
+    : e.key === 'End' ? DLG_TABS.length - 1
+    : (idx + step + DLG_TABS.length) % DLG_TABS.length;
+  selectDlgTab(DLG_TABS[next].tab, { focus: true });
+}
+
+// Статусная строка раздела (роль status, цвет ok/err)
+function showResult($el, isErr, html) {
+  if (!$el) return;
+  $el.hidden = false;
+  $el.className = 'dlg-result ' + (isErr ? 'err' : 'ok');
+  $el.innerHTML = html;
+}
 
 // Показ/скрытие полей выбранного в настройках провайдера
 function renderDlgProviderFields() {
@@ -29,6 +82,13 @@ function renderDlgProviderFields() {
   if ($xkiro) $xkiro.hidden = v !== 'xkiro';
   if ($ar) $ar.hidden = v !== 'agentrouter';
   if ($ag) $ag.hidden = v !== 'antigravity';
+  // У Antigravity в диалоге нет ключа: токен задаётся входом через Google,
+  // поэтому «Проверить и сохранить» и «Удалить ключ» здесь не показываем
+  const noKeyFields = v === 'antigravity';
+  const $save = $id('dlg-save-provider');
+  const $remove = $id('dlg-remove');
+  if ($save) $save.hidden = noKeyFields;
+  if ($remove) $remove.hidden = noKeyFields;
 }
 
 // Обновляет статусную строку в форме Antigravity по данным сервера
@@ -117,8 +177,11 @@ function openDialog() {
   if ($omniKey) $omniKey.value = '';
   // Статус токена — с сервера (сами секреты клиенту не возвращаются)
   refreshAgStatus();
-  $dlgResult.textContent = '';
-  $dlgResult.hidden = true;
+  // Статусные строки всех разделов — чистые
+  for (const t of DLG_TABS) {
+    const $res = $id(t.result);
+    if ($res) { $res.hidden = true; $res.textContent = ''; }
+  }
   // Восстанавливаем последнего выбранного в диалоге провайдера
   const $dlgProvider = $id('dlg-provider');
   if ($dlgProvider) {
@@ -130,6 +193,8 @@ function openDialog() {
         : 'xkiro';
     renderDlgProviderFields();
   }
+  // Восстанавливаем последний открытый раздел
+  selectDlgTab(vaultGet('dlgTab') || DLG_TABS[0].tab);
   $dlg.showModal();
   closeTopbar();
 }
@@ -211,15 +276,100 @@ async function agPaste() {
   }
 }
 
-async function saveDialog() {
+// ---------- Раздел «Провайдер»: ключ + проверка ----------
+
+async function saveProviderSettings() {
+  const $dlgProviderSel = $id('dlg-provider');
+  // Проверяем ключ того провайдера, который выбран в разделе
+  const dlgProvider = $dlgProviderSel ? $dlgProviderSel.value : 'xkiro';
+  const arUserCandidate = $dlgArUser ? $dlgArUser.value.trim() : '';
+
+  // Секреты write-only: пустое поле означает «не изменять».
+  // User ID не секретен и сохраняется всегда.
+  const entries = { agentrouterUserId: arUserCandidate };
+  const xkiroCandidate = $dlgKey.value.trim();
+  const arCandidate = $dlgArKey ? $dlgArKey.value.trim() : '';
+  if (xkiroCandidate) entries.xkiroKey = xkiroCandidate;
+  if (arCandidate) entries.agentrouterKey = arCandidate;
+
+  const $res = $id('dlg-result-provider');
+  const saved = await saveSettings(entries);
+  if (!saved.ok) {
+    showResult($res, true, 'Сохранить не удалось: ' + (saved.message || 'ошибка записи'));
+    return;
+  }
+
+  // Секреты не оставляем в полях формы после отправки
+  $dlgKey.value = '';
+  if ($dlgArKey) $dlgArKey.value = '';
+  emit('settings:changed');
+
+  showResult($res, false, 'Сохранено.');
+  const setLine = (line, isErr) => showResult($res, isErr, 'Сохранено.<br>' + line);
+  const candidate = dlgProvider === 'agentrouter' ? arCandidate : xkiroCandidate;
+  if (dlgProvider === 'agentrouter') {
+    if (candidate) {
+      console.info('[AgentRouter] проверка токена…');
+      setLine('AgentRouter: проверяю токен…', false);
+      providerRequest('usage', { provider: { id: 'agentrouter', name: 'AgentRouter' }, key: candidate, userId: arUserCandidate })
+        .then((data) => {
+          const wallet = (data && data.wallet) || {};
+          const bal = wallet.balance_usd ?? wallet.balance ?? 0;
+          console.info('[AgentRouter] токен OK', data);
+          setLine('AgentRouter ' + ICO_CHECK + ' токен работает — баланс: ' + fmtUsd(bal), false);
+        })
+        .catch((err) => {
+          console.warn('[AgentRouter] проверка не прошла', err);
+          setLine('AgentRouter ' + ICO_X + ' токен не прошёл проверку: ' + (err && err.message ? err.message : String(err)), true);
+        });
+    } else {
+      // Пустое поле секрета = «не изменять»: ключ остаётся в хранилище.
+      // Явно сообщаем об этом, чтобы пустое поле не выглядело как удаление
+      const hasStored = vaultGet('hasAgentrouterKey');
+      console.info('[AgentRouter] токен в поле пустой' + (hasStored ? ' — оставляю сохранённый' : ''));
+      setLine(
+        hasStored
+          ? 'AgentRouter ' + ICO_CHECK + ' токен сохранён ранее — пустое поле его не меняет'
+          : 'AgentRouter: токен не задан',
+        false
+      );
+    }
+  } else if (dlgProvider === 'xkiro') {
+    if (candidate) {
+      console.info('[xKiro] проверка ключа…');
+      setLine('xKiro: проверяю ключ…', false);
+      providerRequest('usage', { key: candidate })
+        .then((data) => {
+          const wallet = (data && data.wallet) || {};
+          const bal = wallet.balance_usd ?? wallet.balance ?? 0;
+          console.info('[xKiro] ключ OK', data);
+          setLine('xKiro ' + ICO_CHECK + ' ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · план: ' + data.plan : ''), false);
+        })
+        .catch((err) => {
+          console.warn('[xKiro] проверка не прошла', err);
+          let msg = 'xKiro ' + ICO_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err));
+          if (err && err.status === 401) msg += ' — проверьте ключ';
+          setLine(msg, true);
+        });
+    } else {
+      const hasStored = vaultGet('hasXkiroKey');
+      console.info('[xKiro] ключ в поле пустой' + (hasStored ? ' — оставляю сохранённый' : ''));
+      setLine(
+        hasStored
+          ? 'xKiro ' + ICO_CHECK + ' ключ сохранён ранее — пустое поле его не меняет'
+          : 'xKiro: ключ не задан',
+        false
+      );
+    }
+  }
+  // antigravity: токен живёт на сервере — проверять в диалоге нечего
+}
+
+// ---------- Раздел «OmniRoute»: адрес + ключ + проверка ----------
+
+async function saveOmniSettings() {
   const $omniUrl = $id('dlg-omni-url');
   const $omniKey = $id('dlg-omni-key');
-  const $dlgProviderSel = $id('dlg-provider');
-  // Проверяем ключ того провайдера, чья вкладка открыта в диалоге
-  const dlgProvider = $dlgProviderSel ? $dlgProviderSel.value : 'xkiro';
-
-  // Собираем всё сохраняемое заранее: батч уходит одним PUT /api/config
-  const aliasMap = collectAliasesFromUI();
   const omniUrlRaw = $omniUrl ? $omniUrl.value.trim() : '';
   const omniUrlClean = normalizeOmniUrl(omniUrlRaw);
   if ($omniUrl && omniUrlClean !== omniUrlRaw) {
@@ -227,114 +377,69 @@ async function saveDialog() {
     $omniUrl.value = omniUrlClean;
   }
   const omniKeyValue = $omniKey ? $omniKey.value.trim() : '';
-  const xkiroCandidate = $dlgKey.value.trim();
-  const arCandidate = $dlgArKey ? $dlgArKey.value.trim() : '';
-  const arUserCandidate = $dlgArUser ? $dlgArUser.value.trim() : '';
 
-  // Секреты write-only: пустое поле означает «не изменять».
-  // User ID не секретен и сохраняется всегда.
-  const entries = {
-    aliases: JSON.stringify(Object.entries(aliasMap).filter(([id, name]) => id && name)),
-    agentrouterUserId: arUserCandidate,
-  };
-  if ($omniUrl || $omniKey) entries.omniUrl = omniUrlClean;
+  const entries = { omniUrl: omniUrlClean };
   if (omniKeyValue) entries.omniKey = omniKeyValue;
-  if (xkiroCandidate) entries.xkiroKey = xkiroCandidate;
-  if (arCandidate) entries.agentrouterKey = arCandidate;
-  const candidate = dlgProvider === 'agentrouter' ? arCandidate : xkiroCandidate;
 
-  // Пороги уведомлений: собираем числа из полей, сериализуем JSON
-  const thresholds = collectNotificationFields();
-  entries.notificationThresholds = JSON.stringify(thresholds);
-
+  const $res = $id('dlg-result-omni');
   const saved = await saveSettings(entries);
   if (!saved.ok) {
-    // Ошибку сохранения больше не глотаем — показываем в диалоге
-    $dlgResult.hidden = false;
-    $dlgResult.className = 'dlg-result err';
-    $dlgResult.textContent = 'Сохранить не удалось: ' + (saved.message || 'ошибка записи');
+    showResult($res, true, 'Сохранить не удалось: ' + (saved.message || 'ошибка записи'));
     return;
   }
 
-  // Секреты не оставляем в полях формы после отправки
-  $dlgKey.value = '';
-  if ($dlgArKey) $dlgArKey.value = '';
+  // Секрет не оставляем в поле формы после отправки
   if ($omniKey) $omniKey.value = '';
-
-  $dlgResult.hidden = false;
-  // Две строки результата: OmniRoute и провайдер — обновляются независимо
-  let omniLine = omniUrlClean ? 'OmniRoute: ' + omniUrlClean + ' — проверяю…' : 'OmniRoute: не задан';
-  let providerLine = '';
-  const renderResult = (isErr) => {
-    $dlgResult.className = isErr ? 'dlg-result err' : 'dlg-result ok';
-    $dlgResult.innerHTML = 'Сохранено.<br>' + omniLine + (providerLine ? '<br>' + providerLine : '');
-  };
-  $dlgResult.className = 'dlg-result ok';
-  $dlgResult.innerHTML = 'Сохранено.<br>' + omniLine;
-  // Перерисовать страницу с новыми настройками (boot.js перезапустит init)
   emit('settings:changed');
 
-  // Фоновая проверка OmniRoute — уточняет строку OmniRoute
+  // Пустое поле ключа = «не изменять»: сообщаем, если ключ сохранён ранее
+  const keyNote = !omniKeyValue && vaultGet('hasOmniKey')
+    ? '<br>Ключ сохранён ранее — пустое поле его не меняет'
+    : '';
+  const renderLine = (line, isErr) => showResult($res, isErr, 'Сохранено.<br>' + line + keyNote);
+  renderLine(omniUrlClean ? 'OmniRoute: ' + omniUrlClean + ' — проверяю…' : 'OmniRoute: не задан', false);
+
+  // Фоновая проверка OmniRoute — уточняет строку результата
   if (omniUrlClean) {
     console.info('[OmniRoute] проверка', omniUrlClean);
     omniFetch(COMBO_LIST_PATH).then((data) => {
       const n = Array.isArray(data) ? data.length : Array.isArray(data.combos) ? data.combos.length : Array.isArray(data.data) ? data.data.length : 0;
       console.info('[OmniRoute] OK', data);
-      omniLine = 'OmniRoute ' + ICO_CHECK + ' ' + omniUrlClean + ' — доступно combo: ' + n;
-      renderResult(false);
+      renderLine('OmniRoute ' + ICO_CHECK + ' ' + omniUrlClean + ' — доступно combo: ' + n, false);
     }).catch((err) => {
       console.warn('[OmniRoute] проверка не прошла', err);
-      omniLine = 'OmniRoute ' + ICO_X + ' ' + omniUrlClean + ' — ' + (err && err.message ? err.message : String(err));
       const isErr = !(err && err.status === 400); // 400 без URL не считаем критичным
-      renderResult(isErr);
+      renderLine('OmniRoute ' + ICO_X + ' ' + omniUrlClean + ' — ' + (err && err.message ? err.message : String(err)), isErr);
     });
-  } else {
-    renderResult(false);
   }
-  const setProviderLine = (line, isErr) => { providerLine = line; renderResult(isErr); };
-  if (dlgProvider === 'agentrouter') {
-    if (candidate) {
-      console.info('[AgentRouter] проверка токена…');
-      setProviderLine('AgentRouter: проверяю токен…', false);
-      providerRequest('usage', { provider: { id: 'agentrouter', name: 'AgentRouter' }, key: candidate, userId: arUserCandidate })
-        .then((data) => {
-          const wallet = (data && data.wallet) || {};
-          const bal = wallet.balance_usd ?? wallet.balance ?? 0;
-          console.info('[AgentRouter] токен OK', data);
-          setProviderLine('AgentRouter ' + ICO_CHECK + ' токен работает — баланс: ' + fmtUsd(bal), false);
-        })
-        .catch((err) => {
-          console.warn('[AgentRouter] проверка не прошла', err);
-          const msg = 'AgentRouter ' + ICO_X + ' токен не прошёл проверку: ' + (err && err.message ? err.message : String(err));
-          setProviderLine(msg, true);
-        });
-    } else {
-      console.info('[AgentRouter] токен не задан');
-      setProviderLine('AgentRouter: токен не задан', false);
-    }
-  } else if (dlgProvider === 'xkiro') {
-    if (candidate) {
-      console.info('[xKiro] проверка ключа…');
-      setProviderLine('xKiro: проверяю ключ…', false);
-      providerRequest('usage', { key: candidate })
-        .then((data) => {
-          const wallet = (data && data.wallet) || {};
-          const bal = wallet.balance_usd ?? wallet.balance ?? 0;
-          console.info('[xKiro] ключ OK', data);
-          setProviderLine('xKiro ' + ICO_CHECK + ' ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · план: ' + data.plan : ''), false);
-        })
-        .catch((err) => {
-          console.warn('[xKiro] проверка не прошла', err);
-          let msg = 'xKiro ' + ICO_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err));
-          if (err && err.status === 401) msg += ' — проверьте ключ';
-          setProviderLine(msg, true);
-        });
-    } else {
-      console.info('[xKiro] ключ не задан');
-      setProviderLine('xKiro: ключ не задан', false);
-    }
+}
+
+// ---------- Раздел «Уведомления»: пороги ----------
+
+async function saveNotificationSettings() {
+  const $res = $id('dlg-result-notifications');
+  // Пороги: собираем числа из полей, сериализуем JSON
+  const saved = await saveSettings({ notificationThresholds: JSON.stringify(collectNotificationFields()) });
+  if (!saved.ok) {
+    showResult($res, true, 'Сохранить не удалось: ' + (saved.message || 'ошибка записи'));
+    return;
   }
-  // antigravity: токен живёт на сервере — проверять в диалоге нечего
+  emit('settings:changed');
+  showResult($res, false, 'Сохранено.');
+}
+
+// ---------- Раздел «Сопоставление имён»: алиасы ----------
+
+async function saveAliasSettings() {
+  const $res = $id('dlg-result-aliases');
+  const aliasMap = collectAliasesFromUI();
+  const saved = await saveSettings({ aliases: JSON.stringify(Object.entries(aliasMap).filter(([id, name]) => id && name)) });
+  if (!saved.ok) {
+    showResult($res, true, 'Сохранить не удалось: ' + (saved.message || 'ошибка записи'));
+    return;
+  }
+  emit('settings:changed');
+  showResult($res, false, 'Сохранено.');
 }
 
 function removeDialogKey() {
@@ -353,9 +458,7 @@ export function initSettingsDialog() {
   $dlgArUser = $id('dlg-agentrouter-user');
   $dlgToggle = $id('dlg-toggle');
   $dlgArToggle = $id('dlg-agentrouter-toggle');
-  $dlgSave = $id('dlg-save');
   $dlgRemove = $id('dlg-remove');
-  $dlgResult = $id('dlg-result');
   if (!$dlg) return; // диалог есть на всех страницах, но проверимся
 
   on($id('setup-open-settings'), 'click', () => {
@@ -396,6 +499,38 @@ export function initSettingsDialog() {
     }
   });
 
-  on($dlgSave, 'click', saveDialog);
+  // Табы разделов: клик + стрелки (паттерн ARIA tabs)
+  for (const t of DLG_TABS) {
+    on($id(t.tab), 'click', () => selectDlgTab(t.tab));
+  }
+  on($dlg.querySelector('.dlg-tabs'), 'keydown', onDlgTabsKeydown);
+
+  // Enter в поле ввода = «сохранить» текущего раздела, а не закрыть диалог
+  on($dlg, 'keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const t = e.target;
+    if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'SELECT')) return;
+    if (t.id === 'dlg-ag-paste') return; // у поля вставки своя обработка
+    const panel = t.closest('.dlg-panel');
+    if (!panel) return;
+    const rec = DLG_TABS.find((x) => x.panel === panel.id);
+    const $btn = rec ? $id(rec.save) : null;
+    if ($btn && !$btn.hidden) {
+      e.preventDefault();
+      $btn.click();
+    }
+  });
+
+  // Кнопка сохранения своего раздела
+  const SAVE_HANDLERS = {
+    'dlg-save-provider': saveProviderSettings,
+    'dlg-save-omni': saveOmniSettings,
+    'dlg-save-notifications': saveNotificationSettings,
+    'dlg-save-aliases': saveAliasSettings,
+  };
+  for (const [id, handler] of Object.entries(SAVE_HANDLERS)) {
+    on($id(id), 'click', handler);
+  }
+
   on($dlgRemove, 'click', removeDialogKey);
 }

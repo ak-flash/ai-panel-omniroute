@@ -30,8 +30,11 @@ const QUOTA_PER_UNIT = 500000;
 const REQUEST_TIMEOUT_MS = 20000;
 
 // CDN периодически отдаёт HTML-заглушку с HTTP 200 вместо JSON. Повторяем
-// такой запрос сразу: это временный сбой upstream, а не невалидный токен.
+// такой запрос с паузой: немедленные ретраи бесполезны против WAF с CC-защитой
+// и только усугубляют частотный блок (Aliyun WAF у AgentRouter так реагировал
+// на регулярные опросы панели).
 const NON_JSON_RETRY_COUNT = 2;
+const NON_JSON_RETRY_DELAY_MS = 1500;
 
 /**
  * Создаёт адаптер провайдера AgentRouter.
@@ -83,6 +86,11 @@ function createAgentRouterProvider(config = {}) {
       log.info(`[AgentRouter] ${pathname}`, { headers: safeHeaders });
     }
 
+    // Задержка между ретраями настраивается: тесты сразу выходят на 2-ю попытку,
+    // в проде — пауза, чтобы не усугублять CC-блокировку WAF.
+    const retryDelayMs = Number.isFinite(config.retryDelayMs) ? config.retryDelayMs : NON_JSON_RETRY_DELAY_MS;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
     for (let attempt = 0; attempt <= NON_JSON_RETRY_COUNT; attempt += 1) {
       try {
         const { response, data } = await fetchJson(upstream + pathname, { headers }, REQUEST_TIMEOUT_MS);
@@ -101,21 +109,28 @@ function createAgentRouterProvider(config = {}) {
               `[AgentRouter] ${pathname}: не-JSON ответ (HTTP ${status}, ${contentType}) —` +
                 ` повтор ${attempt + 1} из ${NON_JSON_RETRY_COUNT}`,
             );
+            if (retryDelayMs > 0) await sleep(retryDelayMs);
             continue;
           }
 
           // Тело заглушки — в консоль сервера (одной строкой, с обрезкой):
-          // по нему видно, кто отвечает (Cloudflare, страница провайдера,
-          // анти-бот проверка), а в интерфейс панели HTML-мусор не попадает.
+          // по нему видно, кто отвечает (Cloudflare, Aliyun WAF, страница
+          // провайдера, анти-бот проверка), а в интерфейс панели HTML-мусор
+          // не попадает.
           log(
             `[AgentRouter] ${pathname}: не-JSON ответ (HTTP ${status}, ${contentType}):`,
             snippet || '(пустое тело)',
           );
+          // Анти-бот WAF (Aliyun) у AgentRouter.org: даём понять пользователю,
+          // что это не его токен и что это временно.
+          const isWafChallenge = typeof snippet === 'string' && /aliyun_waf|acw_sc/i.test(snippet);
           return {
             status: 502,
             data: {
               error: 'bad_response',
-              message: `Провайдер вернул не-JSON ответ (HTTP ${status}, ${contentType})`,
+              message: isWafChallenge
+                ? 'Сайт AgentRouter временно отдаёт анти-бот страницу (WAF CDN) вместо API-ответа. Токен ни при чём — обычно это проходит через несколько минут, попробуйте обновить позже.'
+                : `Провайдер вернул не-JSON ответ (HTTP ${status}, ${contentType})`,
             },
           };
         }

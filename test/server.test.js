@@ -8,10 +8,47 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { startMockUpstream, startAgentRouterUpstream, startPanel, startServerProcess } = require('./helpers');
 const { createStore } = require('../src/compat/store');
+const { WRITABLE_KEYS } = require('../src/routes/config');
+const { STORE_KEYS } = require('../src/store');
 
 const CLIENT_KEY = 'client-key-456';
 const STORED_TOKEN = 'stored-agentrouter-token';
 const STORED_USER_ID = '49521';
+
+test('WRITABLE_KEYS маршрута — подмножество STORE_KEYS хранилища', () => {
+  // Дрейф этих двух списков ломает PUT /api/config: ключ проходит
+  // route-allowlist, но отвергается хранилищем (unknown_key → 500).
+  for (const key of WRITABLE_KEYS) {
+    assert.ok(
+      STORE_KEYS.includes(key),
+      `ключ «${key}» есть в WRITABLE_KEYS, но отсутствует в STORE_KEYS`
+    );
+  }
+});
+
+test('PUT /api/config: частичная запись ключей и чтение назад', async () => {
+  const panel = await startPanel();
+  try {
+    const put = await fetch(panel.base + '/api/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        dlgTab: 'dlg-tab-notifications',
+        notificationThresholds: '{"xkiro":{"short_window_pct":80}}',
+        agentrouterUserId: '49521',
+      }),
+    });
+    assert.equal(put.status, 200);
+    assert.deepEqual(await put.json(), { ok: true });
+
+    const cfg = await (await fetch(panel.base + '/api/config')).json();
+    assert.equal(cfg.data.dlgTab, 'dlg-tab-notifications');
+    assert.equal(cfg.data.notificationThresholds, '{"xkiro":{"short_window_pct":80}}');
+    assert.equal(cfg.data.agentrouterUserId, '49521');
+  } finally {
+    await panel.stop();
+  }
+});
 
 test('HTTP boundary: request ID, malformed JSON и безопасные ошибки', async () => {
   const logs = [];
@@ -117,6 +154,47 @@ test('security: PUT через /omniroute с loopback Origin проходит п
   } finally {
     await panel.stop();
     await mock.close();
+  }
+});
+
+test('сохранение с пустыми полями секретов не затирает сохранённые ключи', async () => {
+  const panel = await startPanel();
+  try {
+    const put = (body) => fetch(panel.base + '/api/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    // Пользователь установил ключи
+    const setup = await put({
+      xkiroKey: 'sk-live-1',
+      agentrouterKey: 'ar-live-1',
+      agentrouterUserId: '49521',
+      omniKey: 'omni-live-1',
+      omniUrl: 'http://127.0.0.1:1',
+    });
+    assert.equal(setup.status, 200);
+
+    // Диалог при пустых полях секретов шлёт только несекретные поля
+    // (agentrouterUserId/omniUrl заполняются из хранилища при открытии)
+    const res = await put({ agentrouterUserId: '49521', omniUrl: 'http://127.0.0.1:1' });
+    assert.equal(res.status, 200);
+
+    const cfg = await (await fetch(panel.base + '/api/config')).json();
+    assert.equal(cfg.data.hasXkiroKey, true);
+    assert.equal(cfg.data.hasAgentrouterKey, true);
+    assert.equal(cfg.data.hasOmniKey, true);
+    assert.equal(cfg.data.hasOmniRoute, true);
+    assert.equal(cfg.data.agentrouterUserId, '49521');
+
+    // Явная очистка пустой строкой продолжает работать («Удалить ключ»)
+    assert.equal((await put({ xkiroKey: '' })).status, 200);
+    const after = await (await fetch(panel.base + '/api/config')).json();
+    assert.equal(after.data.hasXkiroKey, false);
+    assert.equal(after.data.hasAgentrouterKey, true);
+  } finally {
+    await panel.stop();
   }
 });
 

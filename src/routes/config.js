@@ -8,11 +8,13 @@
 
 const { AppError, readJson, sendJson } = require('../http');
 
-// Allowlist ключей, которые клиент может писать (вместо произвольного KV)
+// Allowlist ключей, которые клиент может писать (вместо произвольного KV).
+// Должен быть подмножеством STORE_KEYS хранилища — это проверяет тест
+// «WRITABLE_KEYS маршрута — подмножество STORE_KEYS хранилища».
 const WRITABLE_KEYS = [
   'xkiroKey', 'agentrouterKey', 'agentrouterUserId', 'omniUrl', 'omniKey',
   'agRefreshToken', 'agProject', 'aliases', 'comboActive', 'dlgProvider',
-  'modelsProvider', 'statsProvider', 'notificationThresholds',
+  'dlgTab', 'modelsProvider', 'statsProvider', 'notificationThresholds',
 ];
 
 function registerConfigRoutes(router, {
@@ -66,6 +68,7 @@ function registerConfigRoutes(router, {
       aliases: s.aliases || '',
       comboActive: s.comboActive || '',
       dlgProvider: s.dlgProvider || '',
+      dlgTab: s.dlgTab || '',
       modelsProvider: s.modelsProvider || '',
       statsProvider: s.statsProvider || '',
       notificationThresholds: s.notificationThresholds || '',
@@ -87,4 +90,4 @@ function registerConfigRoutes(router, {
   });
 }
 
-module.exports = { registerConfigRoutes };
+module.exports = { registerConfigRoutes, WRITABLE_KEYS };

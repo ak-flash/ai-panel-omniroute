@@ -41,7 +41,7 @@ const STORE_KEYS = [
   'xkiroKey', 'agentrouterKey', 'agentrouterUserId',
   'omniUrl', 'omniKey',
   'agRefreshToken', 'agProject', 'agEmail',
-  'aliases', 'comboActive', 'dlgProvider', 'modelsProvider', 'statsProvider',
+  'aliases', 'comboActive', 'dlgProvider', 'dlgTab', 'modelsProvider', 'statsProvider',
   'agentrouterDayBalance',
   'notificationThresholds',
   ACTIVE_ACCOUNT_KEY,

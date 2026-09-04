@@ -61,6 +61,13 @@ const _DIALOG_HTML = `<dialog id="dlg">
       <h2>Настройки</h2>
       <button type="submit" class="dlg-close" aria-label="Закрыть настройки" title="Закрыть">${icon('x-mark')}</button>
     </div>
+    <div class="dlg-tabs" role="tablist" aria-label="Разделы настроек">
+      <button type="button" class="dlg-tab" id="dlg-tab-provider" role="tab" aria-selected="true" aria-controls="dlg-panel-provider">Провайдер</button>
+      <button type="button" class="dlg-tab" id="dlg-tab-omni" role="tab" aria-selected="false" aria-controls="dlg-panel-omni" tabindex="-1">OmniRoute</button>
+      <button type="button" class="dlg-tab" id="dlg-tab-notifications" role="tab" aria-selected="false" aria-controls="dlg-panel-notifications" tabindex="-1">Уведомления</button>
+      <button type="button" class="dlg-tab" id="dlg-tab-aliases" role="tab" aria-selected="false" aria-controls="dlg-panel-aliases" tabindex="-1">Имена</button>
+    </div>
+    <div class="dlg-panel" id="dlg-panel-provider" role="tabpanel" aria-labelledby="dlg-tab-provider" tabindex="0">
     <div class="dlg-card">
       <div class="dlg-card-head">
         <span class="dlg-card-icon" aria-hidden="true">${icon('plug')}</span>
@@ -123,6 +130,13 @@ const _DIALOG_HTML = `<dialog id="dlg">
         <p class="hint" id="dlg-ag-exp" hidden></p>
       </div>
     </div>
+    <div id="dlg-result-provider" class="dlg-result" role="status" hidden></div>
+    <div class="dlg-panel-actions">
+      <button type="button" id="dlg-save-provider" class="btn btn-primary">Проверить и сохранить</button>
+      <button type="button" id="dlg-remove" class="btn btn-danger">Удалить ключ</button>
+    </div>
+    </div>
+    <div class="dlg-panel" id="dlg-panel-omni" role="tabpanel" aria-labelledby="dlg-tab-omni" tabindex="0" hidden>
     <div class="dlg-card">
       <div class="dlg-card-head">
         <span class="dlg-card-icon" aria-hidden="true">${icon('arrows-right-left')}</span>
@@ -136,25 +150,66 @@ const _DIALOG_HTML = `<dialog id="dlg">
       <label for="dlg-omni-key">API Key</label>
       <input type="password" id="dlg-omni-key" placeholder="sk-…" autocomplete="off">
     </div>
+    <div id="dlg-result-omni" class="dlg-result" role="status" hidden></div>
+    <div class="dlg-panel-actions">
+      <button type="button" id="dlg-save-omni" class="btn btn-primary">Проверить и сохранить</button>
+    </div>
+    </div>
+    <div class="dlg-panel" id="dlg-panel-notifications" role="tabpanel" aria-labelledby="dlg-tab-notifications" tabindex="0" hidden>
     <div class="dlg-card">
       <div class="dlg-card-head">
-        <span class="dlg-card-icon" aria-hidden="true">${icon('sparkles')}</span>
+        <span class="dlg-card-icon" aria-hidden="true">${icon('bell')}</span>
         <div>
           <h3 class="dlg-card-title">Уведомления</h3>
           <p class="dlg-card-sub">Тост при достижении порога; пусто — не проверять</p>
         </div>
       </div>
-      <div class="dlg-th-grid">
-        <label for="dlg-th-xkiro-short">xKiro: короткое окно ≥, %</label>
-        <input type="number" id="dlg-th-xkiro-short" min="1" max="100" placeholder="80" autocomplete="off">
-        <label for="dlg-th-xkiro-long">xKiro: длинное окно ≥, %</label>
-        <input type="number" id="dlg-th-xkiro-long" min="1" max="100" placeholder="80" autocomplete="off">
-        <label for="dlg-th-ar-balance">AgentRouter: баланс ниже, $</label>
-        <input type="number" id="dlg-th-ar-balance" min="0" step="0.5" placeholder="10" autocomplete="off">
-        <label for="dlg-th-ag-remaining">Antigravity: остаток &lt;, %</label>
-        <input type="number" id="dlg-th-ag-remaining" min="1" max="100" placeholder="20" autocomplete="off">
+      <div class="dlg-th">
+        <div class="dlg-th-group" role="group" aria-labelledby="dlg-th-xkiro-title">
+          <span class="dlg-th-group-title" id="dlg-th-xkiro-title">xKiro</span>
+          <div class="dlg-th-row">
+            <label for="dlg-th-xkiro-short">Короткое окно ≥</label>
+            <span class="dlg-th-field">
+              <input type="number" id="dlg-th-xkiro-short" min="1" max="100" placeholder="80" inputmode="decimal" autocomplete="off">
+              <span class="dlg-th-unit" aria-hidden="true">%</span>
+            </span>
+          </div>
+          <div class="dlg-th-row">
+            <label for="dlg-th-xkiro-long">Длинное окно ≥</label>
+            <span class="dlg-th-field">
+              <input type="number" id="dlg-th-xkiro-long" min="1" max="100" placeholder="80" inputmode="decimal" autocomplete="off">
+              <span class="dlg-th-unit" aria-hidden="true">%</span>
+            </span>
+          </div>
+        </div>
+        <div class="dlg-th-group" role="group" aria-labelledby="dlg-th-ar-title">
+          <span class="dlg-th-group-title" id="dlg-th-ar-title">AgentRouter</span>
+          <div class="dlg-th-row">
+            <label for="dlg-th-ar-balance">Баланс ниже</label>
+            <span class="dlg-th-field">
+              <input type="number" id="dlg-th-ar-balance" min="0" step="0.5" placeholder="10" inputmode="decimal" autocomplete="off">
+              <span class="dlg-th-unit" aria-hidden="true">$</span>
+            </span>
+          </div>
+        </div>
+        <div class="dlg-th-group" role="group" aria-labelledby="dlg-th-ag-title">
+          <span class="dlg-th-group-title" id="dlg-th-ag-title">Antigravity</span>
+          <div class="dlg-th-row">
+            <label for="dlg-th-ag-remaining">Остаток &lt;</label>
+            <span class="dlg-th-field">
+              <input type="number" id="dlg-th-ag-remaining" min="1" max="100" placeholder="20" inputmode="decimal" autocomplete="off">
+              <span class="dlg-th-unit" aria-hidden="true">%</span>
+            </span>
+          </div>
+        </div>
       </div>
     </div>
+    <div id="dlg-result-notifications" class="dlg-result" role="status" hidden></div>
+    <div class="dlg-panel-actions">
+      <button type="button" id="dlg-save-notifications" class="btn btn-primary">Сохранить</button>
+    </div>
+    </div>
+    <div class="dlg-panel" id="dlg-panel-aliases" role="tabpanel" aria-labelledby="dlg-tab-aliases" tabindex="0" hidden>
     <div class="dlg-card">
       <div class="dlg-card-head">
         <span class="dlg-card-icon" aria-hidden="true">${icon('tag')}</span>
@@ -167,11 +222,10 @@ const _DIALOG_HTML = `<dialog id="dlg">
       <p class="hint" style="margin-top:0">Напр. <code>openai-compatible-chat-…</code> → <code>xKiro</code></p>
       <div id="dlg-aliases-list"></div>
     </div>
-    <div id="dlg-result" class="dlg-result" role="status"></div>
-    <div class="dlg-actions">
-      <button type="button" id="dlg-save" class="btn btn-primary">Проверить и сохранить</button>
-      <button type="button" id="dlg-remove" class="btn btn-danger">Удалить ключ</button>
-      <button type="submit" class="btn">Закрыть</button>
+    <div id="dlg-result-aliases" class="dlg-result" role="status" hidden></div>
+    <div class="dlg-panel-actions">
+      <button type="button" id="dlg-save-aliases" class="btn btn-primary">Сохранить</button>
+    </div>
     </div>
   </form>
 </dialog>`;
