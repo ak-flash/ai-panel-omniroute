@@ -183,7 +183,7 @@ async function startPanel(opts = {}) {
   const port = await getFreePort();
   const providers = opts.providers ||
     [createXKiroProvider({ url: opts.upstream || 'http://127.0.0.1:1' })];
-  const { createStore } = require('../store');
+  const { createStore } = require('../src/compat/store');
   const store = opts.store || await createStore({ memory: true });
   const app = createApp({
     providers,

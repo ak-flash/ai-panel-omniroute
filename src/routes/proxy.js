@@ -7,12 +7,12 @@
 // Заголовки авторизации клиента пробрасываются как есть.
 // ============================================================
 
-const { AppError } = require('../../http');
+const { AppError } = require('../http');
 const { handleProxy } = require('../proxy');
 
 const PROXY_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'];
 
-function registerProxyRoutes(router, { providers, activeProvider, logger }) {
+function registerProxyRoutes(router, { providers, activeProvider, logger, debug = false }) {
   function handle({ req, res, url }) {
     if (!activeProvider) throw new AppError(503, 'no_provider', 'Провайдер не настроен');
     let provider = activeProvider;
@@ -22,7 +22,7 @@ function registerProxyRoutes(router, { providers, activeProvider, logger }) {
       provider = providers.find((p) => p.id === m[1]);
       prefix = '/proxy/' + m[1];
     }
-    return handleProxy(req, res, url, { prefix, upstream: provider.upstream, logger });
+    return handleProxy(req, res, url, { prefix, upstream: provider.upstream, logger, debug });
   }
 
   router.add(PROXY_METHODS, '/proxy', handle);

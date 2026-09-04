@@ -3,8 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('events');
-const { AppError, readBody, readJson, safeLog } = require('../http');
-const { Router } = require('../router');
+const { AppError, readBody, readJson, safeLog } = require('../src/http');
+const { Router } = require('../src/router');
 
 function request(body = '') {
   const req = new EventEmitter();

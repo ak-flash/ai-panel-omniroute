@@ -7,7 +7,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { startMockUpstream, startAgentRouterUpstream, startPanel, startServerProcess } = require('./helpers');
-const { createStore } = require('../store');
+const { createStore } = require('../src/compat/store');
 
 const CLIENT_KEY = 'client-key-456';
 const STORED_TOKEN = 'stored-agentrouter-token';
@@ -182,7 +182,7 @@ test('нет ключа у клиента → 401 от upstream доходит �
 
 test('agentrouter: ключ и User ID из хранилища уходят адаптеру, hasKey в /api/config', async () => {
   const { createAgentRouterProvider } = require('../providers/agentrouter');
-  const { createStore } = require('../store');
+  const { createStore } = require('../src/compat/store');
   const mock = await startAgentRouterUpstream();
   const store = await createStore({ memory: true });
   await store.set('agentrouterKey', STORED_TOKEN);
@@ -222,7 +222,7 @@ test('agentrouter: ключ и User ID из хранилища уходят ад
 
 test('agentrouter: разовый снимок баланса дня сохраняется и уходит в usage', async () => {
   const { createAgentRouterProvider } = require('../providers/agentrouter');
-  const { createStore } = require('../store');
+  const { createStore } = require('../src/compat/store');
   const mock = await startAgentRouterUpstream();
   const store = await createStore({ memory: true });
   await store.set('agentrouterKey', STORED_TOKEN);

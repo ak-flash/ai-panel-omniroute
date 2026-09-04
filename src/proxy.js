@@ -9,11 +9,11 @@
 // редиректы запрещены (redirect: 'error').
 // ============================================================
 
-const { AppError, readBody, sendNoContent } = require('../http');
+const { AppError, readBody, sendNoContent } = require('./http');
 
 const PROXY_TIMEOUT_MS = 30000;
 
-async function handleProxy(req, res, url, { prefix, upstream, logger }) {
+async function handleProxy(req, res, url, { prefix, upstream, logger, debug = false }) {
   if (req.method === 'OPTIONS') return sendNoContent(res);
   // Логгер — объект с error/warn/info (файловый логгер) либо console
   const log = logger || console;
@@ -27,6 +27,14 @@ async function handleProxy(req, res, url, { prefix, upstream, logger }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
   res.on('close', () => controller.abort());
+  const startedAt = Date.now();
+  if (debug) {
+    const safeHeaders = { ...fwdHeaders };
+    if (safeHeaders.authorization) safeHeaders.authorization = '***';
+    if (safeHeaders['x-api-key']) safeHeaders['x-api-key'] = '***';
+    const bodyPreview = body.length > 0 ? body.slice(0, 500).toString() : '(empty)';
+    log.info(`[proxy] ${req.method} ${target}`, { headers: safeHeaders, body: bodyPreview + (body.length > 500 ? '...' : '') });
+  }
   try {
     const upstreamRes = await fetch(target, {
       method: req.method,
@@ -46,6 +54,9 @@ async function handleProxy(req, res, url, { prefix, upstream, logger }) {
       }
     }
     res.end();
+    if (debug) {
+      log.info(`[proxy] ${req.method} ${target} → ${upstreamRes.status} (${Date.now() - startedAt} ms)`);
+    }
   } catch (error) {
     if (res.headersSent) return res.destroy();
     const msg = error instanceof Error ? error.message : String(error);

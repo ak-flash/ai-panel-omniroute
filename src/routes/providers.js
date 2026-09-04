@@ -9,7 +9,7 @@
 // как есть; для AgentRouter добавляется стартовый баланс дня.
 // ============================================================
 
-const { AppError, sendJson } = require('../../http');
+const { AppError, sendJson } = require('../http');
 
 function registerProviderRoutes(router, {
   providers,

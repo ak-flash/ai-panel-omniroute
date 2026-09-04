@@ -18,7 +18,10 @@ const FACTORIES = { xkiro: createXKiroProvider, agentrouter: createAgentRouterPr
  * opts пробрасываются в фабрики (сейчас — log: функция логирования).
  */
 function loadProviders(opts = {}) {
-  return Object.keys(FACTORIES).map((id) => FACTORIES[id](opts));
+  // Для обратной совместимости: если передан только log, используем его как есть,
+  // но также передаём debug для детального логирования.
+  const providerOpts = { ...opts };
+  return Object.keys(FACTORIES).map((id) => FACTORIES[id](providerOpts));
 }
 
 module.exports = { loadProviders, FACTORIES };

@@ -283,6 +283,9 @@ ai-panel/
 ├── src/               # серверная часть (этап 3 рефакторинга)
 │   ├── app.js         # createApp: сборка приложения, security-периметр, error boundary, lifecycle
 │   ├── main.js        # CLI-запуск: .env, проверка конфига, listen, graceful shutdown
+│   ├── http.js        # HTTP-инфраструктура: AppError, sendJson, readJson, request ID
+│   ├── router.js      # декларативный роутер (params, 405/404)
+│   ├── security.js    # CORS/same-origin, security headers, валидация upstream и master key
 │   ├── file-logger.js # файловый лог диагностики провайдеров (logs/ai-panel.log)
 │   ├── routes/        # модули маршрутов: providers, proxy, omniroute, antigravity, config
 │   ├── antigravity-service.js # состояние Google-авторизации и кеш квот
@@ -291,11 +294,9 @@ ai-panel/
 │   ├── proxy.js       # универсальный прозрачный прокси (/proxy, /omniroute)
 │   ├── store/         # encrypted store (этап 4): фасад index.js, crypto,
 │   │                  #   master-key, persistence, CLI rotate-key
+│   ├── compat/store.js # shim над src/store (обратная совместимость импортов)
 │   └── provider-store-fields.js # маппинг провайдер → поля хранилища
-├── http.js            # HTTP-инфраструктура: AppError, sendJson, readJson, request ID
-├── router.js          # декларативный роутер (params, 405/404)
-├── security.js        # CORS/same-origin, security headers, валидация upstream и master key
-├── store.js           # shim над src/store (обратная совместимость импортов)
+├── config/            # конфиги инструментов: eslint.config.js, playwright.config.js
 ├── providers/         # провайдеры AI-API
 │   ├── index.js       # реестр: FACTORIES + loadProviders()
 │   ├── xkiro.js       # фабрика адаптера xKiro (getUsage, getModels)

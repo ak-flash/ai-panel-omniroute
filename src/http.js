@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
-const { recordRequest } = require('./src/metrics');
+const { recordRequest } = require('./metrics');
 
 const DEFAULT_MAX_BODY = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 30_000;

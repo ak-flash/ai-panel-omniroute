@@ -10,7 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { createStore, StoreError, STORE_KEYS } = require('../store');
+const { createStore, StoreError, STORE_KEYS } = require('../src/compat/store');
 const { rotateKey } = require('../src/store/rotate-key');
 
 const KEY_A = 'a'.repeat(64);

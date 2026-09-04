@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-  testDir: './tests/playwright',
+  testDir: '../tests/playwright',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -19,6 +19,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm start',
+    cwd: '..',
     port: 8765,
     reuseExistingServer: !process.env.CI,
   },

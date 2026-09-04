@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { getServerConfig, validateMasterKey } = require('../security');
+const { getServerConfig, validateMasterKey } = require('./security');
 const { loadProviders } = require('../providers');
 const { createApp } = require('./app');
 const { createStore } = require('./store');
@@ -58,7 +58,17 @@ async function main() {
   // PM2. Путь намеренно вшит — файл рядом с data/ хранилища.
   const logDir = path.join(__dirname, '..', 'logs');
   const logFile = path.join(logDir, 'ai-panel.log');
-  const bootLog = createFileLogger({ file: logFile });
+  const providerDebug = process.env.AIPANEL_PROVIDER_DEBUG === 'true';
+  // Жёсткий лимит 50 МБ для ротации логов
+  const LOG_MAX_BYTES = 50 * 1024 * 1024;
+  // Общий логгер: пишет в файл и дублирует в консоль (для boot, ошибок, etc.)
+  const bootLog = createFileLogger({ file: logFile, maxBytes: LOG_MAX_BYTES });
+  // Логгер для провайдеров: дублирует в консоль только при включённом debug
+  const providerLogger = createFileLogger({
+    file: logFile,
+    maxBytes: LOG_MAX_BYTES,
+    mirror: providerDebug ? console : null,
+  });
 
   let serverConfig;
   try {
@@ -89,9 +99,9 @@ async function main() {
   }
 
   // Провайдеры ждут функцию log(...args) (не-JSON ответы, отказы токенов).
-  const providerLog = bootLog.log.bind(bootLog);
+  const providerLog = providerLogger.log.bind(providerLogger);
 
-  const providers = loadProviders({ log: providerLog });
+  const providers = loadProviders({ log: providerLog, debug: providerDebug });
 
   // Хранилище открываем до старта сервера: неверный master key или
   // повреждённая база видны сразу в логе, а не на первом запросе
@@ -103,7 +113,7 @@ async function main() {
     process.exit(1);
   }
 
-  const app = createApp({ providers, publicOrigin, store, logger: bootLog });
+  const app = createApp({ providers, publicOrigin, store, logger: bootLog, providerLogger, providerDebug });
   if (typeof app.startDailyAgentRouterTracker === 'function') app.startDailyAgentRouterTracker();
 
   app.on('error', (err) => {

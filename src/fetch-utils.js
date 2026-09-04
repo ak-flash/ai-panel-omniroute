@@ -1,6 +1,6 @@
 'use strict';
 
-const { AppError } = require('../http');
+const { AppError } = require('./http');
 
 const DEFAULT_TIMEOUT_MS = 10000;
 const DEFAULT_RETRIES = 2;

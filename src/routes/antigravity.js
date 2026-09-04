@@ -5,7 +5,7 @@
 // данные Google и квоты. Вся логика — в src/antigravity-service.js.
 // ============================================================
 
-const { AppError, readJson, sendJson } = require('../../http');
+const { AppError, readJson, sendJson } = require('../http');
 
 /** Страница-подсказка callback: код остаётся в адресной строке. */
 const page = (title, msg) =>

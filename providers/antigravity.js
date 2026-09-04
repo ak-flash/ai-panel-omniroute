@@ -34,9 +34,14 @@ function createAntigravityProvider(config = {}) {
   // Диагностика сети/токенов в log из config (в CLI — файловый логгер);
   // по умолчанию — консоль (тесты, dev)
   const log = typeof config.log === 'function' ? config.log : console.warn;
+  const debug = config.debug === true;
 
   /** Один POST к указанному internal-методу Google. */
   async function callInternal(method, token, project) {
+    const startedAt = Date.now();
+    if (debug) {
+      log.info(`[Antigravity] ${method}`, { project: project || '(none)' });
+    }
     try {
       const { response, data } = await fetchJson(
         upstream + '/v1internal:' + method,
@@ -51,6 +56,9 @@ function createAntigravityProvider(config = {}) {
         },
         REQUEST_TIMEOUT_MS,
       );
+      if (debug) {
+        log.info(`[Antigravity] ${method} → ${response.status} (${Date.now() - startedAt} ms)`);
+      }
       return { status: response.status, body: data };
     } catch (err) {
       // Сеть / DNS / таймаут / не-JSON — наружу мапится в 502 (см. getQuota);

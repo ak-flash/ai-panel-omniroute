@@ -7,7 +7,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { startPanel } = require('./helpers');
-const { createStore } = require('../store');
+const { createStore } = require('../src/compat/store');
 
 test('GET /api/accounts возвращает пустой список для новой панели', async () => {
   const store = await createStore({ memory: true });

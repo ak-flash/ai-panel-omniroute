@@ -8,7 +8,7 @@
 // аккаунта при проксировании запросов к провайдерам.
 // ============================================================
 
-const { AppError, readJson, sendJson } = require('../../http');
+const { AppError, readJson, sendJson } = require('../http');
 
 function pickAccountName(value) {
   if (typeof value !== 'string' || !/^[a-z0-9_-]{1,32}$/.test(value)) {

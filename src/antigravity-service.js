@@ -15,7 +15,7 @@
 // ============================================================
 
 const crypto = require('crypto');
-const { AppError } = require('../http');
+const { AppError } = require('./http');
 
 const AG_CACHE_TTL_MS = 60000; // серверный кеш квот, 60 с
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // время жизни одноразового OAuth state

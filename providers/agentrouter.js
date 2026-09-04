@@ -58,6 +58,7 @@ function createAgentRouterProvider(config = {}) {
   // Диагностика уходит в log из config (в CLI — файловый логгер,
   // см. src/file-logger.js); по умолчанию — консоль (тесты, dev)
   const log = typeof config.log === 'function' ? config.log : console.warn;
+  const debug = config.debug === true;
 
   // Авторизация: Authorization: Bearer <access-токен> + New-Api-User <id>
   const authScheme = 'authorization';
@@ -74,10 +75,20 @@ function createAgentRouterProvider(config = {}) {
       'user-agent': 'AI-Panel/0.1 (+https://agentrouter.org)',
       ...buildHeaders(key || apiKey, userId),
     };
+    const startedAt = Date.now();
+    if (debug) {
+      const safeHeaders = { ...headers };
+      if (safeHeaders.authorization) safeHeaders.authorization = 'Bearer ***';
+      if (safeHeaders['new-api-user']) safeHeaders['new-api-user'] = '***';
+      log.info(`[AgentRouter] ${pathname}`, { headers: safeHeaders });
+    }
 
     for (let attempt = 0; attempt <= NON_JSON_RETRY_COUNT; attempt += 1) {
       try {
         const { response, data } = await fetchJson(upstream + pathname, { headers }, REQUEST_TIMEOUT_MS);
+        if (debug) {
+          log.info(`[AgentRouter] ${pathname} → ${response.status} (${Date.now() - startedAt} ms)`);
+        }
         return { status: response.status, data: data || {} };
       } catch (error) {
         if (error.code === 'upstream_invalid_json') {

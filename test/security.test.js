@@ -9,7 +9,7 @@ const {
   parseAllowedOrigins,
   validateMasterKey,
   validateUpstreamUrl,
-} = require('../security');
+} = require('../src/security');
 
 test('server config использует loopback локально и bind all для PUBLIC_ORIGIN', () => {
   assert.deepEqual(getServerConfig({}), {

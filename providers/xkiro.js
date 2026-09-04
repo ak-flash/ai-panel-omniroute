@@ -37,6 +37,7 @@ function createXKiroProvider(config = {}) {
   // Диагностика уходит в log из config (в CLI — файловый логгер,
   // см. src/file-logger.js); по умолчанию — консоль (тесты, dev)
   const log = typeof config.log === 'function' ? config.log : console.warn;
+  const debug = config.debug === true;
 
   // xKiro авторизует запросы заголовком x-api-key
   const authScheme = 'x-api-key';
@@ -44,8 +45,17 @@ function createXKiroProvider(config = {}) {
 
   async function apiGet(pathname, key = '') {
     const headers = { accept: 'application/json', ...buildHeaders(key || apiKey) };
+    const startedAt = Date.now();
+    if (debug) {
+      const safeHeaders = { ...headers };
+      if (safeHeaders['x-api-key']) safeHeaders['x-api-key'] = '***';
+      log.info(`[xKiro] ${pathname}`, { headers: safeHeaders });
+    }
     try {
       const { response, data } = await fetchJson(upstream + pathname, { headers }, REQUEST_TIMEOUT_MS);
+      if (debug) {
+        log.info(`[xKiro] ${pathname} → ${response.status} (${Date.now() - startedAt} ms)`);
+      }
       return { status: response.status, data: data || {} };
     } catch (error) {
       if (error.code === 'upstream_invalid_json') {

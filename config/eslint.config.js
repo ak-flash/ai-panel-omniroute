@@ -37,7 +37,7 @@ module.exports = [
   {
     // Playwright-конфиг и тесты — ESM-файлы, исполняемые раннером Playwright;
     // page.evaluate() исполняется в браузере, поэтому нужны и браузерные глобалы
-    files: ['playwright.config.js', 'tests/playwright/**/*.js'],
+    files: ['config/playwright.config.js', 'tests/playwright/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',

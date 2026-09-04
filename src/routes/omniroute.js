@@ -7,7 +7,7 @@
 // осознанно настроенный пользователем upstream.
 // ============================================================
 
-const { AppError } = require('../../http');
+const { AppError } = require('../http');
 const { handleProxy } = require('../proxy');
 
 const PROXY_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'];

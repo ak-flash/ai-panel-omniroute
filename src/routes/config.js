@@ -6,7 +6,7 @@
 // булевы has*; сохранённые значения обратно не читаются.
 // ============================================================
 
-const { AppError, readJson, sendJson } = require('../../http');
+const { AppError, readJson, sendJson } = require('../http');
 
 // Allowlist ключей, которые клиент может писать (вместо произвольного KV)
 const WRITABLE_KEYS = [

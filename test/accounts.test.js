@@ -7,7 +7,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createStore, StoreError } = require('../store');
+const { createStore, StoreError } = require('../src/compat/store');
 
 test('создание аккаунта с credentials и чтение списка (без секретов)', async () => {
   const store = await createStore({ memory: true });

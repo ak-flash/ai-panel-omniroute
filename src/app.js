@@ -15,14 +15,14 @@ const path = require('path');
 const { loadProviders } = require('../providers');
 const { createAntigravityProvider } = require('../providers/antigravity');
 const { createGoogleOauth, getBuiltinClientId, getBuiltinClientSecret } = require('../providers/google-oauth');
-const { createStore } = require('../store');
-const { createRequestContext, handleError, sendJson } = require('../http');
-const { Router } = require('../router');
+const { createStore } = require('./store');
+const { createRequestContext, handleError, sendJson } = require('./http');
+const { Router } = require('./router');
 const {
   applyRequestSecurity,
   parseAllowedOrigins,
   validateUpstreamUrl,
-} = require('../security');
+} = require('./security');
 
 const { createStaticHandler } = require('./static');
 const { createAgentRouterTracker, AGENTROUTER_DAY_BALANCE_KEY } = require('./agentrouter-tracker');
@@ -48,17 +48,19 @@ function createApp({
   allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
   publicOrigin = process.env.PUBLIC_ORIGIN || '',
   logger = console,
+  providerLogger = logger,
   requestTimeoutMs = 30000,
   authLoopbackPort = process.env.PORT || '8765',
+  providerDebug = false,
 } = {}) {
   const activeProvider = providers[0] || null;
   // Логгер провайдеров (функция warn-уровня): включает файл при запуске CLI.
   // Не перетираем явно переданный antigravity/googleOauth (тесты передают mock).
-  const providerLog = typeof logger.log === 'function'
-    ? logger.log.bind(logger)
-    : (typeof logger === 'function' ? logger : console.warn);
-  if (!antigravity) antigravity = createAntigravityProvider({ log: providerLog });
-  if (!googleOauth) googleOauth = createGoogleOauth({ log: providerLog });
+  const providerLog = typeof providerLogger.log === 'function'
+    ? providerLogger.log.bind(providerLogger)
+    : (typeof providerLogger === 'function' ? providerLogger : console.warn);
+  if (!antigravity) antigravity = createAntigravityProvider({ log: providerLog, debug: providerDebug });
+  if (!googleOauth) googleOauth = createGoogleOauth({ log: providerLog, debug: providerDebug });
 
   // Хранилище ключей/настроек: SQLite на сервере (зашифровано AES-256-GCM).
   // createStore — async, поэтому store может прийти Promise; нормализуем
@@ -115,7 +117,7 @@ function createApp({
     getDayBalanceUsd: tracker.getDayBalanceUsd,
     logger,
   });
-  registerProxyRoutes(router, { providers, activeProvider, logger });
+  registerProxyRoutes(router, { providers, activeProvider, logger: providerLogger, debug: providerDebug });
   registerOmnirouteRoutes(router, { getStore, validateUpstreamUrl, logger });
   registerAntigravityRoutes(router, {
     service: antigravityService,
@@ -146,7 +148,8 @@ function createApp({
       let level = 'info';
       if (res.statusCode >= 500) level = 'error';
       else if (res.statusCode >= 400) level = 'warn';
-      const fn = typeof logger[level] === 'function' ? logger[level].bind(logger) : null;
+      // Используем метод *File, чтобы писать только в файл, не дублируя в консоль
+      const fn = typeof logger[level + 'File'] === 'function' ? logger[level + 'File'].bind(logger) : null;
       const method = req.method || '?';
       if (fn) fn(`[access] ${method} ${new URL(req.url, 'http://localhost').pathname} → ${res.statusCode} (${Date.now() - startedAt} ms)`);
     });
