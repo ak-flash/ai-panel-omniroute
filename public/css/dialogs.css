@@ -112,7 +112,8 @@ dialog::backdrop {
 
 .dlg-card .input-group input,
 .dlg-card input[type="text"],
-.dlg-card input[type="password"] {
+.dlg-card input[type="password"],
+.dlg-card textarea {
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
@@ -124,8 +125,15 @@ dialog::backdrop {
   box-sizing: border-box;
 }
 
+.dlg-card textarea {
+  resize: vertical;
+  min-height: 60px;
+  line-height: 1.4;
+}
+
 .dlg-card .input-group input:focus,
-.dlg-card input:focus {
+.dlg-card input:focus,
+.dlg-card textarea:focus {
   border-color: var(--accent);
   outline: none;
 }

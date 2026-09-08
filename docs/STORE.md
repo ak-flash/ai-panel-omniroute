@@ -55,7 +55,8 @@ AES-256-GCM, IV 12 байт, тег аутентичности 16 байт. Фо
 
 Публичный API хранилища принимает только ключи из `STORE_KEYS`
 (`src/store/index.js`): ключи провайдеров (`xkiroKey`, `agentrouterKey`,
-`agentrouterUserId`), OmniRoute (`omniUrl`, `omniKey`), Antigravity
+`agentrouterUserId`), OmniRoute (`omniUrl`, `omniUrls` — список адресов
+по одному в строке, `omniKey`), Antigravity
 (`agRefreshToken`, `agProject`, `agEmail`), настройки UI и служебные снимки
 (`aliases`, `comboActive`, `dlgProvider`, `modelsProvider`,
 `statsProvider`, `agentrouterDayBalance`), `notificationThresholds`,

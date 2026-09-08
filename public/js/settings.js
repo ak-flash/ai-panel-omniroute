@@ -144,3 +144,28 @@ export function normalizeOmniUrl(url) {
   u = u.replace(/\/(v\d+|api)$/i, '');
   return u;
 }
+
+/** Список URL OmniRoute: omniUrls из хранилища + legacy omniUrl
+ * (если не входит в список). Используется диалогом и кешем. */
+export function getOmniUrls() {
+  const list = normalizeOmniUrls(vaultGet('omniUrls') || '');
+  const legacy = normalizeOmniUrl(getOmniUrl());
+  if (legacy && !list.includes(legacy)) list.push(legacy);
+  return list;
+}
+
+/** Нормализует многострочный/через запятую список URL: убирает
+ * пустые строки и дубли, сохраняя порядок. */
+export function normalizeOmniUrls(raw) {
+  const seen = new Set();
+  const out = [];
+  for (const part of String(raw || '').split(/[\n,]+/)) {
+    const u = normalizeOmniUrl(part);
+    if (!u) continue;
+    const key = u.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(u);
+  }
+  return out;
+}

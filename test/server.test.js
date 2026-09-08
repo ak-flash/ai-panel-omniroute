@@ -133,6 +133,65 @@ test('security: OmniRoute URL берётся с сервера, клиентск
   }
 });
 
+test('omniroute: несколько адресов — выбирается первый доступный', async () => {
+  const mock = await startMockUpstream({ requireKey: false });
+  const store = await createStore({ memory: true });
+  // Первый адрес — «мёртвый» порт, второй — живой mock
+  await store.set('omniUrls', 'http://127.0.0.1:1\n' + mock.url);
+  await store.set('omniKey', 'server-omni-key');
+  const panel = await startPanel({ store });
+  try {
+    const response = await fetch(panel.base + '/omniroute/v1/usage');
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.plan, 'pro');
+    const usage = mock.seen.find((r) => r.url === '/v1/usage');
+    assert.ok(usage, 'запрос дошёл до живого upstream');
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('omniroute: одиночный недоступный адрес → 502 proxy_error', async () => {
+  const store = await createStore({ memory: true });
+  await store.set('omniUrl', 'http://127.0.0.1:1');
+  const panel = await startPanel({ store });
+  try {
+    const response = await fetch(panel.base + '/omniroute/v1/usage');
+    assert.equal(response.status, 502);
+    assert.equal((await response.json()).error, 'proxy_error');
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('PUT /api/config: omniUrls валидируется и нормализуется', async () => {
+  const panel = await startPanel();
+  try {
+    const put = await fetch(panel.base + '/api/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ omniUrls: 'http://192.168.1.30:20128/\nhttps://omni.example.com/api/' }),
+    });
+    assert.equal(put.status, 200);
+
+    const cfg = await (await fetch(panel.base + '/api/config')).json();
+    assert.equal(cfg.data.omniUrls, 'http://192.168.1.30:20128\nhttps://omni.example.com/api');
+    assert.equal(cfg.data.hasOmniRoute, true);
+
+    const bad = await fetch(panel.base + '/api/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ omniUrls: 'http://192.168.1.30:20128\nnot a url' }),
+    });
+    assert.equal(bad.status, 400);
+    assert.equal((await bad.json()).error, 'invalid_omniroute_url');
+  } finally {
+    await panel.stop();
+  }
+});
+
 test('security: PUT через /omniroute с loopback Origin проходит при настроенном PUBLIC_ORIGIN', async () => {
   // Регрессия: панель за reverse proxy (PUBLIC_ORIGIN), но локальный
   // браузер шлёт PUT с Origin http://127.0.0.1:<port> — раньше это

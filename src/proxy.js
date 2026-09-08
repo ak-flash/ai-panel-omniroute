@@ -13,11 +13,13 @@ const { AppError, readBody, sendNoContent } = require('./http');
 
 const PROXY_TIMEOUT_MS = 30000;
 
-async function handleProxy(req, res, url, { prefix, upstream, logger, debug = false }) {
+async function handleProxy(req, res, url, { prefix, upstream, logger, debug = false, body: preReadBody } = {}) {
   if (req.method === 'OPTIONS') return sendNoContent(res);
   // Логгер — объект с error/warn/info (файловый логгер) либо console
   const log = logger || console;
-  const body = await readBody(req);
+  // Тело может быть прочитано вызывающим заранее (повторная попытка
+  // на другом upstream после обрыва) — иначе читаем из запроса
+  const body = preReadBody !== undefined ? preReadBody : await readBody(req);
   const suffix = url.pathname.replace(new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '') + url.search;
   const target = upstream + suffix;
   const fwdHeaders = {};

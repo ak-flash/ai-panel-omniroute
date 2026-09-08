@@ -8,11 +8,35 @@
 
 const { AppError, readJson, sendJson } = require('../http');
 
+/** Разбирает многострочный список OmniRoute URL: каждый адрес
+ * валидируется тем же validateUpstreamUrl, что и одиночный; строки
+ * нормализуются и дедуплицируются. */
+async function validateOmniUrls(value, validateUpstreamUrl) {
+  const raw = String(value || '');
+  if (!raw.trim()) return [];
+  const parts = raw.split(/[\n,]+/).map((p) => p.trim()).filter(Boolean);
+  const seen = new Set();
+  const out = [];
+  for (const part of parts) {
+    let normalized;
+    try {
+      normalized = await validateUpstreamUrl(part, { allowPrivate: true });
+    } catch {
+      throw new AppError(400, 'invalid_omniroute_url', 'Некорректный или запрещённый OmniRoute URL: ' + part);
+    }
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      out.push(normalized);
+    }
+  }
+  return out;
+}
+
 // Allowlist ключей, которые клиент может писать (вместо произвольного KV).
 // Должен быть подмножеством STORE_KEYS хранилища — это проверяет тест
 // «WRITABLE_KEYS маршрута — подмножество STORE_KEYS хранилища».
 const WRITABLE_KEYS = [
-  'xkiroKey', 'agentrouterKey', 'agentrouterUserId', 'omniUrl', 'omniKey',
+  'xkiroKey', 'agentrouterKey', 'agentrouterUserId', 'omniUrl', 'omniUrls', 'omniKey',
   'agRefreshToken', 'agProject', 'aliases', 'comboActive', 'dlgProvider',
   'dlgTab', 'modelsProvider', 'statsProvider', 'notificationThresholds',
 ];
@@ -40,6 +64,10 @@ function registerConfigRoutes(router, {
         } catch {
           throw new AppError(400, 'invalid_omniroute_url', 'Некорректный или запрещённый OmniRoute URL');
         }
+      }
+      if (Object.hasOwn(body, 'omniUrls') && body.omniUrls) {
+        const urls = await validateOmniUrls(body.omniUrls, validateUpstreamUrl);
+        body.omniUrls = urls.join('\n');
       }
       const entries = [];
       for (const key of WRITABLE_KEYS) {
@@ -74,9 +102,10 @@ function registerConfigRoutes(router, {
       notificationThresholds: s.notificationThresholds || '',
       agentrouterUserId: s.agentrouterUserId || '',
       omniUrl: s.omniUrl || '',
+      omniUrls: s.omniUrls || '',
       hasXkiroKey: Boolean(s.xkiroKey),
       hasAgentrouterKey: Boolean(s.agentrouterKey),
-      hasOmniRoute: Boolean(s.omniUrl),
+      hasOmniRoute: Boolean(s.omniUrl) || Boolean(String(s.omniUrls || '').trim()),
       hasOmniKey: Boolean(s.omniKey),
       hasGoogleToken: Boolean(agStatus.hasToken) || agStatus.hasRefresh,
     };
@@ -90,4 +119,4 @@ function registerConfigRoutes(router, {
   });
 }
 
-module.exports = { registerConfigRoutes, WRITABLE_KEYS };
+module.exports = { registerConfigRoutes, WRITABLE_KEYS, validateOmniUrls };

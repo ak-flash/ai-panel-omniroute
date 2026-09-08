@@ -12,7 +12,7 @@
 
 import { $id, on, ICO_CHECK, ICO_X } from './dom.js';
 import { icon } from '../icons.js';
-import { vaultGet, vaultSet, setKey, removeKey, getAgentRouterUserId, getAgRefreshToken, getOmniUrl, normalizeOmniUrl, saveSettings } from './settings.js';
+import { vaultGet, vaultSet, setKey, removeKey, getAgentRouterUserId, getAgRefreshToken, getOmniUrls, normalizeOmniUrls, saveSettings } from './settings.js';
 import { providerRequest, omniFetch, COMBO_LIST_PATH, fetchGoogleTokenStatus, startGoogleAuth, pasteGoogleAuth, AG_ERROR_MESSAGES } from './api.js';
 import { fmtUsd, dur } from './formatters.js';
 import { renderAliasRows, collectAliasesFromUI } from './aliases.js';
@@ -171,9 +171,9 @@ function openDialog() {
   if ($dlgArUser) $dlgArUser.value = getAgentRouterUserId();
   renderAliasRows();
   fillNotificationFields(readNotificationThresholds());
-  const $omniUrl = $id('dlg-omni-url');
+  const $omniUrls = $id('dlg-omni-urls');
   const $omniKey = $id('dlg-omni-key');
-  if ($omniUrl) $omniUrl.value = getOmniUrl();
+  if ($omniUrls) $omniUrls.value = getOmniUrls().join('\n');
   if ($omniKey) $omniKey.value = '';
   // Статус токена — с сервера (сами секреты клиенту не возвращаются)
   refreshAgStatus();
@@ -368,17 +368,22 @@ async function saveProviderSettings() {
 // ---------- Раздел «OmniRoute»: адрес + ключ + проверка ----------
 
 async function saveOmniSettings() {
-  const $omniUrl = $id('dlg-omni-url');
+  const $omniUrls = $id('dlg-omni-urls');
   const $omniKey = $id('dlg-omni-key');
-  const omniUrlRaw = $omniUrl ? $omniUrl.value.trim() : '';
-  const omniUrlClean = normalizeOmniUrl(omniUrlRaw);
-  if ($omniUrl && omniUrlClean !== omniUrlRaw) {
-    // Показываем пользователю нормализованный адрес
-    $omniUrl.value = omniUrlClean;
-  }
+  const list = normalizeOmniUrls($omniUrls ? $omniUrls.value : '');
+  if ($omniUrls) $omniUrls.value = list.join('\n');
   const omniKeyValue = $omniKey ? $omniKey.value.trim() : '';
 
-  const entries = { omniUrl: omniUrlClean };
+  // Запоминаем, какие адреса были до сохранения (чтобы очистить legacy,
+  // если пользователь удалил старый адрес из списка)
+  const previousUrls = getOmniUrls();
+  const removedUrls = previousUrls.filter((u) => !list.includes(u));
+
+  const entries = { omniUrls: list.join('\n') };
+  // Если старый одиночный URL исчез из списка — очищаем его
+  if (removedUrls.length > 0) {
+    entries.omniUrl = '';
+  }
   if (omniKeyValue) entries.omniKey = omniKeyValue;
 
   const $res = $id('dlg-result-omni');
@@ -397,19 +402,24 @@ async function saveOmniSettings() {
     ? '<br>Ключ сохранён ранее — пустое поле его не меняет'
     : '';
   const renderLine = (line, isErr) => showResult($res, isErr, 'Сохранено.<br>' + line + keyNote);
-  renderLine(omniUrlClean ? 'OmniRoute: ' + omniUrlClean + ' — проверяю…' : 'OmniRoute: не задан', false);
+  const summary = !list.length
+    ? 'OmniRoute: не задан'
+    : list.length === 1
+      ? 'OmniRoute: ' + list[0] + ' — проверяю…'
+      : 'OmniRoute: адресов ' + list.length + ' — проверяю…';
+  renderLine(summary, false);
 
   // Фоновая проверка OmniRoute — уточняет строку результата
-  if (omniUrlClean) {
-    console.info('[OmniRoute] проверка', omniUrlClean);
+  if (list.length) {
+    console.info('[OmniRoute] проверка', list);
     omniFetch(COMBO_LIST_PATH).then((data) => {
       const n = Array.isArray(data) ? data.length : Array.isArray(data.combos) ? data.combos.length : Array.isArray(data.data) ? data.data.length : 0;
       console.info('[OmniRoute] OK', data);
-      renderLine('OmniRoute ' + ICO_CHECK + ' ' + omniUrlClean + ' — доступно combo: ' + n, false);
+      renderLine('OmniRoute ' + ICO_CHECK + ' — доступно combo: ' + n + ' (адресов: ' + list.length + ')', false);
     }).catch((err) => {
       console.warn('[OmniRoute] проверка не прошла', err);
       const isErr = !(err && err.status === 400); // 400 без URL не считаем критичным
-      renderLine('OmniRoute ' + ICO_X + ' ' + omniUrlClean + ' — ' + (err && err.message ? err.message : String(err)), isErr);
+      renderLine('OmniRoute ' + ICO_X + ' — ' + (err && err.message ? err.message : String(err)), isErr);
     });
   }
 }

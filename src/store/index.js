@@ -39,7 +39,7 @@ const ACTIVE_ACCOUNT_KEY = 'activeAccount';
 // чтение (snapshot) остаётся терпимым к унаследованным записям.
 const STORE_KEYS = [
   'xkiroKey', 'agentrouterKey', 'agentrouterUserId',
-  'omniUrl', 'omniKey',
+  'omniUrl', 'omniUrls', 'omniKey',
   'agRefreshToken', 'agProject', 'agEmail',
   'aliases', 'comboActive', 'dlgProvider', 'dlgTab', 'modelsProvider', 'statsProvider',
   'agentrouterDayBalance',

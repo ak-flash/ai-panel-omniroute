@@ -13,7 +13,7 @@ const EMPTY_CONFIG = {
   ok: true,
   data: {
     aliases: '', comboActive: '', dlgProvider: 'xkiro', dlgTab: '', modelsProvider: '',
-    statsProvider: '', notificationThresholds: '', agentrouterUserId: '', omniUrl: '',
+    statsProvider: '', notificationThresholds: '', agentrouterUserId: '', omniUrl: '', omniUrls: '',
     hasXkiroKey: false, hasAgentrouterKey: false, hasOmniRoute: false, hasOmniKey: false,
     hasGoogleToken: false,
   },
@@ -24,7 +24,7 @@ const EMPTY_CONFIG = {
 // Ключи хранилища по разделам: ни один батч не должен их смешивать
 const SECTIONS = [
   ['xkiroKey', 'agentrouterKey', 'agentrouterUserId'],
-  ['omniUrl', 'omniKey'],
+  ['omniUrl', 'omniUrls', 'omniKey'],
   ['notificationThresholds'],
   ['aliases'],
   ['dlgTab'],
@@ -96,7 +96,7 @@ test.describe('Настройки: табы и раздельное сохран
     await page.locator('#dlg-tab-omni').click();
     await page.locator('#dlg-save-omni').click();
     await expect(page.locator('#dlg-result-omni')).toContainText('OmniRoute: не задан');
-    expect(puts.find((p) => 'omniUrl' in p)).toEqual({ omniUrl: '' });
+    expect(puts.find((p) => 'omniUrls' in p)).toEqual({ omniUrls: '' });
 
     // Имена: добавленная строка уходит в алиасы
     await page.locator('#dlg-tab-aliases').click();

@@ -145,8 +145,8 @@ const _DIALOG_HTML = `<dialog id="dlg">
           <p class="dlg-card-sub">Адрес и ключ Combo-панели</p>
         </div>
       </div>
-      <label for="dlg-omni-url">URL</label>
-      <input type="text" id="dlg-omni-url" placeholder="http://192.168.1.30:20128" autocomplete="off">
+      <label for="dlg-omni-urls">URL (по одному на строку — панель выберет доступный)</label>
+      <textarea id="dlg-omni-urls" rows="3" placeholder="http://192.168.1.30:20128&#10;https://omni.example.com" autocomplete="off" spellcheck="false"></textarea>
       <label for="dlg-omni-key">API Key</label>
       <input type="password" id="dlg-omni-key" placeholder="sk-…" autocomplete="off">
     </div>
