@@ -78,6 +78,58 @@ pm2 startup              # автозапуск при перезагрузке 
 
 Порт задаётся через `.env` или переменную окружения: `PORT=9000 pm2 start server.js --name ai-panel`.
 
+## Деплой на Ubuntu-сервер
+
+Сценарий: `git pull` на сервере → установка прод-зависимостей → перезапуск PM2.
+
+**Первый раз (один раз на сервере)**
+
+```bash
+# Установить Node.js через nvm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+source ~/.bashrc
+nvm install 22
+
+# PM2 глобально
+npm install -g pm2
+
+# Клонировать репозиторий
+git clone https://github.com/ak-flash/ai-panel-omniroute.git /home/user/ai-panel
+cd /home/user/ai-panel
+
+# Создать .env с секретами (шаблон ниже в разделе «Настройка»)
+nano .env
+
+# Установить только production-зависимости
+npm ci --omit=dev
+
+# Запустить и сохранить в автозапуск
+pm2 start server.js --name ai-panel
+pm2 save
+pm2 startup   # выполнить команду, которую выведет PM2
+```
+
+**Обновление до новой версии**
+
+```bash
+ssh user@your-server
+cd /home/user/ai-panel
+
+git pull
+npm ci --omit=dev
+pm2 restart ai-panel --update-env
+pm2 logs ai-panel --lines 30   # убедиться, что стартовало без ошибок
+```
+
+**Откат** (если что-то пошло не так):
+
+```bash
+git log --oneline -5            # найти нужный коммит
+git checkout <commit>           # откатиться
+npm ci --omit=dev
+pm2 restart ai-panel --update-env
+```
+
 ## Настройка (.env)
 
 Скопируйте `.env.example` в `.env` и заполните:
