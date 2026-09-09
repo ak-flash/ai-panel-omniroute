@@ -19,7 +19,7 @@ import { renderAliasRows, collectAliasesFromUI } from './aliases.js';
 import { closeTopbar } from './topbar.js';
 import { emit } from './events.js';
 
-let $dlg, $dlgKey, $dlgArKey, $dlgArUser, $dlgToggle, $dlgArToggle, $dlgRemove;
+let $dlg, $dlgKey, $dlgArKey, $dlgOrKey, $dlgArUser, $dlgToggle, $dlgArToggle, $dlgOrToggle, $dlgRemove;
 
 // Табы диалога: каждый раздел — своя панель и своя кнопка сохранения
 const DLG_TABS = [
@@ -78,9 +78,11 @@ function renderDlgProviderFields() {
   const v = $sel.value;
   const $xkiro = $id('dlg-xkiro-fields');
   const $ar = $id('dlg-agentrouter-fields');
+  const $or = $id('dlg-openrouter-fields');
   const $ag = $id('dlg-ag-fields');
   if ($xkiro) $xkiro.hidden = v !== 'xkiro';
   if ($ar) $ar.hidden = v !== 'agentrouter';
+  if ($or) $or.hidden = v !== 'openrouter';
   if ($ag) $ag.hidden = v !== 'antigravity';
   // У Antigravity в диалоге нет ключа: токен задаётся входом через Google,
   // поэтому «Проверить и сохранить» и «Удалить ключ» здесь не показываем
@@ -168,6 +170,7 @@ function collectNotificationFields() {
 function openDialog() {
   $dlgKey.value = '';
   if ($dlgArKey) $dlgArKey.value = '';
+  if ($dlgOrKey) $dlgOrKey.value = '';
   if ($dlgArUser) $dlgArUser.value = getAgentRouterUserId();
   renderAliasRows();
   fillNotificationFields(readNotificationThresholds());
@@ -188,7 +191,7 @@ function openDialog() {
     let savedDlgProvider = 'xkiro';
     try { savedDlgProvider = (vaultGet('dlgProvider') || '') || 'xkiro'; } catch { /* нет хранилища */ }
     $dlgProvider.value =
-      savedDlgProvider === 'antigravity' || savedDlgProvider === 'agentrouter'
+      savedDlgProvider === 'antigravity' || savedDlgProvider === 'agentrouter' || savedDlgProvider === 'openrouter'
         ? savedDlgProvider
         : 'xkiro';
     renderDlgProviderFields();
@@ -289,8 +292,10 @@ async function saveProviderSettings() {
   const entries = { agentrouterUserId: arUserCandidate };
   const xkiroCandidate = $dlgKey.value.trim();
   const arCandidate = $dlgArKey ? $dlgArKey.value.trim() : '';
+  const orCandidate = $dlgOrKey ? $dlgOrKey.value.trim() : '';
   if (xkiroCandidate) entries.xkiroKey = xkiroCandidate;
   if (arCandidate) entries.agentrouterKey = arCandidate;
+  if (orCandidate) entries.openrouterKey = orCandidate;
 
   const $res = $id('dlg-result-provider');
   const saved = await saveSettings(entries);
@@ -302,11 +307,14 @@ async function saveProviderSettings() {
   // Секреты не оставляем в полях формы после отправки
   $dlgKey.value = '';
   if ($dlgArKey) $dlgArKey.value = '';
+  if ($dlgOrKey) $dlgOrKey.value = '';
   emit('settings:changed');
 
   showResult($res, false, 'Сохранено.');
   const setLine = (line, isErr) => showResult($res, isErr, 'Сохранено.<br>' + line);
-  const candidate = dlgProvider === 'agentrouter' ? arCandidate : xkiroCandidate;
+  const candidate = dlgProvider === 'agentrouter' ? arCandidate
+    : dlgProvider === 'openrouter' ? orCandidate
+    : xkiroCandidate;
   if (dlgProvider === 'agentrouter') {
     if (candidate) {
       console.info('[AgentRouter] проверка токена…');
@@ -358,6 +366,31 @@ async function saveProviderSettings() {
         hasStored
           ? 'xKiro ' + ICO_CHECK + ' ключ сохранён ранее — пустое поле его не меняет'
           : 'xKiro: ключ не задан',
+        false
+      );
+    }
+  } else if (dlgProvider === 'openrouter') {
+    if (candidate) {
+      console.info('[OpenRouter] проверка ключа…');
+      setLine('OpenRouter: проверяю ключ…', false);
+      providerRequest('usage', { provider: { id: 'openrouter', name: 'OpenRouter' }, key: candidate })
+        .then((data) => {
+          const wallet = (data && data.wallet) || {};
+          const bal = wallet.balance_usd ?? wallet.balance ?? 0;
+          console.info('[OpenRouter] ключ OK', data);
+          setLine('OpenRouter ' + ICO_CHECK + ' ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · ' + data.plan : ''), false);
+        })
+        .catch((err) => {
+          console.warn('[OpenRouter] проверка не прошла', err);
+          setLine('OpenRouter ' + ICO_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err)), true);
+        });
+    } else {
+      const hasStored = vaultGet('hasOpenrouterKey');
+      console.info('[OpenRouter] ключ в поле пустой' + (hasStored ? ' — оставляю сохранённый' : ''));
+      setLine(
+        hasStored
+          ? 'OpenRouter ' + ICO_CHECK + ' ключ сохранён ранее — пустое поле его не меняет'
+          : 'OpenRouter: ключ не задан',
         false
       );
     }
@@ -456,6 +489,7 @@ function removeDialogKey() {
   const $sel = $id('dlg-provider');
   const dlgProvider = $sel ? $sel.value : 'xkiro';
   if (dlgProvider === 'agentrouter') vaultSet('agentrouterKey', '');
+  else if (dlgProvider === 'openrouter') vaultSet('openrouterKey', '');
   else removeKey();
   $dlg.close();
   emit('settings:changed');
@@ -465,9 +499,11 @@ export function initSettingsDialog() {
   $dlg = $id('dlg');
   $dlgKey = $id('dlg-key');
   $dlgArKey = $id('dlg-agentrouter-key');
+  $dlgOrKey = $id('dlg-openrouter-key');
   $dlgArUser = $id('dlg-agentrouter-user');
   $dlgToggle = $id('dlg-toggle');
   $dlgArToggle = $id('dlg-agentrouter-toggle');
+  $dlgOrToggle = $id('dlg-openrouter-toggle');
   $dlgRemove = $id('dlg-remove');
   if (!$dlg) return; // диалог есть на всех страницах, но проверимся
 
@@ -495,6 +531,11 @@ export function initSettingsDialog() {
   // Показать/скрыть access-токен AgentRouter
   on($dlgArToggle, 'click', () => {
     if ($dlgArKey) $dlgArKey.type = $dlgArKey.type === 'password' ? 'text' : 'password';
+  });
+
+  // Показать/скрыть ключ OpenRouter
+  on($dlgOrToggle, 'click', () => {
+    if ($dlgOrKey) $dlgOrKey.type = $dlgOrKey.type === 'password' ? 'text' : 'password';
   });
 
   on($id('dlg-ag-login'), 'click', agLogin);

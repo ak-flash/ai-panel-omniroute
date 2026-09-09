@@ -135,6 +135,43 @@
   border-color: currentColor;
 }
 
+.badge.coding-badge {
+  min-width: 36px;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge.coding-badge.coding-top {
+  color: var(--warn);
+  border-color: currentColor;
+}
+
+.badge.coding-badge.coding-good {
+  color: var(--ok);
+  border-color: currentColor;
+}
+
+.badge.coding-badge.coding-low {
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+.badge.coding-badge.coding-online {
+  box-shadow: 0 0 0 1px oklch(70% 0.16 265 / 0.15);
+}
+
+.badge.coding-badge.coding-none-state {
+  opacity: 0.85;
+  border-style: dashed;
+}
+
+.badge.coding-badge.coding-none {
+  color: var(--text-faint);
+  background: transparent;
+  border-color: var(--border);
+  font-weight: 600;
+}
+
 tr.in-combo td:first-child {
   border-left: 2px solid var(--ok);
 }

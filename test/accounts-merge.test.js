@@ -8,6 +8,6 @@ const assert = require('node:assert/strict');
 
 const { PROVIDER_IDS } = require('../src/store/accounts');
 
-test('PROVIDER_IDS содержит 4 ожидаемых провайдера', () => {
-  assert.deepEqual(PROVIDER_IDS.sort(), ['agentrouter', 'antigravity', 'omniroute', 'xkiro']);
+test('PROVIDER_IDS содержит 5 ожидаемых провайдеров', () => {
+  assert.deepEqual(PROVIDER_IDS.sort(), ['agentrouter', 'antigravity', 'omniroute', 'openrouter', 'xkiro']);
 });

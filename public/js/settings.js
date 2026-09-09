@@ -121,11 +121,24 @@ export function getAgentRouterKey() { return vaultGet('agentrouterKey') || ''; }
 // (заголовок New-Api-User); не секрет, но храним рядом с токеном
 export function getAgentRouterUserId() { return vaultGet('agentrouterUserId') || ''; }
 
+// Ключ OpenRouter — обслуживает и каталог моделей, и «Обновить рейтинг»
+// на странице Модели (маршрут /api/coding-ratings/refresh берёт его сам)
+export function getOpenRouterKey() { return vaultGet('openrouterKey') || ''; }
+export function setOpenRouterKey(k) { vaultSet('openrouterKey', k); }
+
+// Сохранить ключ произвольного вшитого провайдера (экран «Нужен ключ»)
+export function setProviderKey(id, key) {
+  if (id === 'openrouter') return vaultSet('openrouterKey', key);
+  if (id === 'agentrouter') return vaultSet('agentrouterKey', key);
+  return vaultSet('xkiroKey', key);
+}
+
 // Ключ провайдера статистики/моделей: у каждого своё поле в хранилище
 // (xkiro — с legacy-фолбэками на localStorage для режима file://)
 export function keyForProvider(id) {
   if (id === 'xkiro') return getKey();
   if (id === 'agentrouter') return getAgentRouterKey();
+  if (id === 'openrouter') return getOpenRouterKey();
   return '';
 }
 

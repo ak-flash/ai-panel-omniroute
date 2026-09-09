@@ -1,16 +1,21 @@
 /* ============================================================
    AI Panel — страница «Модели»: каталог моделей выбранного
-   провайдера с фильтром по тарифу и поиском; метки Combo.
+   провайдера с фильтрами по тарифу/рейтингу и поиском; метки Combo.
    ============================================================ */
 
 import { session } from '../session.js';
 import { $id, on } from '../dom.js';
 import { setStatus, touchUpdated } from '../topbar.js';
 import { providerRequest, omniFetch, COMBO_LIST_PATH, COMBO_PATH } from '../api.js';
-import { vaultSet, keyForProvider } from '../settings.js';
+import { vaultSet, keyForProvider, setProviderKey } from '../settings.js';
 import { rebootPage, start } from '../boot.js';
 import { compact } from '../formatters.js';
 import { matchModel, normModelName } from '../../model-match.js';
+import {
+  codingRatingResolved,
+  setOnlineRatings,
+  getOnlineMeta,
+} from '../../coding-rating.js';
 import { extractComboTargets, combosFromResponse } from '../combos.js';
 
 // Статичные элементы страницы — доступны на момент eval модуля
@@ -19,9 +24,12 @@ const $modelsStatus = $id('models-status');
 const $modelsBody = $id('models-body');
 const $modelsSearch = $id('models-search');
 const $modelsTier = $id('models-tier');
+const $modelsCoding = $id('models-coding');
 const $modelsProvider = $id('models-provider');
 const $modelsProviderName = $id('models-provider-name');
 const $setupProviderName = $id('setup-provider-name');
+const $codingRefreshBtn = $id('coding-refresh-btn');
+const $codingSourceStatus = $id('coding-source-status');
 
 function isModelInCombo(model) {
   if (!session.comboTargetIds || !session.comboTargetIds.length) return false;
@@ -31,6 +39,126 @@ function isModelInCombo(model) {
     if (m) return true;
   }
   return false;
+}
+
+function formatCodingSourceLabel(meta) {
+  if (!meta || !meta.source || meta.source === 'none') return '';
+  const when = meta.updatedAt ? new Date(meta.updatedAt).toLocaleDateString('ru-RU') : '';
+  const src = meta.source === 'artificial-analysis via openrouter'
+    ? 'Artificial Analysis (Coding Index) via OpenRouter'
+    : meta.source;
+  return when ? `${src} • ${when}` : src;
+}
+
+function updateCodingSourceStatus() {
+  if (!$codingSourceStatus) return;
+  const meta = getOnlineMeta();
+  if (!meta || !meta.ratings || !Object.keys(meta.ratings).length) {
+    $codingSourceStatus.textContent = 'Нет онлайн-данных — нажмите «Обновить рейтинг»';
+    $codingSourceStatus.title = 'Нужен ключ OpenRouter: Настройки → Провайдер → OpenRouter';
+    return;
+  }
+  const label = formatCodingSourceLabel(meta);
+  const count = Object.keys(meta.ratings).length;
+  $codingSourceStatus.textContent = label
+    ? `Источник: ${label} • в кэше ${count} моделей`
+    : `В кэше ${count} моделей`;
+  if (meta.citation) $codingSourceStatus.title = meta.citation + (meta.sourceUrl ? ' — ' + meta.sourceUrl : '');
+  else $codingSourceStatus.title = label;
+}
+
+async function loadCodingRatings() {
+  try {
+    const res = await fetch('/api/coding-ratings', { headers: { accept: 'application/json' } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    setOnlineRatings(data);
+    updateCodingSourceStatus();
+    if (session.models && session.models.length) filterModels();
+  } catch (e) {
+    console.warn('[Models] loadCodingRatings failed', e);
+    updateCodingSourceStatus();
+  }
+}
+
+async function refreshCodingRatings() {
+  if (!$codingRefreshBtn) return;
+  const btn = $codingRefreshBtn;
+  const prev = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Обновляю…';
+  setStatus('loading', 'Обновляю рейтинг…');
+  try {
+    const res = await fetch('/api/coding-ratings/refresh', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data && data.message ? data.message : 'HTTP ' + res.status;
+      throw new Error(msg);
+    }
+    setOnlineRatings(data);
+    updateCodingSourceStatus();
+    filterModels();
+    setStatus('ok', 'Рейтинг обновлён: ' + (data.source || 'онлайн'));
+    // лёгкий тост через setStatus, дополнительно — консоль
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    setStatus('err', 'Ошибка обновления рейтинга');
+    if ($codingSourceStatus) {
+      $codingSourceStatus.textContent = 'Ошибка обновления: ' + msg;
+      $codingSourceStatus.title = msg;
+    }
+    console.error('[Models] refreshCodingRatings failed', err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = prev;
+    touchUpdated();
+  }
+}
+
+function codingCell(model) {
+  const td = document.createElement('td');
+  td.className = 'coding-col';
+  const r = codingRatingResolved(model);
+  const wrap = document.createElement('div');
+  wrap.className = 'coding-cell-inner';
+
+  const badge = document.createElement('span');
+  const hasScore = r.score != null;
+  badge.className = 'badge coding-badge coding-' + r.tier + (r.hasOnline ? ' coding-online' : ' coding-none-state');
+  if (!hasScore || r.tier === 'none') {
+    badge.textContent = '—';
+  } else if (r.tier === 'top') {
+    badge.textContent = '★ ' + r.score;
+  } else {
+    badge.textContent = String(r.score);
+  }
+  const reasons = r.reasons.length ? r.reasons.join(' · ') : (r.hasOnline ? 'онлайн-бенчмарк' : 'нет онлайн-данных');
+  const srcLabel = r.hasOnline ? 'онлайн' : 'нет данных';
+  const scoreLabel = hasScore ? r.score + '/100' : '—';
+  badge.title = reasons + ' — ' + scoreLabel + ' (' + srcLabel + ')';
+  if (r.citation) badge.title += ' — ' + r.citation;
+  badge.setAttribute('aria-label', 'Рейтинг для кодинга ' + scoreLabel + ' (' + srcLabel + '): ' + reasons);
+  wrap.appendChild(badge);
+
+  // Тонкая полоска-бар под бейджем для быстрого визуального сравнения.
+  const bar = document.createElement('div');
+  bar.className = 'coding-bar';
+  bar.setAttribute('aria-hidden', 'true');
+  const fill = document.createElement('div');
+  fill.className = 'coding-bar-fill coding-' + r.tier;
+  fill.style.width = hasScore ? r.score + '%' : '0%';
+  bar.appendChild(fill);
+  wrap.appendChild(bar);
+
+  td.appendChild(wrap);
+  // Тултип на всю ячейку для удобства наведения.
+  td.title = badge.title;
+  td.dataset.codingSource = r.hasOnline ? 'online' : 'none';
+  return td;
 }
 
 function modelRow(model) {
@@ -46,6 +174,8 @@ function modelRow(model) {
     b.style.marginLeft = '8px';
     tdId.appendChild(b);
   }
+
+  const tdCode = codingCell(model);
 
   const tdTier = document.createElement('td');
   const badge = document.createElement('span');
@@ -67,30 +197,37 @@ function modelRow(model) {
   tdOut.className = 'num-col';
   tdOut.textContent = Number(pricing.output || 0).toFixed(2);
 
-  tr.append(tdId, tdTier, tdCtx, tdIn, tdOut);
+  tr.append(tdId, tdCode, tdTier, tdCtx, tdIn, tdOut);
   return tr;
-}
-
-// Суммарная цена за 1M токенов — метрика сортировки каталога
-function modelPrice(m) {
-  const pricing = m.pricing || {};
-  return Number(pricing.input || 0) + Number(pricing.output || 0);
 }
 
 function filterModels() {
   if (!$modelsBody) return;
   const q = ($modelsSearch ? $modelsSearch.value : '').trim().toLowerCase();
   const tier = $modelsTier && $modelsTier.value !== 'all' ? $modelsTier.value : null;
+  const codingFilter = $modelsCoding && $modelsCoding.value !== 'all' ? $modelsCoding.value : null;
   $modelsBody.replaceChildren();
   const rows = session.models
     .filter((m) => {
       if (tier && (m.access_tier || 'paid') !== tier) return false;
+      if (codingFilter) {
+        const r = codingRatingResolved(m);
+        if (codingFilter === 'top' && r.tier !== 'top') return false;
+        if (codingFilter === 'good' && !(r.tier === 'top' || r.tier === 'good')) return false;
+        if (codingFilter === 'low' && r.tier !== 'low') return false;
+        if (codingFilter === 'none' && r.tier !== 'none') return false;
+      }
       if (!q) return true;
       const hay = (m.id + ' ' + (m.display_name || '')).toLowerCase();
       return hay.includes(q);
-    })
-    .sort((a, b) => modelPrice(a) - modelPrice(b));
+    });
   for (const m of rows) $modelsBody.appendChild(modelRow(m));
+  // Обновляем сводку в статус-баре, если есть данные.
+  if ($modelsStatus && ! $modelsStatus.hidden && session.models && session.models.length) {
+    // не трогаем текст «Загружаю…» во время загрузки
+  } else if (session.models && session.models.length && rows.length !== session.models.length) {
+    setStatus('ok', 'Показано ' + rows.length + ' из ' + session.models.length);
+  }
 }
 
 function renderModels(data) {
@@ -119,6 +256,15 @@ function renderModelsProviders() {
     : '';
   if ($modelsProviderName) $modelsProviderName.textContent = name;
   if ($setupProviderName) $setupProviderName.textContent = name;
+  const $setupKey = $id('setup-key');
+  if ($setupKey) {
+    $setupKey.placeholder =
+      session.modelsProvider && session.modelsProvider.id === 'openrouter'
+        ? 'sk-or-…'
+        : session.modelsProvider && session.modelsProvider.id === 'agentrouter'
+          ? 'токен + user ID'
+          : 'sk-xt-…';
+  }
 }
 
 async function loadModels() {
@@ -165,6 +311,9 @@ async function loadModelsComboMarks() {
 
 export async function init() {
   renderModelsProviders();
+  updateCodingSourceStatus();
+  // грузим онлайн-рейтинг параллельно — не блокирует каталог
+  loadCodingRatings();
   if (!keyForProvider(session.modelsProvider.id) && !session.modelsProvider.hasKey) {
     session.models = [];
     if ($modelsBody) $modelsBody.replaceChildren();
@@ -182,6 +331,19 @@ export async function init() {
 
 on($modelsSearch, 'input', filterModels);
 on($modelsTier, 'change', filterModels);
+on($modelsCoding, 'change', filterModels);
+on($codingRefreshBtn, 'click', refreshCodingRatings);
+
+// Экран «Нужен ключ»: форма сохраняет ключ выбранного провайдера
+// в настройках (write-only) и перезагружает страницу.
+const $setupForm = $id('setup-form');
+on($setupForm, 'submit', (e) => {
+  e.preventDefault();
+  const $inp = $id('setup-key');
+  const key = ($inp ? $inp.value : '').trim();
+  if (!key || !session.modelsProvider) return;
+  setProviderKey(session.modelsProvider.id, key).then(() => rebootPage());
+});
 
 on($modelsProvider, 'change', () => {
   const id = $modelsProvider.value;

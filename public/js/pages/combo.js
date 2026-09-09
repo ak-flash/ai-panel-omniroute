@@ -271,7 +271,7 @@ async function loadCombos() {
     combos = combosFromResponse(data);
     combosLoaded = true;
     comboError = null;
-    // Восстановить активный, если он ещё существует
+    // Восстановить активный, ��сли он ещё существует
     if (!combos.some((c) => c.id === activeComboId)) {
       activeComboId = combos.length ? combos[0].id : null;
       saveActiveCombo();
@@ -284,8 +284,8 @@ async function loadCombos() {
     if (activeCombo()) loadComboModels();
   } catch (err) {
     combosLoaded = true;
-    comboError =
-      'Ошибка загрузки списка combo: ' + (err && err.message ? err.message : err);
+    const detail = formatErrorDetail(err);
+    comboError = 'Ошибка загрузки списка combo: ' + detail;
     console.error('[Combo] loadCombos failed:', err);
     setStatus('err', 'Ошибка');
     $comboStatus.textContent = comboError;
@@ -304,6 +304,29 @@ function selectCombo(id) {
 /* ---------- последние combo-запросы → реальная модель ---------- */
 
 /** Загружает последние combo-запросы и рендерит таблицу «combo → модель» */
+function formatErrorDetail(err) {
+  let msg = err && err.message ? err.message : String(err);
+  // Пытаемся извлечь статус и тело, если есть Response-подобный объект
+  if (err && err.status !== undefined) {
+    const statusText = err.statusText ? ' ' + err.statusText : '';
+    msg += ' (статус: ' + err.status + statusText + ')';
+  }
+  if (err && err.body) {
+    const bodyStr = typeof err.body === 'string' ? err.body : JSON.stringify(err.body);
+    msg += ' Тело: ' + bodyStr;
+  }
+  // Если есть response и он ещё не обработан
+  if (err && err.response && typeof err.response === 'object') {
+    const resp = err.response;
+    if (resp.status !== undefined) {
+      const statusText = resp.statusText ? ' ' + resp.statusText : '';
+      msg += ' (статус ответа: ' + resp.status + statusText + ')';
+    }
+    // Если тело не было извлечено, но есть promise, не пытаемся его читать здесь
+  }
+  return msg;
+}
+
 async function loadComboRecent() {
   if (!$comboRecent || !$comboRecentBody) return;
   if ($comboRecentStatus) $comboRecentStatus.textContent = 'Загружаю последние запросы…';
@@ -315,9 +338,8 @@ async function loadComboRecent() {
   } catch (err) {
     console.error('[Combo] loadComboRecent failed:', err);
     if ($comboRecentStatus) {
-      $comboRecentStatus.textContent =
-        'Не удалось загрузить последние запросы: ' +
-        (err && err.message ? err.message : String(err));
+      const detail = formatErrorDetail(err);
+      $comboRecentStatus.textContent = 'Не удалось загрузить последние запросы: ' + detail;
     }
     if ($comboRecentBody) $comboRecentBody.replaceChildren();
     if ($comboRecentMeta) $comboRecentMeta.textContent = '';
@@ -375,8 +397,9 @@ function renderComboRecent(rows) {
     const tdStatus = document.createElement('td');
     tdStatus.className = 'num-col';
     const status = document.createElement('span');
-    status.className = 'badge ' + statusClass(row.status);
+    status.className = 'badge ' + statusClass(row.status, Boolean(row.error));
     status.textContent = statusText(row);
+    if (row.error) status.title = extractErrorText(row.error);
     tdStatus.appendChild(status);
 
     tr.append(tdTime, tdCombo, tdModel, tdProvider, tdStatus);
@@ -397,15 +420,28 @@ function renderComboRecent(rows) {
   }
 }
 
-function statusClass(status) {
+function statusClass(status, hasError) {
+  if (hasError) return 'status-err';
   if (status >= 200 && status < 300) return 'status-ok';
   if (status >= 400) return 'status-err';
   return 'status-other';
 }
 
+function extractErrorText(err) {
+  if (!err) return '';
+  if (typeof err === 'string') return err;
+  if (err.message) return err.message;
+  if (err.error) return extractErrorText(err.error);
+  if (err.statusText) return err.statusText;
+  try { return JSON.stringify(err); } catch { return String(err); }
+}
+
 function statusText(row) {
   if (row.active) return '…';
-  if (row.error) return 'ошибка';
+  if (row.error) {
+    const detail = extractErrorText(row.error);
+    return detail || 'ошибка';
+  }
   return String(row.status || '—');
 }
 

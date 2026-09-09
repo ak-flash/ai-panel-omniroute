@@ -10,7 +10,7 @@ import { icon } from '../../icons.js';
 import { setStatus, touchUpdated } from '../topbar.js';
 import { showBanner, hideBanner } from '../banner.js';
 import { providerRequest, fetchAntigravityQuota, AG_ERROR_MESSAGES, omniFetch, COMBO_LIST_PATH, COMBO_PATH } from '../api.js';
-import { keyForProvider, getAgentRouterKey, vaultGet } from '../settings.js';
+import { keyForProvider, getAgentRouterKey, getOpenRouterKey, vaultGet } from '../settings.js';
 import { onEvent } from '../events.js';
 import { start } from '../boot.js';
 import { fmtUsd, compact, dur, num, pct, barClass } from '../formatters.js';
@@ -315,7 +315,6 @@ function renderAgentRouterCard(data) {
   }
 
   const todayEl = $id('ar-today');
-  const totalEl = $id('ar-total');
 
   // Потребление за текущие сутки: стартовый баланс дня (снимок в 00:00) минус текущий.
   const dayBal = Number(data.day_balance_usd);
@@ -328,9 +327,58 @@ function renderAgentRouterCard(data) {
       todayEl.classList.toggle('val-used', today > 0);
     }
   }
+}
 
-  const used = Number(data.used_usd) || 0;
-  if (totalEl) totalEl.textContent = used > 0 ? fmtUsd(used) : '—';
+/* ---------- OpenRouter: карточка баланса на главной ---------- */
+
+async function loadOpenRouterCard() {
+  const $card = $id('or-card');
+  if (!$card) return;
+  const hasKey =
+    Boolean(getOpenRouterKey()) ||
+    session.providers.some((p) => p.id === 'openrouter' && p.hasKey);
+  if (!hasKey || session.activeProvider.id === 'openrouter') {
+    $card.hidden = true;
+    return;
+  }
+  try {
+    const data = await providerRequest('usage', {
+      provider: { id: 'openrouter', name: 'OpenRouter' },
+    });
+    renderOpenRouterCard(data);
+  } catch (err) {
+    $card.hidden = false;
+    const $err = $id('or-error');
+    if ($err) {
+      $err.hidden = false;
+      $err.textContent =
+        'Не удалось получить баланс — ' +
+        (err && err.message ? err.message : String(err));
+    }
+  }
+}
+
+function renderOpenRouterCard(data) {
+  const $card = $id('or-card');
+  if (!$card) return;
+  $card.hidden = false;
+  const $err = $id('or-error');
+  if ($err) $err.hidden = true;
+
+  const balance = $id('or-balance');
+  if (balance) balance.textContent = fmtUsd((data.wallet || {}).balance_usd);
+
+  const plan = $id('or-plan');
+  const planLabel = data.plan ? String(data.plan).trim() : '';
+  if (plan) {
+    const show = planLabel && planLabel.toLowerCase() !== 'payg';
+    plan.textContent = show ? planLabel.toUpperCase() : '';
+    plan.hidden = !show;
+  }
+
+  const usedEl = $id('or-used');
+  const used = Number(data.today_usd) || 0;
+  if (usedEl) usedEl.textContent = used > 0 ? fmtUsd(used) : '—';
 }
 
 /* ---------- Antigravity: квоты Google AI Pro ---------- */
@@ -602,9 +650,9 @@ export async function init() {
     $cards.hidden = true;
     $setup.hidden = false;
     setStatus('idle', 'Нужен ключ');
-    // Квоты Antigravity и баланс AgentRouter не зависят от ключа xKiro
     loadAntigravityQuota();
     loadAgentRouterCard();
+    loadOpenRouterCard();
     loadIndexComboFirst();
     return;
   }
@@ -616,6 +664,7 @@ export async function init() {
   await loadUsage();
   loadAntigravityQuota();
   loadAgentRouterCard();
+  loadOpenRouterCard();
   loadIndexComboFirst();
 }
 
@@ -624,6 +673,7 @@ function refreshAll() {
   loadUsage();
   loadAntigravityQuota();
   loadAgentRouterCard();
+  loadOpenRouterCard();
 }
 
 // Кнопка «Обновить» создаётся при инъекции topbar (на eval модуля

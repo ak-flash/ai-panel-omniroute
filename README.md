@@ -173,10 +173,11 @@ Baseline HTTP-контракта и принятые решения описан
 |---|---|---|---|
 | **xKiro** | План, окна расхода (5 ч / 7 д), бесплатные токены, баланс кошелька; каталог моделей с ценами | API-ключ (`sk-xt-…`) | `FACTORIES` (реестр) |
 | **AgentRouter** | Баланс кошелька, израсходовано, число запросов, группа аккаунта, расход за сутки | Access-токен + User ID (`New-Api-User`) | `FACTORIES` (реестр) |
+| **OpenRouter** | Остаток средств ключа, каталог моделей с ценами и контекстом; рейтинг для кодинга | API-ключ (`sk-or-…`) | `FACTORIES` (реестр) |
 | **Antigravity** | Квоты Google AI Pro по моделям + групповые окна (5 ч / неделя) | Google OAuth (refresh-token) | Отдельный сервис `src/antigravity-service.js` |
 | **OmniRoute** | Combo: список, targets, порядок; последние combo-запросы и реальная модель | Management-ключ (Bearer) | Прокси `src/routes/omniroute.js` |
 
-xKiro и AgentRouter — вшитые провайдеры реестра (селектор в шапке, `/proxy/{id}/…`); Antigravity и OmniRoute подключаются отдельно через ⚙ Настройки.
+xKiro, AgentRouter и OpenRouter — вшитые провайдеры реестра (селектор в шапке, `/proxy/{id}/…`); Antigravity и OmniRoute подключаются отдельно через ⚙ Настройки.
 
 Логика работы с API конкретного провайдера — фабрика адаптера в каталоге `providers/`:
 
@@ -188,14 +189,16 @@ flowchart TD
     S --> R[Реестр провайдеров]
     R --> X[xKiro]
     R --> A[AgentRouter]
+    R --> OR[OpenRouter]
     S --> G[Antigravity и Google OAuth]
-    S --> O[OmniRoute]
+    S --> OM[OmniRoute]
     S --> V[src/store]
     V --> D[(SQLite-файл)]
 ```
 
 - `providers/xkiro.js` — `createXKiroProvider(config)` возвращает адаптер с функциями `getUsage(key)`, `getModels(key)` и авторизацией `x-api-key`
 - `providers/agentrouter.js` — `createAgentRouterProvider(config)` — пока только баланс кошелька: `getUsage(key)` читает профиль `GET /api/user/self`, авторизация `Authorization: Bearer <access-токен>`
+- `providers/openrouter.js` — `createOpenRouterProvider(config)`: `getUsage(key)` читает кредиты `GET /auth/key`, `getModels(key)` — каталог `GET /models` (нормализуется в формат панели); авторизация `Authorization: Bearer <ключ>`
 - `providers/antigravity.js` — `createAntigravityProvider(config)`: `getQuota({token, project})` и `getQuotaSummary({token, project})` для квот Google AI Pro; токен берётся из OAuth-flow, а не из ключа. В `FACTORIES` не входит — адаптер использует `src/antigravity-service.js`
 - `providers/google-oauth.js` — `createGoogleOauth(config)`: `exchangeCode(…)` (обмен одноразового кода после входа) и `refresh(…)` (автообновление access-token по refresh-token)
 - `providers/index.js` — реестр: `FACTORIES` (id → фабрика) и `loadProviders()`, возвращает список вшитых адаптеров
@@ -214,6 +217,8 @@ flowchart TD
 | `GET /api/antigravity-quota` | Квоты Antigravity по моделям (кеш 60 с) |
 | `/proxy/{id}/v1/…` | Сырой прокси к API провайдера (или `/proxy/v1/…` — активный) |
 | `/omniroute/…` | Прокси к сохранённому на сервере OmniRoute URL |
+| `GET /api/coding-ratings` | Онлайн-рейтинг для кодинга (кэш Artificial Analysis Coding Index) |
+| `POST /api/coding-ratings/refresh` | Обновить рейтинг (берёт ключ OpenRouter из хранилища) |
 
 Ключ провайдера берётся из encrypted store; временный `x-api-key` поддерживается для совместимости. Ответ upstream нормализуется адаптером провайдера.
 
@@ -274,6 +279,12 @@ Access token хранится в памяти, refresh token — в encrypted st
 
 Страница **Модели** (`/models.html`) — выбор провайдера, поиск по имени, таблица с ценами ($/1M токенов), тирами доступа и контекстным окном.
 
+### Рейтинг для кодинга
+
+Колонка **Код** — онлайн-оценка модели для кодинга (Artificial Analysis Coding Index, 0–100) из OpenRouter Benchmarks API. Кнопка **«Обновить рейтинг»** загружает свежие данные; без них модели помечаются «нет данных».
+
+Ключ тот же, что у провайдера **OpenRouter** в Настройках: маршрут `POST /api/coding-ratings/refresh` берёт его из серверного хранилища (клиентский `x-openrouter-api-key`/`x-api-key` приоритетнее). Кэш — `data/coding-ratings.json` (24 ч). Окружение для этого не используется.
+
 ## Тесты
 
 ```
@@ -283,6 +294,7 @@ npm test        # или: node --test
 Зависимостей нет — используется встроенный раннер Node (`node:test`):
 
 - `test/providers-registry.test.js` — реестр вшитых провайдеров: список по умолчанию
+- `test/openrouter.test.js` — адаптер OpenRouter (usage/models, нормализация, ошибки) и обновление рейтинга: ключ из хранилища, ошибка без ключа, кэш
 - `test/xkiro-adapter.test.js` — фабрика адаптера xKiro против mock-upstream: пути, приоритет ключей, ошибки сети и формата ответа
 - `test/model-match.test.js` — сопоставление модели из combo с каталогом (префикс провайдера, «:free»-варианты, тарифные бейджи)
 - `test/call-logs.test.js` — разбор call logs OmniRoute: combo-строки, реальная модель, сортировка, сводка по моделям

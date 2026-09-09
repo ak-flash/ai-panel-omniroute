@@ -41,6 +41,13 @@
       <h2>Каталог моделей <span class="models-provider-name" id="models-provider-name"></span></h2>
       <div class="models-controls">
         <select id="models-provider" class="select" aria-label="Провайдер"></select>
+        <select id="models-coding" class="select" aria-label="Рейтинг для кодинга">
+          <option value="all">Все для кода</option>
+          <option value="top">Только топ ★</option>
+          <option value="good">Топ и хорошие</option>
+          <option value="low">Слабо</option>
+          <option value="none">Нет данных</option>
+        </select>
         <select id="models-tier" class="select" aria-label="Тариф">
           <option value="all">Все тарифы</option>
           <option value="free">Free</option>
@@ -50,11 +57,23 @@
         <input type="search" id="models-search" placeholder="Поиск…" class="models-search">
       </div>
     </div>
+    <div class="coding-toolbar">
+      <button id="coding-refresh-btn" class="btn" type="button" title="Загружает свежий Artificial Analysis Coding Index через OpenRouter Benchmarks API. Нужен ключ OpenRouter из Настройки → Провайдер → OpenRouter. Без ключа — только кэш.">Обновить рейтинг</button>
+      <span id="coding-source-status" class="coding-source-status" aria-live="polite"></span>
+    </div>
+    <p class="coding-legend" id="coding-legend" aria-label="Легенда рейтинга для кодинга">
+      <span class="badge coding-badge coding-top" title="≥70 — топ бенчмарка">★ Топ</span> ≥70
+      <span class="badge coding-badge coding-good" title="≥40 — хорошие для кодинга">Хорошо</span> ≥40
+      <span class="badge coding-badge coding-low" title="<40 — низкий результат бенчмарка">Слабо</span>
+      <span class="badge coding-badge coding-none" title="Нет онлайн-данных">Нет данных</span>
+      <span class="coding-legend-hint" id="coding-legend-hint">— онлайн-бенчмарк (Artificial Analysis via OpenRouter), наведите на оценку для деталей</span>
+    </p>
     <div class="table-wrap">
       <table id="models-table">
         <thead>
           <tr>
             <th>Модель</th>
+            <th class="coding-col" title="Онлайн-рейтинг для кодинга (Artificial Analysis Coding Index): 0–100. Наведите на бейдж для деталей.">Код</th>
             <th>Тариф</th>
             <th class="num-col">Контекст</th>
             <th class="num-col">Вход $/1M</th>

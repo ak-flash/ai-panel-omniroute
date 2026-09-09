@@ -80,6 +80,7 @@ const _DIALOG_HTML = `<dialog id="dlg">
       <select id="dlg-provider" class="select">
         <option value="xkiro">xKiro</option>
         <option value="agentrouter">AgentRouter</option>
+        <option value="openrouter">OpenRouter</option>
         <option value="antigravity">Antigravity</option>
       </select>
       <!-- Поля ключа xKiro -->
@@ -109,6 +110,19 @@ const _DIALOG_HTML = `<dialog id="dlg">
           agentrouter.org → аватар → Security Settings → System Access Token →
           Generate; числовой ID — из профиля (New-Api-User).
           API-ключ (sk-…) не подходит: сайт принимает только access-токен.
+        </p>
+      </div>
+      <!-- Поля OpenRouter: один ключ для каталога и рейтинга моделей -->
+      <div id="dlg-openrouter-fields" hidden>
+        <label for="dlg-openrouter-key">API-ключ</label>
+        <div class="input-group">
+          <input type="password" id="dlg-openrouter-key" placeholder="sk-or-…" autocomplete="off">
+          <button type="button" id="dlg-openrouter-toggle" class="btn btn-ghost" aria-label="Показать/скрыть ключ">${icon('eye')}</button>
+        </div>
+        <p class="hint">
+          openrouter.ai → Keys → Create key. Один ключ используется и для
+          каталога моделей, и для «Обновить рейтинг» на странице Модели
+          (Artificial Analysis Coding Index).
         </p>
       </div>
       <!-- Поля Antigravity (Google AI Pro): вход через Google + вставка ссылки -->

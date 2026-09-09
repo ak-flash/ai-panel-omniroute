@@ -430,6 +430,7 @@ test('CLI: node server.js поднимается и отдаёт /api/config', a
       [
         { id: 'xkiro', name: 'xKiro' },
         { id: 'agentrouter', name: 'AgentRouter' },
+        { id: 'openrouter', name: 'OpenRouter' },
       ]
     );
     assert.ok(cfg.providers.every((p) => typeof p.hasKey === 'boolean'));

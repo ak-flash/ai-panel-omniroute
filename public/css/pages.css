@@ -25,6 +25,17 @@
 }
 
 /* Секция «Последние combo-запросы» на странице Combo */
+#combo-recent td.num-col {
+  max-width: 180px;
+}
+#combo-recent .badge {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
 #combo-recent {
   margin-top: 16px;
 }
@@ -174,7 +185,8 @@
 }
 
 #cards > .stats-row,
-#ar-card > .stats-row {
+#ar-card > .stats-row,
+#or-card > .stats-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }
@@ -182,6 +194,18 @@
 .provider-card-wallet .provider-card-head {
   margin-bottom: -16px;
   border-bottom: 0;
+}
+
+/* --- Wallet-карточки (AgentRouter + OpenRouter) в один ряд --- */
+.wallet-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.wallet-cards .provider-card {
+  margin: 0;
 }
 
 /* --- AgentRouter: баланс в начале карточки --- */
@@ -635,6 +659,88 @@ tr:hover td {
   color: var(--text-faint);
   font-size: 13px;
   margin-top: 8px;
+}
+
+/* Тулбар онлайн-рейтинга: кнопка обновления + статус источника */
+.coding-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+.coding-source-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.coding-source-status:empty {
+  display: none;
+}
+
+/* Легенда внутреннего рейтинга для кодинга */
+.coding-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.coding-legend-hint {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* Колонка рейтинга: компактная, по центру */
+th.coding-col,
+td.coding-col {
+  width: 72px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.coding-cell-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.coding-bar {
+  width: 44px;
+  height: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.coding-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.3s ease;
+}
+
+.coding-bar-fill.coding-top {
+  background: var(--warn);
+}
+
+.coding-bar-fill.coding-good {
+  background: var(--ok);
+}
+
+.coding-bar-fill.coding-low {
+  background: var(--text-muted);
+}
+
+.coding-bar-fill.coding-none {
+  background: transparent;
 }
 
 /* --------------------------------------------------------------------------

@@ -12,7 +12,11 @@
 // ============================================================
 
 /** Поле хранилища с ключом провайдера. */
-const PROVIDER_STORE_KEYS = { xkiro: 'xkiroKey', agentrouter: 'agentrouterKey' };
+const PROVIDER_STORE_KEYS = {
+  xkiro: 'xkiroKey',
+  agentrouter: 'agentrouterKey',
+  openrouter: 'openrouterKey',
+};
 
 /** Дополнительные поля авторизации (у AgentRouter — числовой ID
  * пользователя для заголовка New-Api-User). */

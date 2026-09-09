@@ -36,7 +36,7 @@ async function validateOmniUrls(value, validateUpstreamUrl) {
 // Должен быть подмножеством STORE_KEYS хранилища — это проверяет тест
 // «WRITABLE_KEYS маршрута — подмножество STORE_KEYS хранилища».
 const WRITABLE_KEYS = [
-  'xkiroKey', 'agentrouterKey', 'agentrouterUserId', 'omniUrl', 'omniUrls', 'omniKey',
+  'xkiroKey', 'agentrouterKey', 'openrouterKey', 'agentrouterUserId', 'omniUrl', 'omniUrls', 'omniKey',
   'agRefreshToken', 'agProject', 'aliases', 'comboActive', 'dlgProvider',
   'dlgTab', 'modelsProvider', 'statsProvider', 'notificationThresholds',
 ];
@@ -105,6 +105,7 @@ function registerConfigRoutes(router, {
       omniUrls: s.omniUrls || '',
       hasXkiroKey: Boolean(s.xkiroKey),
       hasAgentrouterKey: Boolean(s.agentrouterKey),
+      hasOpenrouterKey: Boolean(s.openrouterKey),
       hasOmniRoute: Boolean(s.omniUrl) || Boolean(String(s.omniUrls || '').trim()),
       hasOmniKey: Boolean(s.omniKey),
       hasGoogleToken: Boolean(agStatus.hasToken) || agStatus.hasRefresh,
