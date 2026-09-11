@@ -13,6 +13,7 @@ import { compact } from '../formatters.js';
 import { matchModel, normModelName } from '../../model-match.js';
 import {
   codingRatingResolved,
+  codingScoreResolved,
   setOnlineRatings,
   getOnlineMeta,
 } from '../../coding-rating.js';
@@ -221,6 +222,20 @@ function filterModels() {
       const hay = (m.id + ' ' + (m.display_name || '')).toLowerCase();
       return hay.includes(q);
     });
+  // «Все для кода» — сортировка по цене: сначала вход $/1M,
+  // при равенстве — выход. «Топ и хорошие» — по рейтингу
+  // от большего к меньшему, при равенстве — по цене.
+  const inPrice = (m) => Number((m.pricing || {}).input || 0);
+  const outPrice = (m) => Number((m.pricing || {}).output || 0);
+  const byPrice = (a, b) =>
+    inPrice(a) - inPrice(b) || outPrice(a) - outPrice(b) || a.id.localeCompare(b.id);
+  if (!codingFilter) {
+    rows.sort(byPrice);
+  } else if (codingFilter === 'good') {
+    rows.sort(
+      (a, b) => codingScoreResolved(b) - codingScoreResolved(a) || byPrice(a, b)
+    );
+  }
   for (const m of rows) $modelsBody.appendChild(modelRow(m));
   // Обновляем сводку в статус-баре, если есть данные.
   if ($modelsStatus && ! $modelsStatus.hidden && session.models && session.models.length) {

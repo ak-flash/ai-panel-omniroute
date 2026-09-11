@@ -564,7 +564,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 4px;
 }
 
 .models-header h2 {
@@ -667,7 +667,7 @@ tr:hover td {
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
-  margin: 0 0 10px;
+  margin: 0 0 16px;
 }
 
 .coding-source-status {

@@ -172,8 +172,8 @@ Baseline HTTP-контракта и принятые решения описан
 | Провайдер | Что показывает панель | Ключ / авторизация | Заводится в |
 |---|---|---|---|
 | **xKiro** | План, окна расхода (5 ч / 7 д), бесплатные токены, баланс кошелька; каталог моделей с ценами | API-ключ (`sk-xt-…`) | `FACTORIES` (реестр) |
-| **AgentRouter** | Баланс кошелька, израсходовано, число запросов, группа аккаунта, расход за сутки | Access-токен + User ID (`New-Api-User`) | `FACTORIES` (реестр) |
-| **OpenRouter** | Остаток средств ключа, каталог моделей с ценами и контекстом; рейтинг для кодинга | API-ключ (`sk-or-…`) | `FACTORIES` (реестр) |
+| **AgentRouter** | Баланс кошелька, расход за сутки, группа аккаунта | Access-токен + User ID (`New-Api-User`) | `FACTORIES` (реестр) |
+| **OpenRouter** | Баланс кошелька, расход за сегодня, каталог моделей с ценами и контекстом; рейтинг для кодинга | API-ключ (`sk-or-…`), `Authorization: Bearer` | `FACTORIES` (реестр) |
 | **Antigravity** | Квоты Google AI Pro по моделям + групповые окна (5 ч / неделя) | Google OAuth (refresh-token) | Отдельный сервис `src/antigravity-service.js` |
 | **OmniRoute** | Combo: список, targets, порядок; последние combo-запросы и реальная модель | Management-ключ (Bearer) | Прокси `src/routes/omniroute.js` |
 
@@ -226,7 +226,7 @@ flowchart TD
 
 ## AgentRouter (баланс кошелька)
 
-Провайдер [agentrouter.org](https://agentrouter.org) (платформа new-api) — пока только **баланс кошелька**; каталог моделей и окна расхода не подключены. На главной есть отдельная карточка **AgentRouter** (баланс, израсходовано, число запросов, группа аккаунта); она показывается, когда токен задан, и прячется, если в полосе статистики уже выбран этот провайдер. В самой полосе провайдер выбирается селектором рядом с балансом (выбор запоминается).
+Провайдер [agentrouter.org](https://agentrouter.org) (платформа new-api) — пока только **баланс кошелька**; каталог моделей и окна расхода не подключены. На главной есть отдельная карточка **AgentRouter** (баланс и расход за сутки, группа аккаунта); она показывается, когда токен задан, и прячется, если в полосе статистики уже выбран этот провайдер. В самой полосе провайдер выбирается селектором рядом с балансом (выбор запоминается).
 
 **Настройка:** ⚙ Настройки → провайдер **AgentRouter** → вставьте **access-токен** и **User ID** аккаунта (в одной строке):
 
@@ -236,6 +236,19 @@ flowchart TD
 Токен уходит в заголовке `Authorization: Bearer <token>` на `GET /api/user/self`, а рядом — `New-Api-User: <User ID>` (новые версии new-api требуют ID пользователя вместе с токеном — защита от кражи токенов; без него сайт отвечает 401 «未提供 New-Api-User»). Баланс считается как `data.quota / 500000` (в `/api/status` сайта это поле `quota_per_unit`), до двух знаков; там же берётся `used_quota` → «Израсходовано». Группа аккаунта показывается badge-ем. Для «расхода за сутки» сервер раз в день (~00:00) снимает стартовый баланс дня и хранит его в БД (только последний день) — карточка вычитает из него текущий баланс. API-ключ (sk-…) **не подходит** — он авторизует только запросы к моделям `/v1/*`.
 
 Токен и User ID хранятся на сервере в зашифрованном виде (поля `agentrouterKey` и `agentrouterUserId` хранилища) и не возвращаются клиенту — как и ключ xKiro.
+
+## OpenRouter (баланс кошелька)
+
+Провайдер [openrouter.ai](https://openrouter.ai) — единый API к сотням LLM. Панель показывает **баланс кошелька** и **расход за сегодня**, каталог моделей с ценами и контекстом — на странице «Модели», а также онлайн-рейтинг для кодинга (Artificial Analysis) для колонки «Код».
+
+**Настройка:** ⚙ Настройки → провайдер **OpenRouter** → вставьте API-ключ (`sk-or-v1-…`) → **Проверить и сохранить**. Панель запросит `GET /auth/key` и покажет баланс.
+
+1. Создайте ключ на сайте (`openrouter.ai` → **Keys** → **Create Key**) — достаточно обычного ключа, management не требуется.
+2. Вставьте ключ в поле «API-ключ» → **Проверить и сохранить**.
+
+Ключ уходит в заголовке `Authorization: Bearer <ключ>`. **Баланс:** эндпоинт `/auth/key` отдаёт лимит ключа (`limit`/`limit_remaining`) — это граница расхода, заданная для ключа, а не кошелёк. Если у ключа лимита нет (оба поля `null`), панель дополнительно опрашивает `GET /credits` (`total_credits − total_usage` — реальный баланс; запрос проходит с обычным ключом). Расход за сегодня берётся из `usage_daily`.
+
+Ключ хранится в зашифрованном хранилище сервера (поле `openrouterKey`) и не возвращается клиенту. Тот же ключ используется кнопкой **«Обновить рейтинг»** на странице «Модели». На главной баланс показывается в карточке **OpenRouter** рядом с карточкой AgentRouter — обе стоят в один ряд; карточка скрыта, если OpenRouter выбран активным провайдером в полосе статистики.
 
 ## Antigravity (Google AI Pro)
 
@@ -264,6 +277,9 @@ Access token хранится в памяти, refresh token — в encrypted st
 | `GET https://api.xkiro.com/v1/usage` | План, окна расхода, бесплатные токены, кошелёк | Бесплатно |
 | `GET https://api.xkiro.com/v1/models` | Каталог моделей с ценами | Бесплатно |
 | `GET https://agentrouter.org/api/user/self` | Баланс кошелька AgentRouter (нужен access-токен в `Authorization: Bearer`) | Бесплатно |
+| `GET https://openrouter.ai/api/v1/auth/key` | Информация о ключе OpenRouter: лимит, остаток, расход (нужен `Authorization: Bearer <ключ>`) | Бесплатно |
+| `GET https://openrouter.ai/api/v1/credits` | Баланс кошелька OpenRouter (`total_credits − total_usage`), если у ключа нет лимита | Бесплатно |
+| `GET https://openrouter.ai/api/v1/models` | Каталог моделей OpenRouter с ценами и контекстом | Бесплатно |
 | `GET {omniUrl}/api/combos` | Список всех combo OmniRoute | — |
 | `GET {omniUrl}/api/combos/{id}` | Детали combo (targets, strategy) | — |
 | `PUT {omniUrl}/api/combos/{id}` | Обновить combo (перестановка targets) | — |
@@ -351,9 +367,11 @@ ai-panel/
 │   ├── router.js      # декларативный роутер (params, 405/404)
 │   ├── security.js    # CORS/same-origin, security headers, валидация upstream и master key
 │   ├── file-logger.js # файловый лог диагностики провайдеров (logs/ai-panel.log)
-│   ├── routes/        # модули маршрутов: providers, proxy, omniroute, antigravity, config
+│   ├── routes/        # модули маршрутов: providers, proxy, omniroute, antigravity,
+│   │                  #   config, coding-ratings
 │   ├── antigravity-service.js # состояние Google-авторизации и кеш квот
 │   ├── agentrouter-tracker.js # ежедневный снимок баланса AgentRouter
+│   ├── coding-ratings.js # рейтинг для кодинга: Artificial Analysis через OpenRouter, кеш 24 ч
 │   ├── static.js      # раздача public/ (path traversal-защита)
 │   ├── proxy.js       # универсальный прозрачный прокси (/proxy, /omniroute)
 │   ├── store/         # encrypted store (этап 4): фасад index.js, crypto,
@@ -365,6 +383,7 @@ ai-panel/
 │   ├── index.js       # реестр: FACTORIES + loadProviders()
 │   ├── xkiro.js       # фабрика адаптера xKiro (getUsage, getModels)
 │   ├── agentrouter.js # фабрика адаптера AgentRouter (баланс кошелька)
+│   ├── openrouter.js  # фабрика адаптера OpenRouter (getUsage, getModels)
 │   ├── antigravity.js # фабрика адаптера Antigravity (getQuota, getQuotaSummary)
 │   └── google-oauth.js# обновление Google access-token по refresh-token
 ├── test/              # тесты (node:test, без зависимостей)
@@ -376,6 +395,7 @@ ai-panel/
 │   ├── providers-registry.test.js
 │   ├── xkiro-adapter.test.js
 │   ├── agentrouter-adapter.test.js
+│   ├── openrouter.test.js # адаптер OpenRouter и обновление рейтинга для кодинга
 │   ├── antigravity.test.js
 │   ├── model-match.test.js
 │   ├── call-logs.test.js # разбор call logs (combo → реальная модель)
@@ -395,6 +415,7 @@ ai-panel/
     ├── icons.js       # ES-модуль: heroicons
     ├── partials.js    # ES-модуль: общие HTML-компоненты (шапка, диалог, баннер)
     ├── model-match.js # ES-модуль: сопоставление модели combo с каталогом
+    ├── coding-rating.js # ES-модуль: онлайн-рейтинг для кодинга (колонка «Код»)
     ├── js/            # фронтенд-модули (этап 5 рефакторинга)
     │   ├── boot.js    # запуск страницы: partials → общий UI → page.init()
     │   ├── session.js # общее состояние: провайдеры, каталог моделей
@@ -421,7 +442,7 @@ ai-panel/
 ## Планы развития
 
 - [x] OmniRoute: переключение моделей в combo (auto-coding и др.) по их API
-- [x] Провайдеры: фабрики-адаптеры в `providers/` (xKiro, AgentRouter, Antigravity + refresh-token flow)
+- [x] Провайдеры: фабрики-адаптеры в `providers/` (xKiro, AgentRouter, OpenRouter, Antigravity + refresh-token flow)
 - [x] Страница «Управление» с командой обновления opencode
 - [x] Алиасы имён провайдеров для OmniRoute
 - [ ] AgentRouter: каталог моделей и окна расхода (сейчас — только баланс)
