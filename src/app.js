@@ -13,6 +13,7 @@ const http = require('http');
 const path = require('path');
 
 const { loadProviders } = require('../providers');
+const { parsePoolReleaseHours, AGENTROUTER_POOL_RELEASE_TIMEZONE } = require('../providers/agentrouter');
 const { createAntigravityProvider } = require('../providers/antigravity');
 const { createGoogleOauth, getBuiltinClientId, getBuiltinClientSecret } = require('../providers/google-oauth');
 const { createStore } = require('./store');
@@ -53,6 +54,7 @@ function createApp({
   requestTimeoutMs = 30000,
   authLoopbackPort = process.env.PORT || '8765',
   providerDebug = false,
+  agentrouterReleaseHoursUtc = parsePoolReleaseHours(process.env.AGENTROUTER_RELEASE_HOURS_UTC),
 } = {}) {
   const activeProvider = providers[0] || null;
   // Логгер провайдеров (функция warn-уровня): включает файл при запуске CLI.
@@ -132,6 +134,10 @@ function createApp({
     antigravityService,
     storeKeys: PROVIDER_STORE_KEYS,
     validateUpstreamUrl,
+    agentrouterReleases: {
+      timezone: AGENTROUTER_POOL_RELEASE_TIMEZONE,
+      hoursUtc: agentrouterReleaseHoursUtc,
+    },
   });
   registerAccountRoutes(router, { getStore });
   registerCodingRatingsRoutes(router, { getStore, logger });

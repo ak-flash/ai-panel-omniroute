@@ -5,7 +5,7 @@
 
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
-const { createAgentRouterProvider } = require('../providers/agentrouter');
+const { createAgentRouterProvider, AGENTROUTER_POOL_RELEASE_HOURS_UTC, parsePoolReleaseHours, getNextPoolReleaseUtc } = require('../providers/agentrouter');
 const { startAgentRouterUpstream, getFreePort } = require('./helpers');
 
 const TOKEN = 'pat-token-123';
@@ -319,6 +319,52 @@ test('New-Api-User не совпал с токеном → подсказка п
   } finally {
     await mock.close();
   }
+});
+
+// ============================================================
+// График высвобождения пула (Claude/GPT): 3 раза в сутки.
+// По объявлению провайдера от 10.09: Пекин 0:00/8:00/16:00
+// = UTC 16:00/0:00/8:00 → дефолт часов храним в UTC [0, 8, 16].
+// ============================================================
+
+test('дефолтный график: UTC-часы [0, 8, 16]', () => {
+  assert.deepEqual(AGENTROUTER_POOL_RELEASE_HOURS_UTC, [0, 8, 16]);
+});
+
+test('parsePoolReleaseHours: нормализация и дедупликация', () => {
+  assert.deepEqual(parsePoolReleaseHours('0,8,16'), [0, 8, 16]);
+  // порядок сортируется, дубли убираются
+  assert.deepEqual(parsePoolReleaseHours('16,0,8,8'), [0, 8, 16]);
+  assert.deepEqual(parsePoolReleaseHours('0, 8, 16'), [0, 8, 16]);
+  // невалидные часы отбрасываются
+  assert.deepEqual(parsePoolReleaseHours('99,3'), [3]);
+  // пустой/мусорный ввод → дефолт провайдера
+  assert.deepEqual(parsePoolReleaseHours(''), AGENTROUTER_POOL_RELEASE_HOURS_UTC);
+  assert.deepEqual(parsePoolReleaseHours('x,y'), AGENTROUTER_POOL_RELEASE_HOURS_UTC);
+  assert.deepEqual(parsePoolReleaseHours(undefined), AGENTROUTER_POOL_RELEASE_HOURS_UTC);
+});
+
+test('getNextPoolReleaseUtc: ближайший час графика в UTC', () => {
+  // 2026-09-12 05:30 UTC → сегодня 08:00 UTC
+  const a = getNextPoolReleaseUtc(Date.UTC(2026, 8, 12, 5, 30), [0, 8, 16]);
+  assert.equal(a, Date.UTC(2026, 8, 12, 8));
+  // 2026-09-12 12:00 UTC → сегодня 16:00 UTC
+  const b = getNextPoolReleaseUtc(Date.UTC(2026, 8, 12, 12), [0, 8, 16]);
+  assert.equal(b, Date.UTC(2026, 8, 12, 16));
+  // 2026-09-12 20:00 UTC → завтра 00:00 UTC
+  const c = getNextPoolReleaseUtc(Date.UTC(2026, 8, 12, 20), [0, 8, 16]);
+  assert.equal(c, Date.UTC(2026, 8, 13, 0));
+  // ровно в час высвобождения (08:00 UTC) → следующее в тот же день 16:00 UTC
+  const d = getNextPoolReleaseUtc(Date.UTC(2026, 8, 12, 8), [0, 8, 16]);
+  assert.equal(d, Date.UTC(2026, 8, 12, 16));
+  // принимает и Date, и мс-число
+  const e = getNextPoolReleaseUtc(new Date(Date.UTC(2026, 8, 12, 5, 30)), [0, 8, 16]);
+  assert.equal(e, Date.UTC(2026, 8, 12, 8));
+});
+
+test('getNextPoolReleaseUtc: без валидных часов → null', () => {
+  assert.equal(getNextPoolReleaseUtc(Date.UTC(2026, 8, 12), []), null);
+  assert.equal(getNextPoolReleaseUtc(Date.UTC(2026, 8, 12), [99]), null);
 });
 
 // ============================================================

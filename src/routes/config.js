@@ -48,6 +48,7 @@ function registerConfigRoutes(router, {
   antigravityService,
   storeKeys,
   validateUpstreamUrl,
+  agentrouterReleases = null,
 }) {
   router.add(['GET', 'PUT'], '/api/config', async ({ req, res }) => {
     await antigravityService.ensureLoaded();
@@ -109,6 +110,10 @@ function registerConfigRoutes(router, {
       hasOmniRoute: Boolean(s.omniUrl) || Boolean(String(s.omniUrls || '').trim()),
       hasOmniKey: Boolean(s.omniKey),
       hasGoogleToken: Boolean(agStatus.hasToken) || agStatus.hasRefresh,
+      // График высвобождения пула AgentRouter (Claude/GPT): часы в UTC
+      // + якорный часовой пояс. Фронтенд считает ближайшее высвобождение
+      // и переводит в локальное время браузера.
+      agentrouterReleases,
     };
     return sendJson(res, 200, {
       ok: true,

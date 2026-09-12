@@ -237,6 +237,17 @@
   color: var(--text-muted);
 }
 
+/* Строка «Высвобождение пула» в wallet-карточке AgentRouter:
+   отсчёт — основным цветом, остальное приглушено */
+.ar-release {
+  margin-bottom: 0;
+}
+
+.ar-release strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .stat {
   min-width: 0;
   display: flex;

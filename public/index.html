@@ -96,6 +96,17 @@
           <span class="stat-pct" id="free-pct"></span>
         </div>
       </article>
+
+      <!-- AgentRouter: таймер до высвобождения пула (когда AgentRouter — активный провайдер) -->
+      <article class="stat" id="card-ar-release" hidden>
+        <div class="stat-top">
+          <span class="stat-head"><span class="stat-label">Высвобождение пула</span> <span class="stat-meta">Claude / GPT</span></span>
+          <span class="stat-value num" id="ar-release-value">—</span>
+        </div>
+        <div class="stat-sub">
+          <span class="stat-reset" id="ar-release-sub">—</span>
+        </div>
+      </article>
     </div>
   </section>
 
@@ -123,6 +134,11 @@
           </div>
         </article>
       </div>
+      <p class="hint ar-release" id="ar-release" hidden>
+        Высвобождение пула (Claude/GPT): через
+        <strong id="ar-release-countdown">—</strong>
+        <span id="ar-release-at">—</span>
+      </p>
       <p class="hint" id="ar-error" hidden></p>
     </section>
 

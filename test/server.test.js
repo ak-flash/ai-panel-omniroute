@@ -26,6 +26,39 @@ test('WRITABLE_KEYS маршрута — подмножество STORE_KEYS х�
   }
 });
 
+test('agentrouterReleases в /api/config: дефолт графика и переопределение env', async () => {
+  // Дефолт: график провайдера — Пекин 0:00/8:00/16:00 = UTC 0:00/8:00/16:00
+  const panel = await startPanel();
+  try {
+    const cfg = await (await fetch(panel.base + '/api/config')).json();
+    assert.deepEqual(cfg.data.agentrouterReleases, {
+      timezone: 'Asia/Shanghai',
+      hoursUtc: [0, 8, 16],
+    });
+  } finally {
+    await panel.stop();
+  }
+
+  // Переопределение через env (как в проде): часы меняются, якорь тот же
+  const prev = process.env.AGENTROUTER_RELEASE_HOURS_UTC;
+  process.env.AGENTROUTER_RELEASE_HOURS_UTC = '4,12';
+  try {
+    const panel2 = await startPanel();
+    try {
+      const cfg = await (await fetch(panel2.base + '/api/config')).json();
+      assert.deepEqual(cfg.data.agentrouterReleases, {
+        timezone: 'Asia/Shanghai',
+        hoursUtc: [4, 12],
+      });
+    } finally {
+      await panel2.stop();
+    }
+  } finally {
+    if (prev === undefined) delete process.env.AGENTROUTER_RELEASE_HOURS_UTC;
+    else process.env.AGENTROUTER_RELEASE_HOURS_UTC = prev;
+  }
+});
+
 test('PUT /api/config: частичная запись ключей и чтение назад', async () => {
   const panel = await startPanel();
   try {

@@ -29,6 +29,47 @@ const QUOTA_PER_UNIT = 500000;
 // Таймаут запросов к API провайдера
 const REQUEST_TIMEOUT_MS = 20000;
 
+// График высвобождения пула ресурсов (модели Claude и GPT) — по объявлению
+// провайдера от 10.09: Пекин 0:00 / 8:00 / 16:00, что соответствует UTC
+// 16:00 / 0:00 / 8:00. Часы храним в UTC: расчёт «следующего высвобождения»
+// не зависит от часового пояса панели, а браузер сам переводит момент
+// в локальное время пользователя.
+const AGENTROUTER_POOL_RELEASE_HOURS_UTC = [0, 8, 16];
+// Якорный часовой пояс графика — Пекин (UTC+8, без перевода часов).
+const AGENTROUTER_POOL_RELEASE_TIMEZONE = 'Asia/Shanghai';
+
+/** Разбирает значение env (AGENTROUTER_RELEASE_HOURS_UTC): «0,8,16» → [0,8,16].
+ *  Часы 0..23, дубли отбрасываются, порядок сортируется. Пустой или
+ *  полностью невалидный ввод → дефолтный график провайдера. */
+function parsePoolReleaseHours(raw) {
+  if (typeof raw !== 'string' || !raw.trim()) return AGENTROUTER_POOL_RELEASE_HOURS_UTC;
+  const seen = new Set();
+  for (const part of raw.split(',')) {
+    const h = Number(part.trim());
+    if (Number.isInteger(h) && h >= 0 && h <= 23 && !seen.has(h)) seen.add(h);
+  }
+  return seen.size ? [...seen].sort((a, b) => a - b) : AGENTROUTER_POOL_RELEASE_HOURS_UTC;
+}
+
+/** Момент ближайшего высвобождения пула (мс в UTC). now — Date или число.
+ *  Если хотя бы один час из hoursUtc валиден — вернёт ближайший из них;
+ *  иначе null. Часы интерпретируются в UTC (график провайдера). */
+function getNextPoolReleaseUtc(now = new Date(), hoursUtc = AGENTROUTER_POOL_RELEASE_HOURS_UTC) {
+  const nowMs = now instanceof Date ? now.getTime() : Number(now);
+  if (!Array.isArray(hoursUtc) || !Number.isFinite(nowMs)) return null;
+  const valid = hoursUtc.filter((h) => Number.isInteger(h) && h >= 0 && h <= 23);
+  if (!valid.length) return null;
+  const d = new Date(nowMs);
+  const dayStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  let best = null;
+  for (const h of valid) {
+    let t = dayStart + h * 3600000;
+    if (t <= nowMs) t += 86400000; // уже прошёл сегодня — следующий завтра
+    if (best === null || t < best) best = t;
+  }
+  return best;
+}
+
 // CDN периодически отдаёт HTML-заглушку с HTTP 200 вместо JSON. Повторяем
 // такой запрос с паузой: немедленные ретраи бесполезны против WAF с CC-защитой
 // и только усугубляют частотный блок (Aliyun WAF у AgentRouter так реагировал
@@ -253,4 +294,10 @@ function createAgentRouterProvider(config = {}) {
   };
 }
 
-module.exports = { createAgentRouterProvider };
+module.exports = {
+  createAgentRouterProvider,
+  AGENTROUTER_POOL_RELEASE_HOURS_UTC,
+  AGENTROUTER_POOL_RELEASE_TIMEZONE,
+  parsePoolReleaseHours,
+  getNextPoolReleaseUtc,
+};

@@ -54,3 +54,33 @@ export function barClass(p) {
   if (p < 90) return 'warn';
   return 'danger';
 }
+
+/**
+ * Ближайший момент высвобождения пула по часам в UTC (массив hoursUtc,
+ * напр. [0, 8, 16]). Кандидаты сегодня до now откладываются на сутки
+ * вперёд. Возвращает мс-таймстамп (UTC) или null, если часов нет.
+ * Используется для таймера «до высвобождения пула AgentRouter».
+ */
+export function nextReleaseUtc(hoursUtc, now = Date.now()) {
+  if (!Array.isArray(hoursUtc)) return null;
+  const valid = hoursUtc.filter((h) => Number.isInteger(h) && h >= 0 && h <= 23);
+  if (!valid.length) return null;
+  const nowMs = now instanceof Date ? now.getTime() : Number(now);
+  if (!Number.isFinite(nowMs)) return null;
+  const d = new Date(nowMs);
+  const dayStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  let best = null;
+  for (const h of valid) {
+    let t = dayStart + h * 3600000;
+    if (t <= nowMs) t += 86400000; // час уже прошёл сегодня — следующий завтра
+    if (best === null || t < best) best = t;
+  }
+  return best;
+}
+
+/** Локальное время «чч:мм» (часовой пояс браузера) для мс-таймстампа. */
+export function clockTime(ts) {
+  const t = Number(ts);
+  if (!Number.isFinite(t)) return '—';
+  return new Date(t).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}

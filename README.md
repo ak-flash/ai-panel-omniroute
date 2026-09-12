@@ -143,6 +143,7 @@ pm2 restart ai-panel --update-env
 | `AIPANEL_MASTER_KEY` | генерируется локально | Необязательный переносимый master key: ровно 64 hex-символа |
 | `GOOGLE_CLIENT_ID` | _(пусто)_ | ID клиента OAuth для кнопки «Войти через Google» (Antigravity) |
 | `GOOGLE_CLIENT_SECRET` | _(пусто)_ | Секрет клиента OAuth (для типа «Настольное приложение» обычно не нужен) |
+| `AGENTROUTER_RELEASE_HOURS_UTC` | `0,8,16` | Часы высвобождения пула AgentRouter (Claude/GPT) в UTC через запятую. По графику от 10.09: Пекин 0:00/8:00/16:00 = UTC 16:00/0:00/8:00; якорь — `Asia/Shanghai` |
 
 Реальные переменные окружения (`PORT=9000 node server.js`) имеют приоритет над `.env`.
 
@@ -172,7 +173,7 @@ Baseline HTTP-контракта и принятые решения описан
 | Провайдер | Что показывает панель | Ключ / авторизация | Заводится в |
 |---|---|---|---|
 | **xKiro** | План, окна расхода (5 ч / 7 д), бесплатные токены, баланс кошелька; каталог моделей с ценами | API-ключ (`sk-xt-…`) | `FACTORIES` (реестр) |
-| **AgentRouter** | Баланс кошелька, расход за сутки, группа аккаунта | Access-токен + User ID (`New-Api-User`) | `FACTORIES` (реестр) |
+| **AgentRouter** | Баланс кошелька, расход за сутки, группа аккаунта; обратный отсчёт до высвобождения пула Claude/GPT (3 раза в сутки, в локальном времени) | Access-токен + User ID (`New-Api-User`) | `FACTORIES` (реестр) |
 | **OpenRouter** | Баланс кошелька, расход за сегодня, каталог моделей с ценами и контекстом; рейтинг для кодинга | API-ключ (`sk-or-…`), `Authorization: Bearer` | `FACTORIES` (реестр) |
 | **Antigravity** | Квоты Google AI Pro по моделям + групповые окна (5 ч / неделя) | Google OAuth (refresh-token) | Отдельный сервис `src/antigravity-service.js` |
 | **OmniRoute** | Combo: список, targets, порядок; последние combo-запросы и реальная модель | Management-ключ (Bearer) | Прокси `src/routes/omniroute.js` |

@@ -7,11 +7,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-let fmtUsd, compact, dur, num, pct, barClass;
+let fmtUsd, compact, dur, num, pct, barClass, nextReleaseUtc, clockTime;
 
 test.before(async () => {
   ({
-    fmtUsd, compact, dur, num, pct, barClass,
+    fmtUsd, compact, dur, num, pct, barClass, nextReleaseUtc, clockTime,
   } = await import('../public/js/formatters.js'));
 });
 
@@ -79,4 +79,31 @@ test('compact: компактная запись чисел (ru)', () => {
   // Intl для ru вставляет неразрывный пробел (U+00A0) перед суффиксом
   assert.match(compact(1500), /^1,5\s*тыс\.$/);
   assert.match(compact(2_000_000), /^2\s*млн$/);
+});
+
+test('nextReleaseUtc: ближайший час графика (UTC), кандидаты за сегодня', () => {
+  // 2026-09-12 05:30 UTC → сегодня 08:00 UTC
+  assert.equal(nextReleaseUtc([0, 8, 16], Date.UTC(2026, 8, 12, 5, 30)), Date.UTC(2026, 8, 12, 8));
+  // 2026-09-12 20:00 UTC → завтра 00:00 UTC
+  assert.equal(nextReleaseUtc([0, 8, 16], Date.UTC(2026, 8, 12, 20)), Date.UTC(2026, 8, 13, 0));
+  // ровно в час высвобождения (08:00 UTC) → следующий слот в тот же день 16:00 UTC
+  assert.equal(nextReleaseUtc([0, 8, 16], Date.UTC(2026, 8, 12, 8)), Date.UTC(2026, 8, 12, 16));
+  // принимает и Date
+  assert.equal(nextReleaseUtc([16], new Date(Date.UTC(2026, 8, 12, 10))), Date.UTC(2026, 8, 12, 16));
+});
+
+test('nextReleaseUtc: невалидные/пустые часы → null', () => {
+  assert.equal(nextReleaseUtc(null), null);
+  assert.equal(nextReleaseUtc([]), null);
+  assert.equal(nextReleaseUtc([99]), null);
+  assert.equal(nextReleaseUtc([0], 'не-число'), null);
+});
+
+test('clockTime: локальное время «чч:мм» и фолбэк для мусора', () => {
+  // 2026-09-12 08:00 UTC → в часовом поясе MSEK (UTC+3) это 11:00
+  const t = Date.UTC(2026, 8, 12, 8);
+  const formatted = clockTime(t);
+  assert.match(formatted, /^\d{2}:\d{2}$/);
+  assert.equal(clockTime(undefined), '—');
+  assert.equal(clockTime('abc'), '—');
 });

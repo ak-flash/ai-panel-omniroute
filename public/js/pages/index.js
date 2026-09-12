@@ -13,7 +13,7 @@ import { providerRequest, fetchAntigravityQuota, AG_ERROR_MESSAGES, omniFetch, C
 import { keyForProvider, getAgentRouterKey, getOpenRouterKey, vaultGet } from '../settings.js';
 import { onEvent } from '../events.js';
 import { start } from '../boot.js';
-import { fmtUsd, compact, dur, num, pct, barClass } from '../formatters.js';
+import { fmtUsd, compact, dur, num, pct, barClass, nextReleaseUtc, clockTime } from '../formatters.js';
 import { extractComboTargets, combosFromResponse } from '../combos.js';
 import { showToast } from '../toast.js';
 import { evaluateAll } from '../notifications.js';
@@ -274,6 +274,7 @@ async function loadAgentRouterCard() {
     session.providers.some((p) => p.id === 'agentrouter' && p.hasKey);
   if (!hasKey || session.activeProvider.id === 'agentrouter') {
     $card.hidden = true;
+    renderAgentRouterRelease();
     return;
   }
   try {
@@ -293,6 +294,8 @@ async function loadAgentRouterCard() {
         (err && err.message ? err.message : String(err));
     }
   }
+  // Видимость карточки окончательная — обновить строку с высвобождением
+  renderAgentRouterRelease();
 }
 
 function renderAgentRouterCard(data) {
@@ -326,6 +329,73 @@ function renderAgentRouterCard(data) {
     if (today !== null) {
       todayEl.classList.toggle('val-used', today > 0);
     }
+  }
+}
+
+/* ---------- AgentRouter: таймер высвобождения пула (Claude/GPT) ---------- */
+
+// График приходит вместе с /api/config (vault) объектом
+// { timezone, hoursUtc } — часы графика в UTC, якорь — Пекин.
+let arReleaseHours = null; // ближайший график: непустой массив часов UTC
+let arReleaseTz = '';      // якорный часовой пояс графика (для подписи)
+
+function readAgentRouterReleases() {
+  const cfg = vaultGet('agentrouterReleases');
+  const hours = cfg && Array.isArray(cfg.hoursUtc)
+    ? cfg.hoursUtc.filter((h) => Number.isInteger(h) && h >= 0 && h <= 23)
+    : [];
+  arReleaseHours = hours.length ? hours : null;
+  arReleaseTz = cfg && typeof cfg.timezone === 'string' ? cfg.timezone : '';
+  return arReleaseHours !== null;
+}
+
+// Считает ближайшее высвобождение пула, показывает обратный отсчёт и
+// локальное время (часовой пояс браузера). Дублируется в двух местах:
+// карточка в полосе статистики (когда AgentRouter — активный провайдер)
+// и строка в wallet-карточке AgentRouter (когда активен другой провайдер).
+function renderAgentRouterRelease() {
+  if (!readAgentRouterReleases()) return;
+  const ts = nextReleaseUtc(arReleaseHours, Date.now());
+  if (ts === null) return;
+
+  // Отсчёт только до минут (с округлением вверх — никогда не «0 с»),
+  // а секунды не нужны: таймер живёт от обновления страницы
+  const remainMin = Math.max(1, Math.ceil((ts - Date.now()) / 60000));
+  const countdown = dur(remainMin * 60);
+  const localAt = clockTime(ts);
+
+  // Расписание дня в локальном времени: для каждого часа UTC берём его
+  // таймстамп сегодня и форматируем в часовом поясе браузера
+  const d = new Date();
+  const schedule = arReleaseHours.map((h) =>
+    clockTime(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h)),
+  );
+
+  const isArActive = session.activeProvider.id === 'agentrouter';
+
+  // Карточка в полосе статистики (AgentRouter активен)
+  const $main = $id('card-ar-release');
+  if ($main) {
+    $main.hidden = !isArActive;
+    if (isArActive) {
+      $id('ar-release-value').textContent = countdown;
+      $id('ar-release-sub').textContent =
+        'в ' + localAt + ' · расписание: ' + schedule.join(', ');
+    }
+  }
+
+  // Строка в wallet-карточке AgentRouter (когда активен другой провайдер)
+  const $arCard = $id('ar-card');
+  const $line = $id('ar-release');
+  if ($line && $arCard && !$arCard.hidden && !isArActive) {
+    $line.hidden = false;
+    $id('ar-release-countdown').textContent = countdown;
+    $id('ar-release-at').textContent =
+      'в ' + localAt + ' · ' +
+      (arReleaseTz ? arReleaseTz + ' · ' : '') +
+      'локально ' + schedule.join(', ');
+  } else if ($line) {
+    $line.hidden = true;
   }
 }
 
@@ -640,6 +710,7 @@ async function loadIndexComboFirst() {
 
 export async function init() {
   renderProviderLabel();
+  renderAgentRouterRelease();
   // Экран «Нужен ключ» — только если ключей нет ни у одного провайдера:
   // иначе селектор провайдера скрыт вместе с карточками и не переключиться
   const hasAnyKey =
@@ -674,6 +745,7 @@ function refreshAll() {
   loadAntigravityQuota();
   loadAgentRouterCard();
   loadOpenRouterCard();
+  renderAgentRouterRelease();
 }
 
 // Кнопка «Обновить» создаётся при инъекции topbar (на eval модуля
