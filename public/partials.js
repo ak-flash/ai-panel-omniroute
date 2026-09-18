@@ -115,7 +115,7 @@ const _DIALOG_HTML = `<dialog id="dlg">
           <label for="dlg-agentrouter-releases">Окна сброса (UTC, через запятую)</label>
           <input type="text" id="dlg-agentrouter-releases" placeholder="2, 11" autocomplete="off" inputmode="numeric" spellcheck="false" aria-describedby="dlg-agentrouter-releases-hint">
           <p class="hint" id="dlg-agentrouter-releases-hint">
-            Новые сроки — Пекин 10:00/19:00 = UTC 02:00/11:00. Пусто — скрыть блок. Формат: часы 0–23 через запятую, напр. «2,11».
+            Формат: часы 0–23 через запятую, напр. «2,11».
           </p>
         </div>
       </div>
