@@ -123,8 +123,8 @@ function createOpenRouterProvider(config = {}) {
       remaining != null && Number.isFinite(remaining)
         ? remaining
         : (limit != null && usage != null && Number.isFinite(limit) && Number.isFinite(usage)
-            ? limit - usage
-            : 0);
+          ? limit - usage
+          : 0);
     let used = Number.isFinite(usage) ? usage : 0;
     let today = Number.isFinite(daily) ? daily : 0;
 
@@ -189,7 +189,8 @@ function createOpenRouterProvider(config = {}) {
         return {
           id: m.id,
           display_name: m.name || m.id,
-          access_tier: 'paid', // у OpenRouter тарифов нет — показываем paid
+          // OpenRouter помечает бесплатные модели суффиксом :free
+          access_tier: /:free/.test(m.id + ' ' + (m.name || '')) ? 'free' : 'paid',
           context_length: m.context_length,
           pricing: {
             input: Number.isFinite(input) ? input : 0,

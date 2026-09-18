@@ -18,6 +18,8 @@ import {
   getOnlineMeta,
 } from '../../coding-rating.js';
 import { extractComboTargets, combosFromResponse } from '../combos.js';
+import { showToast } from '../toast.js';
+import { icon } from '../../icons.js';
 
 // Статичные элементы страницы — доступны на момент eval модуля
 const $setup = $id('setup');
@@ -162,12 +164,37 @@ function codingCell(model) {
   return td;
 }
 
+function copyModelBtn(model) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-ghost copy-model-btn';
+  btn.innerHTML = icon('clipboard', { size: 16 });
+  btn.title = 'Скопировать название модели';
+  btn.setAttribute('aria-label', 'Скопировать название модели ' + model.id);
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(model.id);
+      btn.innerHTML = icon('check', { size: 16 });
+      btn.classList.add('copied');
+      showToast('Название модели скопировано');
+      setTimeout(() => {
+        btn.innerHTML = icon('clipboard', { size: 16 });
+        btn.classList.remove('copied');
+      }, 1500);
+    } catch {
+      showToast('Не удалось скопировать название модели', { type: 'error' });
+    }
+  });
+  return btn;
+}
+
 function modelRow(model) {
   const tr = document.createElement('tr');
   if (isModelInCombo(model)) tr.classList.add('in-combo');
 
   const tdId = document.createElement('td');
   tdId.textContent = model.id;
+  tdId.appendChild(copyModelBtn(model));
   if (isModelInCombo(model)) {
     const b = document.createElement('span');
     b.className = 'badge combo';
@@ -238,7 +265,7 @@ function filterModels() {
   }
   for (const m of rows) $modelsBody.appendChild(modelRow(m));
   // Обновляем сводку в статус-баре, если есть данные.
-  if ($modelsStatus && ! $modelsStatus.hidden && session.models && session.models.length) {
+  if ($modelsStatus && !$modelsStatus.hidden && session.models && session.models.length) {
     // не трогаем текст «Загружаю…» во время загрузки
   } else if (session.models && session.models.length && rows.length !== session.models.length) {
     setStatus('ok', 'Показано ' + rows.length + ' из ' + session.models.length);

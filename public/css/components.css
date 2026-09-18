@@ -67,6 +67,35 @@
   border-color: transparent;
 }
 
+/* Кнопка «копировать название модели» в каталоге моделей */
+.copy-model-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  margin-left: 6px;
+  vertical-align: middle;
+  line-height: 1;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+tr:hover .copy-model-btn,
+.copy-model-btn:focus-visible,
+.copy-model-btn.copied {
+  opacity: 1;
+}
+
+.copy-model-btn .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.copy-model-btn.copied {
+  color: var(--accent);
+}
+
 .btn .icon {
   display: inline-flex;
   width: 16px;
@@ -305,10 +334,12 @@ tr.in-combo td:first-child {
    Animations
    -------------------------------------------------------------------------- */
 @keyframes pulse {
+
   0%,
   100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.35;
   }
