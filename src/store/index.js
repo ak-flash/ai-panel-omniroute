@@ -43,6 +43,7 @@ const STORE_KEYS = [
   'agRefreshToken', 'agProject', 'agEmail',
   'aliases', 'comboActive', 'dlgProvider', 'dlgTab', 'modelsProvider', 'statsProvider',
   'agentrouterDayBalance',
+  'agentrouterReleaseHoursUtc',
   'notificationThresholds',
   ACTIVE_ACCOUNT_KEY,
 ];

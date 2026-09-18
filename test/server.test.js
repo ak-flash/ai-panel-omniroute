@@ -27,13 +27,13 @@ test('WRITABLE_KEYS маршрута — подмножество STORE_KEYS х�
 });
 
 test('agentrouterReleases в /api/config: дефолт графика и переопределение env', async () => {
-  // Дефолт: график провайдера — Пекин 0:00/8:00/16:00 = UTC 0:00/8:00/16:00
+  // Дефолт: график провайдера — Пекин 10:00/19:00 = UTC 02:00/11:00
   const panel = await startPanel();
   try {
     const cfg = await (await fetch(panel.base + '/api/config')).json();
     assert.deepEqual(cfg.data.agentrouterReleases, {
       timezone: 'Asia/Shanghai',
-      hoursUtc: [0, 8, 16],
+      hoursUtc: [2, 11],
     });
   } finally {
     await panel.stop();

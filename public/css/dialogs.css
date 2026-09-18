@@ -180,6 +180,16 @@ dialog::backdrop {
   }
 }
 
+.dlg-ar-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.dlg-ar-schedule label {
+  display: block;
+}
+
 /* Уведомления: пороги, сгруппированные по провайдерам */
 .dlg-th {
   display: flex;

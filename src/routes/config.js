@@ -7,6 +7,7 @@
 // ============================================================
 
 const { AppError, readJson, sendJson } = require('../http');
+const { parsePoolReleaseHours, AGENTROUTER_POOL_RELEASE_HOURS_UTC, AGENTROUTER_POOL_RELEASE_TIMEZONE } = require('../../providers/agentrouter');
 
 /** Разбирает многострочный список OmniRoute URL: каждый адрес
  * валидируется тем же validateUpstreamUrl, что и одиночный; строки
@@ -39,6 +40,7 @@ const WRITABLE_KEYS = [
   'xkiroKey', 'agentrouterKey', 'openrouterKey', 'agentrouterUserId', 'omniUrl', 'omniUrls', 'omniKey',
   'agRefreshToken', 'agProject', 'aliases', 'comboActive', 'dlgProvider',
   'dlgTab', 'modelsProvider', 'statsProvider', 'notificationThresholds',
+  'agentrouterReleaseHoursUtc',
 ];
 
 function registerConfigRoutes(router, {
@@ -70,6 +72,28 @@ function registerConfigRoutes(router, {
         const urls = await validateOmniUrls(body.omniUrls, validateUpstreamUrl);
         body.omniUrls = urls.join('\n');
       }
+      if (Object.hasOwn(body, 'agentrouterReleaseHoursUtc')) {
+        const raw = String(body.agentrouterReleaseHoursUtc == null ? '' : body.agentrouterReleaseHoursUtc).trim();
+        if (!raw) {
+          body.agentrouterReleaseHoursUtc = '';
+        } else {
+          const parts = raw.split(',');
+          const seen = new Set();
+          for (const part of parts) {
+            const t = part.trim();
+            if (!t) continue;
+            const h = Number(t);
+            if (!Number.isInteger(h) || h < 0 || h > 23) {
+              throw new AppError(400, 'invalid_agentrouter_releases', 'Некорректные часы AgentRouter: «' + t + '» — допустимы целые 0..23 через запятую');
+            }
+            seen.add(h);
+          }
+          if (!seen.size) {
+            throw new AppError(400, 'invalid_agentrouter_releases', 'Некорректные часы AgentRouter — укажите часы 0..23 через запятую или оставьте пусто');
+          }
+          body.agentrouterReleaseHoursUtc = [...seen].sort((a, b) => a - b).join(',');
+        }
+      }
       const entries = [];
       for (const key of WRITABLE_KEYS) {
         if (Object.hasOwn(body, key)) {
@@ -93,6 +117,24 @@ function registerConfigRoutes(router, {
       };
     });
     const agStatus = antigravityService.status();
+    // Эффективный график: приоритет — значение из хранилища (настройки
+    // провайдера), затем env-дефолт из app.js. Пустая строка → дефолт.
+    let effectiveReleases = agentrouterReleases;
+    const storedRaw = s.agentrouterReleaseHoursUtc != null ? String(s.agentrouterReleaseHoursUtc).trim() : '';
+    if (storedRaw) {
+      const hours = parsePoolReleaseHours(storedRaw);
+      // parse вернёт дефолт, если ввод полностью невалиден, но PUT уже
+      // не дал сохранить такое — здесь считаем hours валидными.
+      effectiveReleases = {
+        timezone: AGENTROUTER_POOL_RELEASE_TIMEZONE,
+        hoursUtc: hours,
+      };
+    } else if (!effectiveReleases) {
+      effectiveReleases = {
+        timezone: AGENTROUTER_POOL_RELEASE_TIMEZONE,
+        hoursUtc: [...AGENTROUTER_POOL_RELEASE_HOURS_UTC],
+      };
+    }
     const data = {
       aliases: s.aliases || '',
       comboActive: s.comboActive || '',
@@ -102,6 +144,7 @@ function registerConfigRoutes(router, {
       statsProvider: s.statsProvider || '',
       notificationThresholds: s.notificationThresholds || '',
       agentrouterUserId: s.agentrouterUserId || '',
+      agentrouterReleaseHoursUtc: s.agentrouterReleaseHoursUtc || '',
       omniUrl: s.omniUrl || '',
       omniUrls: s.omniUrls || '',
       hasXkiroKey: Boolean(s.xkiroKey),
@@ -113,7 +156,7 @@ function registerConfigRoutes(router, {
       // График высвобождения пула AgentRouter (Claude/GPT): часы в UTC
       // + якорный часовой пояс. Фронтенд считает ближайшее высвобождение
       // и переводит в локальное время браузера.
-      agentrouterReleases,
+      agentrouterReleases: effectiveReleases,
     };
     return sendJson(res, 200, {
       ok: true,

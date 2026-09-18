@@ -19,7 +19,7 @@ import { renderAliasRows, collectAliasesFromUI } from './aliases.js';
 import { closeTopbar } from './topbar.js';
 import { emit } from './events.js';
 
-let $dlg, $dlgKey, $dlgArKey, $dlgOrKey, $dlgArUser, $dlgToggle, $dlgArToggle, $dlgOrToggle, $dlgRemove;
+let $dlg, $dlgKey, $dlgArKey, $dlgOrKey, $dlgArUser, $dlgArReleases, $dlgToggle, $dlgArToggle, $dlgOrToggle, $dlgRemove;
 
 // Табы диалога: каждый раздел — своя панель и своя кнопка сохранения
 const DLG_TABS = [
@@ -172,6 +172,7 @@ function openDialog() {
   if ($dlgArKey) $dlgArKey.value = '';
   if ($dlgOrKey) $dlgOrKey.value = '';
   if ($dlgArUser) $dlgArUser.value = getAgentRouterUserId();
+  if ($dlgArReleases) $dlgArReleases.value = vaultGet('agentrouterReleaseHoursUtc') || '';
   renderAliasRows();
   fillNotificationFields(readNotificationThresholds());
   const $omniUrls = $id('dlg-omni-urls');
@@ -288,8 +289,43 @@ async function saveProviderSettings() {
   const arUserCandidate = $dlgArUser ? $dlgArUser.value.trim() : '';
 
   // Секреты write-only: пустое поле означает «не изменять».
-  // User ID не секретен и сохраняется всегда.
+  // User ID не секретен и сохраняется всегда. Окна сброса — тоже
+  // не секрет, сохраняем как строку «2,11» (пусто → дефолт провайдера).
+  const rawArReleases = $dlgArReleases ? $dlgArReleases.value.trim() : '';
+  // Валидация на клиенте до отправки, чтобы не уходить в 400
+  if (rawArReleases) {
+    const parts = rawArReleases.split(',');
+    let bad = null;
+    for (const p of parts) {
+      const t = p.trim();
+      if (!t) continue;
+      const h = Number(t);
+      if (!Number.isInteger(h) || h < 0 || h > 23) { bad = t; break; }
+    }
+    if (bad !== null) {
+      showResult($id('dlg-result-provider'), true, 'Некорректные часы: «' + bad + '» — допустимы целые 0..23 через запятую');
+      return;
+    }
+  }
+  // Нормализуем «2, 11,2 » → «2,11» для сравнения с хранилищем
+  let normalizedReleases = '';
+  if (rawArReleases) {
+    const seen = new Set();
+    for (const p of rawArReleases.split(',')) {
+      const t = p.trim();
+      if (!t) continue;
+      const h = Number(t);
+      if (Number.isInteger(h) && h >= 0 && h <= 23) seen.add(h);
+    }
+    normalizedReleases = [...seen].sort((a, b) => a - b).join(',');
+  }
+  const storedReleases = String(vaultGet('agentrouterReleaseHoursUtc') || '').trim();
   const entries = { agentrouterUserId: arUserCandidate };
+  // Отправляем окна только если изменились — сохраняет совместимость
+  // с тестами, где поле остаётся пустым и не должно уходить в PUT
+  if (normalizedReleases !== storedReleases) {
+    entries.agentrouterReleaseHoursUtc = normalizedReleases;
+  }
   const xkiroCandidate = $dlgKey.value.trim();
   const arCandidate = $dlgArKey ? $dlgArKey.value.trim() : '';
   const orCandidate = $dlgOrKey ? $dlgOrKey.value.trim() : '';
@@ -501,6 +537,7 @@ export function initSettingsDialog() {
   $dlgArKey = $id('dlg-agentrouter-key');
   $dlgOrKey = $id('dlg-openrouter-key');
   $dlgArUser = $id('dlg-agentrouter-user');
+  $dlgArReleases = $id('dlg-agentrouter-releases');
   $dlgToggle = $id('dlg-toggle');
   $dlgArToggle = $id('dlg-agentrouter-toggle');
   $dlgOrToggle = $id('dlg-openrouter-toggle');

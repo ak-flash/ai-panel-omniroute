@@ -111,6 +111,13 @@ const _DIALOG_HTML = `<dialog id="dlg">
           Generate; числовой ID — из профиля (New-Api-User).
           API-ключ (sk-…) не подходит: сайт принимает только access-токен.
         </p>
+        <div class="dlg-ar-schedule">
+          <label for="dlg-agentrouter-releases">Окна сброса (UTC, через запятую)</label>
+          <input type="text" id="dlg-agentrouter-releases" placeholder="2, 11" autocomplete="off" inputmode="numeric" spellcheck="false" aria-describedby="dlg-agentrouter-releases-hint">
+          <p class="hint" id="dlg-agentrouter-releases-hint">
+              Формат: часы 0–23 через запятую, напр. «2,11».
+          </p>
+        </div>
       </div>
       <!-- Поля OpenRouter: один ключ для каталога и рейтинга моделей -->
       <div id="dlg-openrouter-fields" hidden>

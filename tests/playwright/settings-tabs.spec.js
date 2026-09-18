@@ -13,7 +13,7 @@ const EMPTY_CONFIG = {
   ok: true,
   data: {
     aliases: '', comboActive: '', dlgProvider: 'xkiro', dlgTab: '', modelsProvider: '',
-    statsProvider: '', notificationThresholds: '', agentrouterUserId: '', omniUrl: '', omniUrls: '',
+    statsProvider: '', notificationThresholds: '', agentrouterUserId: '', agentrouterReleaseHoursUtc: '', omniUrl: '', omniUrls: '',
     hasXkiroKey: false, hasAgentrouterKey: false, hasOmniRoute: false, hasOmniKey: false,
     hasGoogleToken: false,
   },
@@ -23,7 +23,7 @@ const EMPTY_CONFIG = {
 
 // Ключи хранилища по разделам: ни один батч не должен их смешивать
 const SECTIONS = [
-  ['xkiroKey', 'agentrouterKey', 'agentrouterUserId'],
+  ['xkiroKey', 'agentrouterKey', 'agentrouterUserId', 'agentrouterReleaseHoursUtc'],
   ['omniUrl', 'omniUrls', 'omniKey'],
   ['notificationThresholds'],
   ['aliases'],
