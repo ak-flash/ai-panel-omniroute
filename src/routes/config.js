@@ -74,9 +74,7 @@ function registerConfigRoutes(router, {
       }
       if (Object.hasOwn(body, 'agentrouterReleaseHoursUtc')) {
         const raw = String(body.agentrouterReleaseHoursUtc == null ? '' : body.agentrouterReleaseHoursUtc).trim();
-        if (raw.toLowerCase() === 'hide') {
-          body.agentrouterReleaseHoursUtc = 'hide';
-        } else if (!raw) {
+        if (!raw) {
           body.agentrouterReleaseHoursUtc = '';
         } else {
           const parts = raw.split(',');
@@ -120,16 +118,10 @@ function registerConfigRoutes(router, {
     });
     const agStatus = antigravityService.status();
     // Эффективный график: приоритет — значение из хранилища (настройки
-    // провайдера), затем env-дефолт из app.js. Пусто (не задано) → дефолт,
-    // сентинел "hide" → скрыть блок.
+    // провайдера), затем env-дефолт из app.js. Пустая строка → дефолт.
     let effectiveReleases = agentrouterReleases;
     const storedRaw = s.agentrouterReleaseHoursUtc != null ? String(s.agentrouterReleaseHoursUtc).trim() : '';
-    if (storedRaw.toLowerCase() === 'hide') {
-      effectiveReleases = {
-        timezone: AGENTROUTER_POOL_RELEASE_TIMEZONE,
-        hoursUtc: [],
-      };
-    } else if (storedRaw) {
+    if (storedRaw) {
       const hours = parsePoolReleaseHours(storedRaw);
       // parse вернёт дефолт, если ввод полностью невалиден, но PUT уже
       // не дал сохранить такое — здесь считаем hours валидными.

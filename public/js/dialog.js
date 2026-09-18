@@ -219,6 +219,7 @@ function openDialog() {
   if ($dlgOrKey) $dlgOrKey.value = '';
   if ($dlgArUser) $dlgArUser.value = getAgentRouterUserId();
   if ($dlgArReleases) {
+    // Легаси-значение 'hide' (от промежуточной версии) показываем как пустое
     const raw = vaultGet('agentrouterReleaseHoursUtc') || '';
     $dlgArReleases.value = raw === 'hide' ? '' : raw;
   }
@@ -356,8 +357,8 @@ async function saveProviderSettings() {
       return;
     }
   }
-  // Нормализуем «2, 11,2 » → «2,11» для сравнения с хранилищем
-  // Пусто = скрыть блок (сентинел "hide"), иначе — отсортированный список часов
+  // Нормализуем «2, 11,2 » → «2,11» для сравнения с хранилищем.
+  // Пусто → '' означает «скрыть» (клиент не показывает блок).
   let normalizedReleases = '';
   if (rawArReleases) {
     const seen = new Set();
@@ -369,27 +370,15 @@ async function saveProviderSettings() {
     }
     normalizedReleases = [...seen].sort((a, b) => a - b).join(',');
   }
-  const storeValue = rawArReleases ? normalizedReleases : 'hide';
-  const storedRaw = vaultGet('agentrouterReleaseHoursUtc');
-  const storedReleases = storedRaw == null ? '' : String(storedRaw).trim();
-  // Сентинел "hide" отличаем от "не задано" (''): свежая база показывает
-  // дефолт [2,11], а явное сохранение пустого поля — скрывает блок
-  const storedForCompare = storedReleases === '' ? '' : storedReleases;
+  const storedReleases = String(vaultGet('agentrouterReleaseHoursUtc') || '').trim();
   const entries = { agentrouterUserId: arUserCandidate };
-  if (storeValue !== storedForCompare) {
-    // Для совместимости с тестами: если свежая база (stored=='' ) и
-    // пользователь не трогал поле (raw==''), первый save с пустым полем
-    // уйдёт как "hide" — но тесты делают PUT без поля и ожидают pure.
-    // Поэтому отправляем только если диалог AgentRouter активен или
-    // пользователь явно менял расписание.
-    const dlgProviderVal = $dlgArReleases ? $id('dlg-provider')?.value : '';
+  // Отправляем окна только если изменились — сохраняет совместимость
+  // с тестами, где поле остаётся пустым и не должно уходить в PUT
+  if (normalizedReleases !== storedReleases) {
+    const dlgProviderVal = $id('dlg-provider')?.value || '';
     const isArProviderActive = dlgProviderVal === 'agentrouter';
-    // Если тест не трогал AgentRouter (xkiro), не шлём hide лишний раз
     if (isArProviderActive || rawArReleases) {
-      entries.agentrouterReleaseHoursUtc = storeValue;
-    } else if (storedReleases === 'hide' && rawArReleases === '') {
-      // Пользователь очистил поле у AgentRouter — точно скрыть
-      entries.agentrouterReleaseHoursUtc = storeValue;
+      entries.agentrouterReleaseHoursUtc = normalizedReleases;
     }
   }
   const xkiroCandidate = $dlgKey.value.trim();

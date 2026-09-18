@@ -340,45 +340,46 @@ let arReleaseHours = null; // ближайший график: непустой 
 let arReleaseTz = '';      // якорный часовой пояс графика (для подписи)
 
 function readAgentRouterReleases() {
-  // Приоритет — локальная настройка из хранилища (свежее после сохранения,
-  // даже если vaultCache ещё хранит старый agentrouterReleases с сервера)
+  // Отображение счётчика полностью определяется локальной настройкой
+  // agentrouterReleaseHoursUtc: пусто = не задано → блок скрыт (дефолт
+  // с сервера в agentrouterReleases для счётчика не показываем).
   const raw = vaultGet('agentrouterReleaseHoursUtc');
-  if (typeof raw === 'string' && raw.trim().toLowerCase() === 'hide') {
+  if (typeof raw !== 'string' || !raw.trim()) {
     arReleaseHours = null;
     arReleaseTz = '';
     return false;
   }
-  if (typeof raw === 'string' && raw.trim()) {
-    const seen = new Set();
-    for (const p of raw.split(',')) {
-      const t = p.trim();
-      if (!t) continue;
-      const h = Number(t);
-      if (Number.isInteger(h) && h >= 0 && h <= 23) seen.add(h);
-    }
-    if (seen.size) {
-      arReleaseHours = [...seen].sort((a, b) => a - b);
-      arReleaseTz = 'Asia/Shanghai';
-      return true;
-    }
+  const seen = new Set();
+  for (const p of raw.split(',')) {
+    const t = p.trim();
+    if (!t) continue;
+    const h = Number(t);
+    if (Number.isInteger(h) && h >= 0 && h <= 23) seen.add(h);
   }
-  const cfg = vaultGet('agentrouterReleases');
-  const hours = cfg && Array.isArray(cfg.hoursUtc)
-    ? cfg.hoursUtc.filter((h) => Number.isInteger(h) && h >= 0 && h <= 23)
-    : [];
-  arReleaseHours = hours.length ? hours : null;
-  arReleaseTz = cfg && typeof cfg.timezone === 'string' ? cfg.timezone : '';
-  return arReleaseHours !== null;
+  if (!seen.size) {
+    arReleaseHours = null;
+    arReleaseTz = '';
+    return false;
+  }
+  arReleaseHours = [...seen].sort((a, b) => a - b);
+  arReleaseTz = 'Asia/Shanghai';
+  return true;
 }
 
 // Считает ближайшее высвобождение пула, показывает обратный отсчёт и
 // локальное время (часовой пояс браузера). Дублируется в двух местах:
 // карточка в полосе статистики (когда AgentRouter — активный провайдер)
 // и строка в wallet-карточке AgentRouter (когда активен другой провайдер).
+function hideAgentRouterReleaseElements() {
+  const $main = $id('card-ar-release');
+  if ($main) $main.hidden = true;
+  const $line = $id('ar-release');
+  if ($line) $line.hidden = true;
+}
 function renderAgentRouterRelease() {
-  if (!readAgentRouterReleases()) { clearAgentRouterReleaseTimer(); return; }
+  if (!readAgentRouterReleases()) { clearAgentRouterReleaseTimer(); hideAgentRouterReleaseElements(); return; }
   const ts = nextReleaseUtc(arReleaseHours, Date.now());
-  if (ts === null) { clearAgentRouterReleaseTimer(); return; }
+  if (ts === null) { clearAgentRouterReleaseTimer(); hideAgentRouterReleaseElements(); return; }
 
   // Отсчёт только до минут (с округлением вверх — никогда не «0 с»),
   // а секунды не нужны: таймер живёт от обновления страницы
