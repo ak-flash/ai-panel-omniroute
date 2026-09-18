@@ -16,13 +16,15 @@
    }
    ============================================================ */
 
+import { compact } from './formatters.js';
+
 /** Ответ может быть массивом или обёрнут в { logs } / { data } */
 export function callLogsFromResponse(data) {
   if (!data || typeof data !== 'object') return [];
   return Array.isArray(data) ? data
     : Array.isArray(data.logs) ? data.logs
-    : Array.isArray(data.data) ? data.data
-    : [];
+      : Array.isArray(data.data) ? data.data
+        : [];
 }
 
 /** Строка лога относится к combo-запросу (прошла через combo-роутинг) */
@@ -90,6 +92,33 @@ export function formatCallLogTime(iso, now = new Date()) {
 
 function pad2(n) {
   return String(n).padStart(2, '0');
+}
+
+/** Токены запроса для таблицы: «вход / выход» компактно; '' если данных нет или расход нулевой */
+export function formatTokensOf(row) {
+  const t = row && row.tokens;
+  if (!t || typeof t !== 'object') return '';
+  const hasIn = Number.isFinite(t.in);
+  const hasOut = Number.isFinite(t.out);
+  if (!hasIn && !hasOut) return '';
+  const inV = hasIn ? t.in : 0;
+  const outV = hasOut ? t.out : 0;
+  if (inV === 0 && outV === 0) return '';
+  return compact(inV) + ' / ' + compact(outV);
+}
+
+/** Расшифровка токенов для подсказки (title): точные числа, нули пропускаются */
+export function tokensTitle(row) {
+  const t = row && row.tokens;
+  if (!t || typeof t !== 'object') return '';
+  const parts = [];
+  if (Number.isFinite(t.in) && t.in !== 0) parts.push('вход: ' + t.in.toLocaleString('ru-RU'));
+  if (Number.isFinite(t.out) && t.out !== 0) parts.push('выход: ' + t.out.toLocaleString('ru-RU'));
+  if (t.cacheRead) parts.push('кэш-чтение: ' + t.cacheRead.toLocaleString('ru-RU'));
+  if (t.cacheWrite) parts.push('кэш-запись: ' + t.cacheWrite.toLocaleString('ru-RU'));
+  if (t.reasoning) parts.push('reasoning: ' + t.reasoning.toLocaleString('ru-RU'));
+  if (t.compressed) parts.push('сжатие: ' + t.compressed.toLocaleString('ru-RU'));
+  return parts.join(' · ');
 }
 
 /** Сводка по строке лога: сколько раз какая реальная модель обслуживала combo */

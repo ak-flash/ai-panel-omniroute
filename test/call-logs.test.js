@@ -10,7 +10,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 let callLogsFromResponse, isComboRow, realModelOf, requestedOf,
-  recentComboRows, byNewestFirst, formatCallLogTime, modelUsageSummary;
+  recentComboRows, byNewestFirst, formatCallLogTime, modelUsageSummary,
+  formatTokensOf, tokensTitle;
 
 test.before(async () => {
   ({
@@ -22,6 +23,8 @@ test.before(async () => {
     byNewestFirst,
     formatCallLogTime,
     modelUsageSummary,
+    formatTokensOf,
+    tokensTitle,
   } = await import('../public/js/call-logs.js'));
 });
 
@@ -160,6 +163,55 @@ test('formatCallLogTime: невалидная дата → пустая стро
   assert.equal(formatCallLogTime('not-a-date'), '');
   assert.equal(formatCallLogTime(null), '');
   assert.equal(formatCallLogTime(undefined), '');
+});
+
+// ----- formatTokensOf / tokensTitle -----
+
+// Разделитель разрядов в ICU для ru — неразрывный пробел (U+00A0 или U+202F)
+const norm = (s) => String(s).replace(/[\u00A0\u202F]/g, ' ');
+
+test('formatTokensOf: «вход / выход» из tokens', () => {
+  assert.equal(formatTokensOf({ tokens: { in: 199, out: 35 } }), '199 / 35');
+});
+
+test('formatTokensOf: большие числа компактно', () => {
+  const s = formatTokensOf({ tokens: { in: 35807, out: 199 } });
+  assert.match(s, /35,8/); // 35 807 → «35,8 тыс.»
+  assert.ok(s.endsWith('/ 199'));
+});
+
+test('formatTokensOf: нулевой расход → пустая строка', () => {
+  assert.equal(formatTokensOf({ tokens: { in: 0, out: 0 } }), '');
+  assert.equal(formatTokensOf({ tokens: { in: 0 } }), '');
+  assert.equal(formatTokensOf({ tokens: {} }), '');
+});
+
+test('formatTokensOf: нет данных → пустая строка', () => {
+  assert.equal(formatTokensOf({}), '');
+  assert.equal(formatTokensOf(null), '');
+  assert.equal(formatTokensOf({ tokens: null }), '');
+  assert.equal(formatTokensOf({ tokens: {} }), '');
+  assert.equal(formatTokensOf({ tokens: { in: null, out: null } }), '');
+});
+
+test('tokensTitle: расшифровка точными числами, нули пропускаются', () => {
+  const title = tokensTitle({
+    tokens: { in: 35807, out: 199, cacheRead: 35200, cacheWrite: null, reasoning: null },
+  });
+  assert.equal(
+    norm(title),
+    'вход: 35 807 · выход: 199 · кэш-чтение: 35 200'
+  );
+});
+
+test('tokensTitle: все нули → пустая строка', () => {
+  assert.equal(tokensTitle({ tokens: { in: 0, out: 0 } }), '');
+});
+
+test('tokensTitle: нет данных → пустая строка', () => {
+  assert.equal(tokensTitle({}), '');
+  assert.equal(tokensTitle(null), '');
+  assert.equal(tokensTitle({ tokens: null }), '');
 });
 
 // ----- modelUsageSummary -----

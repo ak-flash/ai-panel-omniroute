@@ -11,7 +11,7 @@ import { providerRequest, omniFetch, COMBO_LIST_PATH, COMBO_PATH, CALL_LOGS_URL 
 import { vaultSet, vaultGet } from '../settings.js';
 import { start } from '../boot.js';
 import { extractComboTargets, combosFromResponse } from '../combos.js';
-import { recentComboRows, requestedOf, realModelOf, formatCallLogTime, modelUsageSummary } from '../call-logs.js';
+import { recentComboRows, requestedOf, realModelOf, formatCallLogTime, modelUsageSummary, formatTokensOf, tokensTitle } from '../call-logs.js';
 import { matchModel } from '../../model-match.js';
 import { showToast } from '../toast.js';
 
@@ -394,6 +394,15 @@ function renderComboRecent(rows) {
     const tdProvider = document.createElement('td');
     tdProvider.textContent = row.providerDisplay || row.provider || '—';
 
+    const tdTokens = document.createElement('td');
+    tdTokens.className = 'num-col';
+    const tokens = document.createElement('span');
+    tokens.className = 'num';
+    tokens.textContent = formatTokensOf(row) || '—';
+    const tokensHint = tokensTitle(row);
+    if (tokensHint) tokens.title = tokensHint;
+    tdTokens.appendChild(tokens);
+
     const tdStatus = document.createElement('td');
     tdStatus.className = 'num-col';
     const status = document.createElement('span');
@@ -402,7 +411,7 @@ function renderComboRecent(rows) {
     if (row.error) status.title = extractErrorText(row.error);
     tdStatus.appendChild(status);
 
-    tr.append(tdTime, tdCombo, tdModel, tdProvider, tdStatus);
+    tr.append(tdTime, tdCombo, tdModel, tdProvider, tdTokens, tdStatus);
     $tbody.appendChild(tr);
   }
 
