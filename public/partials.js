@@ -115,7 +115,7 @@ const _DIALOG_HTML = `<dialog id="dlg">
           <label for="dlg-agentrouter-releases">Окна сброса (UTC, через запятую)</label>
           <input type="text" id="dlg-agentrouter-releases" placeholder="2, 11" autocomplete="off" inputmode="numeric" spellcheck="false" aria-describedby="dlg-agentrouter-releases-hint">
           <p class="hint" id="dlg-agentrouter-releases-hint">
-              Формат: часы 0–23 через запятую, напр. «2,11».
+            Новые сроки — Пекин 10:00/19:00 = UTC 02:00/11:00. Пусто — скрыть блок. Формат: часы 0–23 через запятую, напр. «2,11».
           </p>
         </div>
       </div>
@@ -212,6 +212,15 @@ const _DIALOG_HTML = `<dialog id="dlg">
               <span class="dlg-th-unit" aria-hidden="true">$</span>
             </span>
           </div>
+          <div class="dlg-th-row dlg-th-row--check">
+            <label for="dlg-th-ar-release">Сброс пула</label>
+            <span class="dlg-th-field dlg-th-field--check">
+              <input type="checkbox" id="dlg-th-ar-release">
+              <span class="dlg-th-unit">уведомлять</span>
+            </span>
+          </div>
+          <p class="hint" id="dlg-th-ar-notify-hint" aria-live="polite" style="margin:0"></p>
+          <button type="button" id="dlg-th-ar-notify-enable" class="btn btn-ghost" hidden>Включить уведомления браузера</button>
         </div>
         <div class="dlg-th-group" role="group" aria-labelledby="dlg-th-ag-title">
           <span class="dlg-th-group-title" id="dlg-th-ag-title">Antigravity</span>

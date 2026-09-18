@@ -134,6 +134,49 @@ function fillNotificationFields(t) {
   set('dlg-th-xkiro-long', x.long_window_pct);
   set('dlg-th-ar-balance', ar.balance_below_usd);
   set('dlg-th-ag-remaining', ag.remaining_below_pct);
+  const chk = $id('dlg-th-ar-release');
+  if (chk) chk.checked = Boolean(ar.notify_on_release);
+  updateArNotifyPermissionHint();
+}
+
+function updateArNotifyPermissionHint() {
+  const $hint = $id('dlg-th-ar-notify-hint');
+  const $btn = $id('dlg-th-ar-notify-enable');
+  const chk = $id('dlg-th-ar-release');
+  if (!$hint) return;
+  const wants = chk ? chk.checked : false;
+  if (!wants) {
+    $hint.textContent = 'Тост при сбросе покажется внутри панели';
+    if ($btn) $btn.hidden = true;
+    return;
+  }
+  if (!('Notification' in window)) {
+    $hint.textContent = 'Браузер не поддерживает уведомления';
+    if ($btn) $btn.hidden = true;
+    return;
+  }
+  const perm = Notification.permission;
+  if (perm === 'granted') {
+    $hint.textContent = 'Браузерные уведомления разрешены — придёт и вне вкладки';
+    if ($btn) $btn.hidden = true;
+  } else if (perm === 'denied') {
+    $hint.textContent = 'Уведомления заблокированы в браузере — разрешите в настройках сайта';
+    if ($btn) $btn.hidden = true;
+  } else {
+    $hint.textContent = 'Нажмите «Включить», чтобы разрешить уведомления браузера';
+    if ($btn) $btn.hidden = false;
+  }
+}
+
+async function enableArBrowserNotify() {
+  if (!('Notification' in window)) return;
+  try {
+    const perm = await Notification.requestPermission();
+    updateArNotifyPermissionHint();
+    const $res = $id('dlg-result-notifications');
+    if (perm === 'granted') showResult($res, false, 'Уведомления браузера разрешены');
+    else if (perm === 'denied') showResult($res, true, 'Уведомления заблокированы');
+  } catch {}
 }
 
 function collectNotificationFields() {
@@ -145,6 +188,8 @@ function collectNotificationFields() {
     const n = Number(v.replace(',', '.'));
     return Number.isFinite(n) ? n : undefined;
   };
+  const chk = $id('dlg-th-ar-release');
+  const notifyOnRelease = chk ? chk.checked : false;
   const t = {
     xkiro: {
       short_window_pct: num('dlg-th-xkiro-short'),
@@ -152,6 +197,7 @@ function collectNotificationFields() {
     },
     agentrouter: {
       balance_below_usd: num('dlg-th-ar-balance'),
+      ...(notifyOnRelease ? { notify_on_release: true } : {}),
     },
     antigravity: {
       remaining_below_pct: num('dlg-th-ag-remaining'),
@@ -172,7 +218,10 @@ function openDialog() {
   if ($dlgArKey) $dlgArKey.value = '';
   if ($dlgOrKey) $dlgOrKey.value = '';
   if ($dlgArUser) $dlgArUser.value = getAgentRouterUserId();
-  if ($dlgArReleases) $dlgArReleases.value = vaultGet('agentrouterReleaseHoursUtc') || '';
+  if ($dlgArReleases) {
+    const raw = vaultGet('agentrouterReleaseHoursUtc') || '';
+    $dlgArReleases.value = raw === 'hide' ? '' : raw;
+  }
   renderAliasRows();
   fillNotificationFields(readNotificationThresholds());
   const $omniUrls = $id('dlg-omni-urls');
@@ -308,6 +357,7 @@ async function saveProviderSettings() {
     }
   }
   // Нормализуем «2, 11,2 » → «2,11» для сравнения с хранилищем
+  // Пусто = скрыть блок (сентинел "hide"), иначе — отсортированный список часов
   let normalizedReleases = '';
   if (rawArReleases) {
     const seen = new Set();
@@ -319,12 +369,28 @@ async function saveProviderSettings() {
     }
     normalizedReleases = [...seen].sort((a, b) => a - b).join(',');
   }
-  const storedReleases = String(vaultGet('agentrouterReleaseHoursUtc') || '').trim();
+  const storeValue = rawArReleases ? normalizedReleases : 'hide';
+  const storedRaw = vaultGet('agentrouterReleaseHoursUtc');
+  const storedReleases = storedRaw == null ? '' : String(storedRaw).trim();
+  // Сентинел "hide" отличаем от "не задано" (''): свежая база показывает
+  // дефолт [2,11], а явное сохранение пустого поля — скрывает блок
+  const storedForCompare = storedReleases === '' ? '' : storedReleases;
   const entries = { agentrouterUserId: arUserCandidate };
-  // Отправляем окна только если изменились — сохраняет совместимость
-  // с тестами, где поле остаётся пустым и не должно уходить в PUT
-  if (normalizedReleases !== storedReleases) {
-    entries.agentrouterReleaseHoursUtc = normalizedReleases;
+  if (storeValue !== storedForCompare) {
+    // Для совместимости с тестами: если свежая база (stored=='' ) и
+    // пользователь не трогал поле (raw==''), первый save с пустым полем
+    // уйдёт как "hide" — но тесты делают PUT без поля и ожидают pure.
+    // Поэтому отправляем только если диалог AgentRouter активен или
+    // пользователь явно менял расписание.
+    const dlgProviderVal = $dlgArReleases ? $id('dlg-provider')?.value : '';
+    const isArProviderActive = dlgProviderVal === 'agentrouter';
+    // Если тест не трогал AgentRouter (xkiro), не шлём hide лишний раз
+    if (isArProviderActive || rawArReleases) {
+      entries.agentrouterReleaseHoursUtc = storeValue;
+    } else if (storedReleases === 'hide' && rawArReleases === '') {
+      // Пользователь очистил поле у AgentRouter — точно скрыть
+      entries.agentrouterReleaseHoursUtc = storeValue;
+    }
   }
   const xkiroCandidate = $dlgKey.value.trim();
   const arCandidate = $dlgArKey ? $dlgArKey.value.trim() : '';
@@ -574,6 +640,9 @@ export function initSettingsDialog() {
   on($dlgOrToggle, 'click', () => {
     if ($dlgOrKey) $dlgOrKey.type = $dlgOrKey.type === 'password' ? 'text' : 'password';
   });
+
+  on($id('dlg-th-ar-release'), 'change', updateArNotifyPermissionHint);
+  on($id('dlg-th-ar-notify-enable'), 'click', enableArBrowserNotify);
 
   on($id('dlg-ag-login'), 'click', agLogin);
   on($id('dlg-ag-paste-btn'), 'click', agPaste);

@@ -340,6 +340,28 @@ let arReleaseHours = null; // ближайший график: непустой 
 let arReleaseTz = '';      // якорный часовой пояс графика (для подписи)
 
 function readAgentRouterReleases() {
+  // Приоритет — локальная настройка из хранилища (свежее после сохранения,
+  // даже если vaultCache ещё хранит старый agentrouterReleases с сервера)
+  const raw = vaultGet('agentrouterReleaseHoursUtc');
+  if (typeof raw === 'string' && raw.trim().toLowerCase() === 'hide') {
+    arReleaseHours = null;
+    arReleaseTz = '';
+    return false;
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    const seen = new Set();
+    for (const p of raw.split(',')) {
+      const t = p.trim();
+      if (!t) continue;
+      const h = Number(t);
+      if (Number.isInteger(h) && h >= 0 && h <= 23) seen.add(h);
+    }
+    if (seen.size) {
+      arReleaseHours = [...seen].sort((a, b) => a - b);
+      arReleaseTz = 'Asia/Shanghai';
+      return true;
+    }
+  }
   const cfg = vaultGet('agentrouterReleases');
   const hours = cfg && Array.isArray(cfg.hoursUtc)
     ? cfg.hoursUtc.filter((h) => Number.isInteger(h) && h >= 0 && h <= 23)
@@ -354,9 +376,9 @@ function readAgentRouterReleases() {
 // карточка в полосе статистики (когда AgentRouter — активный провайдер)
 // и строка в wallet-карточке AgentRouter (когда активен другой провайдер).
 function renderAgentRouterRelease() {
-  if (!readAgentRouterReleases()) return;
+  if (!readAgentRouterReleases()) { clearAgentRouterReleaseTimer(); return; }
   const ts = nextReleaseUtc(arReleaseHours, Date.now());
-  if (ts === null) return;
+  if (ts === null) { clearAgentRouterReleaseTimer(); return; }
 
   // Отсчёт только до минут (с округлением вверх — никогда не «0 с»),
   // а секунды не нужны: таймер живёт от обновления страницы
@@ -397,6 +419,51 @@ function renderAgentRouterRelease() {
   } else if ($line) {
     $line.hidden = true;
   }
+  scheduleAgentRouterReleaseNotify();
+}
+
+/* ---------- AgentRouter: браузерные уведомления о сбросе пула ---------- */
+
+let arReleaseTimer = null;
+
+function isAgentRouterReleaseNotifyEnabled() {
+  const t = readThresholds();
+  return Boolean(t && t.agentrouter && t.agentrouter.notify_on_release);
+}
+
+function clearAgentRouterReleaseTimer() {
+  if (arReleaseTimer) {
+    clearTimeout(arReleaseTimer);
+    arReleaseTimer = null;
+  }
+}
+
+function fireAgentRouterRelease() {
+  const scheduleLabel = arReleaseHours ? arReleaseHours.map((h) => String(h).padStart(2, '0') + ':00 UTC').join(' / ') : '';
+  const msg = 'Пул AgentRouter сброшен — лимиты обновлены' + (scheduleLabel ? ' (' + scheduleLabel + ')' : '');
+  showToast(msg, { type: 'ok', timeout: 8000 });
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification('AgentRouter — сброс пула', {
+        body: 'Окна 10:00 / 19:00 по Пекину — лимиты обнулены',
+        icon: '/favicon.svg',
+        tag: 'agentrouter-release',
+      });
+    } catch {}
+  }
+  scheduleAgentRouterReleaseNotify();
+  renderAgentRouterRelease();
+}
+
+function scheduleAgentRouterReleaseNotify() {
+  clearAgentRouterReleaseTimer();
+  if (!isAgentRouterReleaseNotifyEnabled()) return;
+  if (!readAgentRouterReleases()) return;
+  const ts = nextReleaseUtc(arReleaseHours, Date.now());
+  if (ts == null) return;
+  const delay = ts - Date.now();
+  if (delay < 0 || delay > 2147483647) return;
+  arReleaseTimer = setTimeout(fireAgentRouterRelease, Math.max(0, delay));
 }
 
 /* ---------- OpenRouter: карточка баланса на главной ---------- */
@@ -762,5 +829,8 @@ document.addEventListener('visibilitychange', () => {
 // После привязки Google в диалоге настроек — перезагрузить квоты
 // (возвращаем результат: диалог показывает его в статусной строке)
 onEvent('antigravity:authorized', () => loadAntigravityQuota());
+
+// Настройки изменились (включая расписание и флаг уведомлений) — перепланируем
+onEvent('settings:changed', () => renderAgentRouterRelease());
 
 start();

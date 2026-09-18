@@ -263,6 +263,24 @@ dialog::backdrop {
   user-select: none;
 }
 
+.dlg-th-field--check {
+  background: transparent;
+  border-color: transparent;
+  gap: 6px;
+}
+.dlg-th-field--check:focus-within {
+  border-color: transparent;
+}
+.dlg-th-field--check input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.dlg-th-row--check {
+  justify-content: space-between;
+}
+
 .alias-row{display:flex;gap:8px;margin-bottom:6px}
 .alias-row input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:var(--radius-s);font-size:13px}
 .alias-row input:focus{border-color:var(--accent);outline:none}
