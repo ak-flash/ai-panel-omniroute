@@ -111,7 +111,9 @@ async function refreshAgStatus(prefix) {
         : (s.hasRefresh ? 'истёк — обновится автоматически' : 'истёк — войдите заново'));
     }
     if (s.hasRefresh) parts.push('автообновление включено');
-    $exp.textContent = (prefix ? prefix + ' ' : '') + parts.join(', ') + '.';
+    // innerHTML: parts содержат SVG-иконку ICO_CHECK, textContent показал бы её как текст.
+    // Содержимое — только статические строки и числа, пользовательский ввод не интерполируется.
+    $exp.innerHTML = (prefix ? prefix + ' ' : '') + parts.join(', ') + '.';
     $exp.hidden = false;
   } catch { /* нет API — статусную строку не трогаем */ }
 }
