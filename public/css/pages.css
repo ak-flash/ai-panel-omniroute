@@ -20,7 +20,228 @@
 }
 
 #index-combo {
+  position: relative;
+  overflow: hidden;
   margin-bottom: 16px;
+  padding: 16px 18px;
+  background: linear-gradient(135deg, var(--surface) 0%, color-mix(in oklch, var(--surface) 88%, var(--accent)) 100%);
+  box-shadow: 0 1px 2px oklch(0% 0 0 / 0.06), 0 10px 24px oklch(0% 0 0 / 0.05);
+}
+
+.index-combo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+}
+
+.index-combo-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.index-combo-icon {
+  display: grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 12%, var(--surface));
+  border: 1px solid color-mix(in oklch, var(--accent) 24%, var(--border));
+  border-radius: var(--radius-m);
+}
+
+.index-combo-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.index-combo-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.index-combo-title-row h2 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.index-combo-heading p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.index-combo-count {
+  display: inline-flex;
+  min-width: 22px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 12%, var(--surface));
+  border: 1px solid color-mix(in oklch, var(--accent) 24%, var(--border));
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.index-combo-link {
+  display: none;
+  min-height: 36px;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 7px 11px;
+  color: var(--accent);
+  background: var(--surface);
+  border: 1px solid color-mix(in oklch, var(--accent) 32%, var(--border));
+  border-radius: var(--radius-m);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.index-combo-link:hover {
+  background: color-mix(in oklch, var(--accent) 8%, var(--surface));
+  border-color: var(--accent);
+}
+
+.index-combo-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.index-combo-link:active {
+  transform: scale(0.96);
+}
+
+.index-combo-link .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.index-combo-status {
+  min-height: 0;
+  margin: 14px 0 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.index-combo-status:empty {
+  display: none;
+}
+
+.index-combo-status.is-empty,
+.index-combo-status.is-error {
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-m);
+}
+
+.index-combo-status.is-error {
+  color: var(--danger);
+}
+
+.index-combo-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.index-combo-row {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+  min-height: 70px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  transition: background-color 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+
+.index-combo-row:hover {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  box-shadow: 0 1px 2px oklch(0% 0 0 / 0.05), 0 6px 14px oklch(0% 0 0 / 0.04);
+}
+
+.index-combo-name {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  padding-inline-start: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.index-combo-row.is-unconfigured .index-combo-name {
+  color: var(--warn);
+}
+
+.index-combo-model {
+  min-width: 0;
+  padding-inline-start: 4px;
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+}
+
+.index-combo-row.is-unconfigured .index-combo-model {
+  color: var(--warn);
+  font-family: inherit;
+}
+
+@media (max-width: 560px) {
+  #index-combo {
+    padding: 16px 14px;
+  }
+
+  .index-combo-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .index-combo-link {
+    display: inline-flex;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .index-combo-list {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .index-combo-row {
+    min-height: 0;
+  }
+
+  .index-combo-model {
+    padding-inline-start: 4px;
+  }
 }
 
 /* Секция «Последние combo-запросы» на странице Combo */

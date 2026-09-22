@@ -48,16 +48,30 @@
     <div id="tpl-banner"></div>
 
     <!-- Combo: первые модели маршрутов -->
-    <section id="index-combo" class="stats" hidden>
-      <div class="stats-head">
-        <span class="stats-provider">Маршруты</span>
-        <a href="combo.html" class="badge index-combo-link">к маршрутам <svg class="icon"
+    <section id="index-combo" class="stats" aria-labelledby="index-combo-title" hidden>
+      <div class="index-combo-head">
+        <div class="index-combo-heading">
+          <span class="index-combo-icon" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+              stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M6 3v12a3 3 0 0 0 3 3h9m0 0-3-3m3 3-3 3M6 8h8m0 0-3-3m3 3-3 3" />
+            </svg>
+          </span>
+          <div>
+            <div class="index-combo-title-row">
+              <h2 id="index-combo-title">Маршруты</h2>
+              <span id="index-combo-count" class="index-combo-count" hidden></span>
+            </div>
+          </div>
+        </div>
+        <a href="combo.html" class="index-combo-link">Настроить маршруты <svg class="icon" aria-hidden="true"
             xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
           </svg></a>
       </div>
-      <p id="index-combo-status" class="hint" style="margin:0 0 8px"></p>
-      <div id="index-combo-list" class="combo-list"></div>
+      <p id="index-combo-status" class="index-combo-status" role="status"></p>
+      <div id="index-combo-list" class="index-combo-list"></div>
     </section>
 
     <!-- Карточка выбранного провайдера -->

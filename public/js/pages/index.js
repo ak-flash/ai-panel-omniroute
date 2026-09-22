@@ -835,44 +835,60 @@ function renderAntigravityQuota() {
 
 /* ---------- index: первые модели Combo ---------- */
 async function loadIndexComboFirst() {
-  const $sec = $id('index-combo'), $list = $id('index-combo-list'), $st = $id('index-combo-status');
+  const $sec = $id('index-combo');
+  const $list = $id('index-combo-list');
+  const $st = $id('index-combo-status');
+  const $count = $id('index-combo-count');
   if (!$sec || !$list) return;
-  if ($st) $st.textContent = 'Загружаю маршруты…';
+  if ($st) {
+    $st.className = 'index-combo-status is-loading';
+    $st.textContent = 'Загружаю маршруты…';
+  }
   $sec.hidden = false;
   try {
     const data = await omniFetch(COMBO_LIST_PATH);
     const combos = combosFromResponse(data);
-    if (!combos.length) { if ($st) $st.textContent = 'Маршруты не найдены.'; $list.replaceChildren(); return; }
-    if ($st) $st.textContent = '';
+    if ($count) {
+      $count.textContent = String(combos.length);
+      $count.hidden = false;
+    }
+    if (!combos.length) {
+      if ($st) {
+        $st.className = 'index-combo-status is-empty';
+        $st.textContent = 'Маршрутов пока нет. Создайте первый маршрут, чтобы выбрать порядок моделей.';
+      }
+      $list.replaceChildren();
+      return;
+    }
+    if ($st) {
+      $st.textContent = '';
+      $st.className = 'index-combo-status';
+    }
     $list.replaceChildren();
-    // для каждого combo берём первую модель: если поле models есть в списке — используем его, иначе догружаем детали
+    // Для каждого combo показываем первую модель, которая примет запрос.
     for (const c of combos) {
-      let first = null;
       let targets = extractComboTargets(c);
       if (!targets.length) {
         try { const detail = await omniFetch(COMBO_PATH(c.id)); targets = extractComboTargets(detail); } catch { /* нет деталей */ }
       }
-      first = targets[0] || null;
-      const li = document.createElement('div');
-      li.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)';
-      const name = document.createElement('span');
-      name.style.cssText = 'font-size:13px;font-weight:600;min-width:110px';
+      const first = targets[0] || null;
+      const row = document.createElement('article');
+      row.className = 'index-combo-row';
+      const name = document.createElement('h3');
+      name.className = 'index-combo-name';
       name.textContent = c.name || c.id;
       const model = document.createElement('code');
-      model.className = 'combo-model-id';
-      model.style.cssText = 'font-size:13px;flex:1;overflow-wrap:anywhere';
-      model.textContent = first ? first.display : '— нет моделей';
-      const badge = document.createElement('span');
-      badge.className = 'badge top';
-      badge.textContent = 'первая';
-      if (!first) badge.hidden = true;
-      li.append(name, model, badge);
-      $list.appendChild(li);
+      model.className = 'combo-model-id index-combo-model';
+      model.textContent = first ? first.display : 'Модель не выбрана';
+      if (!first) row.classList.add('is-unconfigured');
+      row.append(name, model);
+      $list.appendChild(row);
     }
-    // убрать бордер у последнего
-    if ($list.lastElementChild) $list.lastElementChild.style.borderBottom = 'none';
   } catch (err) {
-    if ($st) $st.textContent = 'Не удалось загрузить маршруты: ' + (err.message || err);
+    if ($st) {
+      $st.className = 'index-combo-status is-error';
+      $st.textContent = 'Не удалось загрузить маршруты. Откройте настройки маршрутов и проверьте подключение.';
+    }
   }
 }
 

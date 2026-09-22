@@ -14,6 +14,8 @@
 // обрыве кеш сбрасывается и запрос один раз повторяется на
 // следующем доступном адресе. Одиночный legacy-omniUrl остаётся
 // фолбэком и работает без probe — как раньше.
+// Логи доступности — по событиям: повторные проверки того же адреса
+// не создают одинаковых WARN/INFO в логе.
 // ============================================================
 
 const { AppError, readBody } = require('../http');
@@ -25,6 +27,17 @@ const CACHE_TTL_MS = 30000;
 
 // Последний рабочий адрес мульти-режима: { raw, url, ts }
 let lastGood = null;
+
+// Последнее записанное в лог состояние каждого адреса:
+// 'up' | 'down' — чтобы не дублировать WARN/INFO.
+const loggedProbeState = new Map();
+
+function logProbeState(log, raw, url, state) {
+  if (loggedProbeState.get(raw) === state) return;
+  loggedProbeState.set(raw, state);
+  if (state === 'up') log.info('[omniroute] выбран доступный адрес: ' + url);
+  else log.warn('[omniroute] адрес недоступен: ' + raw);
+}
 
 function parseOmniUrls(raw) {
   const urls = String(raw || '')
@@ -93,10 +106,10 @@ async function resolveUpstream(candidates, validateUpstreamUrl, log) {
     const url = await probeUrl(raw, validateUpstreamUrl);
     if (url) {
       lastGood = { raw, url, ts: Date.now() };
-      log.info('[omniroute] выбран доступный адрес: ' + url);
+      logProbeState(log, raw, url, 'up');
       return lastGood;
     }
-    log.warn('[omniroute] адрес недоступен: ' + raw);
+    logProbeState(log, raw, raw, 'down');
   }
   throw new AppError(
     502,
