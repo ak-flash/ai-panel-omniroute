@@ -1085,6 +1085,9 @@ td.coding-col {
   color: var(--text-faint);
   cursor: grab;
   transition: color 120ms ease-out;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .combo-drag-handle svg {
@@ -1107,6 +1110,38 @@ td.coding-col {
 
 .combo-list li.drag-over {
   border-top: 2px solid var(--accent);
+}
+
+.combo-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .combo-drag-handle {
+    flex-basis: 32px;
+    padding: 8px;
+    cursor: default;
+    touch-action: none;
+  }
+
+  .combo-drag-handle svg {
+    width: 20px;
+    height: 20px;
+  }
 }
 
 .combo-rank {

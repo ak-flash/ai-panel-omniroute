@@ -92,6 +92,68 @@ function findModel(id) {
 }
 
 let dragSrcIdx = null;
+let pointerDrag = null;
+
+/** Переставляет модель с позиции from на позицию to и сохраняет порядок */
+function moveModel(from, to) {
+  if (from == null || to == null || from === to) return;
+  const moved = comboModels.splice(from, 1)[0];
+  comboModels.splice(to, 0, moved);
+  renderComboList();
+  saveReorderedCombo();
+}
+
+/* --- Перетаскивание на сенсорных экранах: HTML5 DnD там не работает --- */
+
+function startPointerDrag(e, idx, li) {
+  const rect = li.getBoundingClientRect();
+  const ghost = li.cloneNode(true);
+  ghost.classList.add('combo-drag-ghost');
+  ghost.classList.remove('dragging', 'drag-over');
+  ghost.style.width = rect.width + 'px';
+  document.body.appendChild(ghost);
+  li.classList.add('dragging');
+  pointerDrag = {
+    idx,
+    ghost,
+    offX: e.clientX - rect.left,
+    offY: e.clientY - rect.top,
+    overIdx: null,
+    overLi: null,
+  };
+  movePointerGhost(e);
+  if (e.cancelable) e.preventDefault();
+}
+
+function movePointerGhost(e) {
+  pointerDrag.ghost.style.transform =
+    'translate(' + (e.clientX - pointerDrag.offX) + 'px,' +
+    (e.clientY - pointerDrag.offY) + 'px)';
+}
+
+function updatePointerDropTarget(e) {
+  const hit = document.elementFromPoint(e.clientX, e.clientY);
+  const li = hit && hit.closest ? hit.closest('#combo-models-list > li') : null;
+  const prev = pointerDrag.overLi;
+  if (prev && prev !== li) prev.classList.remove('drag-over');
+  pointerDrag.overLi = null;
+  pointerDrag.overIdx = null;
+  if (li && li.dataset.idx != null && Number(li.dataset.idx) !== pointerDrag.idx) {
+    li.classList.add('drag-over');
+    pointerDrag.overLi = li;
+    pointerDrag.overIdx = Number(li.dataset.idx);
+  }
+}
+
+function endPointerDrag(commit) {
+  const st = pointerDrag;
+  if (!st) return;
+  pointerDrag = null;
+  st.ghost.remove();
+  if (st.overLi) st.overLi.classList.remove('drag-over');
+  $comboList.querySelectorAll('.dragging').forEach((el) => el.classList.remove('dragging'));
+  if (commit) moveModel(st.idx, st.overIdx);
+}
 
 function saveReorderedCombo() {
   const combo = activeCombo();
@@ -212,10 +274,32 @@ function renderComboList() {
       e.preventDefault();
       li.classList.remove('drag-over');
       if (dragSrcIdx == null || dragSrcIdx === i) return;
-      const moved = comboModels.splice(dragSrcIdx, 1)[0];
-      comboModels.splice(i, 0, moved);
-      renderComboList();
-      saveReorderedCombo();
+      moveModel(dragSrcIdx, i);
+    });
+
+    /* Тач/перо: HTML5 DnD не срабатывает — эмулируем через Pointer Events.
+       Старт — только за ручку, чтобы свайпы по строке листали страницу. */
+    dragHandle.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return; // мышь идёт через HTML5 DnD
+      if (e.pointerType === 'pen' && e.button !== 0) return;
+      startPointerDrag(e, i, li);
+    });
+    li.addEventListener('touchmove', (e) => {
+      if (pointerDrag && e.cancelable) e.preventDefault();
+    }, { passive: false });
+    li.addEventListener('pointermove', (e) => {
+      if (!pointerDrag || e.pointerType === 'mouse') return;
+      movePointerGhost(e);
+      updatePointerDropTarget(e);
+    });
+    li.addEventListener('pointerup', (e) => {
+      if (!pointerDrag || e.pointerType === 'mouse') return;
+      updatePointerDropTarget(e);
+      endPointerDrag(true);
+    });
+    li.addEventListener('pointercancel', () => {
+      if (!pointerDrag) return;
+      endPointerDrag(false);
     });
 
     $comboList.appendChild(li);
