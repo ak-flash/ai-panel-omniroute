@@ -305,7 +305,9 @@ function renderModelsProviders() {
         ? 'sk-or-…'
         : session.modelsProvider && session.modelsProvider.id === 'agentrouter'
           ? 'токен + user ID'
-          : 'sk-xt-…';
+          : session.modelsProvider && session.modelsProvider.id === 'selora'
+            ? 'sk-gw-…'
+            : 'sk-xt-…';
   }
 }
 

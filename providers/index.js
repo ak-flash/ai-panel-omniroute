@@ -11,11 +11,13 @@
 const { createXKiroProvider } = require('./xkiro');
 const { createAgentRouterProvider } = require('./agentrouter');
 const { createOpenRouterProvider } = require('./openrouter');
+const { createSeloraProvider } = require('./selora');
 
 const FACTORIES = {
   xkiro: createXKiroProvider,
   agentrouter: createAgentRouterProvider,
   openrouter: createOpenRouterProvider,
+  selora: createSeloraProvider,
 };
 
 /**

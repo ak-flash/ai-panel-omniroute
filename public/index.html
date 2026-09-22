@@ -1,196 +1,277 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Статистика · AI Панель</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <script src="js/theme-init.js"></script>
-  <style>body.is-booting{visibility:hidden}body.is-booting .topbar{visibility:visible}</style>
+  <style>
+    body.is-booting {
+      visibility: hidden
+    }
+
+    body.is-booting .topbar {
+      visibility: visible
+    }
+  </style>
   <link rel="stylesheet" href="css/themes.css">
-    <link rel="stylesheet" href="css/base.css">
-    <link rel="stylesheet" href="css/layout.css">
-    <link rel="stylesheet" href="css/components.css">
-    <link rel="stylesheet" href="css/pages.css">
-    <link rel="stylesheet" href="css/dialogs.css">
-    <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/pages.css">
+  <link rel="stylesheet" href="css/dialogs.css">
+  <link rel="stylesheet" href="css/responsive.css">
 </head>
+
 <body data-page="index" class="is-booting">
 
-<a class="skip-link" href="#main">К содержимому</a>
+  <a class="skip-link" href="#main">К содержимому</a>
 
-<div id="tpl-topbar"></div>
+  <div id="tpl-topbar"></div>
 
-<main id="main">
-  <!-- Empty state: no key -->
-  <section id="setup" class="setup-card" hidden>
-    <h2>Добро пожаловать</h2>
-    <p>Настройки не заполнены. Откройте <strong>Настройки</strong> и укажите ключи провайдеров.</p>
-    <button type="button" class="btn btn-primary" id="setup-open-settings"><svg class="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg> Открыть настройки</button>
-    <p class="hint">Ключи хранятся на сервере в зашифрованном виде (SQLite + AES-256-GCM).</p>
-  </section>
-
-  <div id="tpl-banner"></div>
-
-  <!-- Combo: первые модели маршрутов -->
-  <section id="index-combo" class="stats" hidden>
-    <div class="stats-head">
-      <span class="stats-provider">Маршруты</span>
-      <a href="combo.html" class="badge" style="text-decoration:none">к маршрутам <svg class="icon" style="width:12px;height:12px" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg></a>
-    </div>
-    <p id="index-combo-status" class="hint" style="margin:0 0 8px"></p>
-    <div id="index-combo-list" class="combo-list"></div>
-  </section>
-
-  <!-- Карточка выбранного провайдера -->
-  <section id="cards" class="stats provider-card" hidden>
-    <div class="stats-head provider-card-head">
-      <div class="provider-identity">
-        <div class="provider-name-row">
-          <span class="badge provider-name-badge" id="stats-provider"></span>
-          <span class="badge" id="plan-badge"></span>
-        </div>
-      </div>
-      <div class="provider-balance" id="card-wallet">
-        <span class="stat-value num" id="wallet-balance">—</span>
-        <span class="provider-balance-note" id="wallet-held"></span>
-      </div>
-    </div>
-
-    <div class="stats-row">
-      <!-- Short window -->
-      <article class="stat" id="card-short">
-        <div class="stat-top">
-          <span class="stat-head"><span class="stat-label">Короткое окно</span> <span class="stat-meta" id="short-dur"></span></span>
-          <span class="stat-value num" id="short-value">—</span>
-        </div>
-        <div class="bar-track stat-bar" id="short-progress" role="progressbar" aria-label="Использовано в коротком окне" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="bar-fill" id="short-bar"></div></div>
-        <div class="stat-sub">
-          <span class="stat-reset">Сброс: <span id="short-reset"></span></span>
-          <span class="stat-pct" id="short-pct"></span>
-        </div>
-      </article>
-
-      <!-- Long window -->
-      <article class="stat" id="card-long">
-        <div class="stat-top">
-          <span class="stat-head"><span class="stat-label">Длинное окно</span> <span class="stat-meta" id="long-dur"></span></span>
-          <span class="stat-value num" id="long-value">—</span>
-        </div>
-        <div class="bar-track stat-bar" id="long-progress" role="progressbar" aria-label="Использовано в длинном окне" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="bar-fill" id="long-bar"></div></div>
-        <div class="stat-sub">
-          <span class="stat-reset">Сброс: <span id="long-reset"></span></span>
-          <span class="stat-pct" id="long-pct"></span>
-        </div>
-      </article>
-
-      <!-- Free tokens -->
-      <article class="stat" id="card-free">
-        <div class="stat-top">
-          <span class="stat-head"><span class="stat-label">Бесплатные токены</span> <span class="stat-meta">за сегодня</span></span>
-          <span class="stat-value num" id="free-value">—</span>
-        </div>
-        <div class="bar-track stat-bar" id="free-progress" role="progressbar" aria-label="Использовано бесплатных токенов" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="bar-fill" id="free-bar"></div></div>
-        <div class="stat-sub">
-          <span class="stat-reset">Сброс: <span id="free-reset"></span></span>
-          <span class="stat-pct" id="free-pct"></span>
-        </div>
-      </article>
-
-      <!-- AgentRouter: таймер до высвобождения пула (когда AgentRouter — активный провайдер) -->
-      <article class="stat" id="card-ar-release" hidden>
-        <div class="stat-top">
-          <span class="stat-head"><span class="stat-label">Высвобождение пула</span> <span class="stat-meta">Claude / GPT</span></span>
-          <span class="stat-value num" id="ar-release-value">—</span>
-        </div>
-        <div class="stat-sub">
-          <span class="stat-reset" id="ar-release-sub">—</span>
-        </div>
-      </article>
-    </div>
-  </section>
-
-  <!-- Wallet-карточки: AgentRouter и OpenRouter в один ряд -->
-  <div class="wallet-cards">
-    <!-- AgentRouter: баланс кошелька -->
-    <section id="ar-card" class="stats provider-card provider-card-wallet" hidden>
-      <div class="ar-hero">
-        <div class="provider-name-row">
-          <span class="badge provider-name-badge"><a class="provider-site-link" href="https://agentrouter.org/console" target="_blank" rel="noopener noreferrer">AgentRouter</a></span>
-          <span class="badge" id="ar-group" hidden></span>
-        </div>
-      </div>
-      <div class="stats-row">
-        <article class="stat">
-          <div class="stat-top">
-            <span class="stat-label">Баланс</span>
-            <span class="stat-value num" id="ar-balance">—</span>
-          </div>
-        </article>
-        <article class="stat">
-          <div class="stat-top">
-            <span class="stat-label">За сегодня</span>
-            <span class="stat-value num" id="ar-today">—</span>
-          </div>
-        </article>
-      </div>
-      <p class="hint ar-release" id="ar-release" hidden>
-        Высвобождение пула (Claude/GPT): через
-        <strong id="ar-release-countdown">—</strong>
-        <span id="ar-release-at">—</span>
-      </p>
-      <p class="hint" id="ar-error" hidden></p>
+  <main id="main">
+    <!-- Empty state: no key -->
+    <section id="setup" class="setup-card" hidden>
+      <h2>Добро пожаловать</h2>
+      <p>Настройки не заполнены. Откройте <strong>Настройки</strong> и укажите ключи провайдеров.</p>
+      <button type="button" class="btn btn-primary" id="setup-open-settings"><svg class="icon"
+          xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg> Открыть настройки</button>
+      <p class="hint">Ключи хранятся на сервере в зашифрованном виде (SQLite + AES-256-GCM).</p>
     </section>
 
-    <!-- OpenRouter: баланс кошелька -->
-    <section id="or-card" class="stats provider-card provider-card-wallet" hidden>
-      <div class="ar-hero">
-        <div class="provider-name-row">
-          <span class="badge provider-name-badge"><a class="provider-site-link" href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer">OpenRouter</a></span>
-          <span class="badge" id="or-plan" hidden></span>
-        </div>
+    <div id="tpl-banner"></div>
+
+    <!-- Combo: первые модели маршрутов -->
+    <section id="index-combo" class="stats" hidden>
+      <div class="stats-head">
+        <span class="stats-provider">Маршруты</span>
+        <a href="combo.html" class="badge index-combo-link">к маршрутам <svg class="icon"
+            xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+          </svg></a>
       </div>
-      <div class="stats-row">
-        <article class="stat">
-          <div class="stat-top">
-            <span class="stat-label">Баланс</span>
-            <span class="stat-value num" id="or-balance">—</span>
-          </div>
-        </article>
-        <article class="stat">
-          <div class="stat-top">
-            <span class="stat-label">За сегодня</span>
-            <span class="stat-value num" id="or-used">—</span>
-          </div>
-        </article>
-      </div>
-      <p class="hint" id="or-error" hidden></p>
+      <p id="index-combo-status" class="hint" style="margin:0 0 8px"></p>
+      <div id="index-combo-list" class="combo-list"></div>
     </section>
-  </div>
 
-  <!-- Antigravity: квоты Google AI Pro по моделям -->
-  <section id="antigravity-quota" class="stats provider-card" hidden>
-    <div class="stats-head provider-card-head">
-      <div class="provider-identity">
-        <div class="provider-name-row">
-          <span class="badge provider-name-badge"><a class="provider-site-link" href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer">Antigravity</a></span>
-          <span class="badge" id="ag-status-badge"></span>
+    <!-- Карточка выбранного провайдера -->
+    <section id="cards" class="stats provider-card" hidden>
+      <div class="stats-head provider-card-head">
+        <div class="provider-identity">
+          <div class="provider-name-row">
+            <span class="badge provider-name-badge" id="stats-provider"></span>
+            <span class="badge" id="plan-badge"></span>
+          </div>
+        </div>
+        <div class="provider-balance" id="card-wallet">
+          <span class="stat-value num" id="wallet-balance">—</span>
+          <span class="provider-balance-note" id="wallet-held"></span>
         </div>
       </div>
-      <div class="ag-head-meta">
-        <span class="ag-subtitle">Google AI Pro</span>
-        <span class="ag-email" id="ag-account-email" hidden></span>
+
+      <div class="stats-row">
+        <!-- Short window -->
+        <article class="stat" id="card-short">
+          <div class="stat-top">
+            <span class="stat-head"><span class="stat-label">Короткое окно</span> <span class="stat-meta"
+                id="short-dur"></span></span>
+            <span class="stat-value num" id="short-value">—</span>
+          </div>
+          <div class="bar-track stat-bar" id="short-progress" role="progressbar"
+            aria-label="Использовано в коротком окне" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="bar-fill" id="short-bar"></div>
+          </div>
+          <div class="stat-sub">
+            <span class="stat-reset">Сброс: <span id="short-reset"></span></span>
+            <span class="stat-pct" id="short-pct"></span>
+          </div>
+        </article>
+
+        <!-- Long window -->
+        <article class="stat" id="card-long">
+          <div class="stat-top">
+            <span class="stat-head"><span class="stat-label">Длинное окно</span> <span class="stat-meta"
+                id="long-dur"></span></span>
+            <span class="stat-value num" id="long-value">—</span>
+          </div>
+          <div class="bar-track stat-bar" id="long-progress" role="progressbar" aria-label="Использовано в длинном окне"
+            aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="bar-fill" id="long-bar"></div>
+          </div>
+          <div class="stat-sub">
+            <span class="stat-reset">Сброс: <span id="long-reset"></span></span>
+            <span class="stat-pct" id="long-pct"></span>
+          </div>
+        </article>
+
+        <!-- Free tokens -->
+        <article class="stat" id="card-free">
+          <div class="stat-top">
+            <span class="stat-head"><span class="stat-label">Бесплатные токены</span> <span class="stat-meta">за
+                сегодня</span></span>
+            <span class="stat-value num" id="free-value">—</span>
+          </div>
+          <div class="bar-track stat-bar" id="free-progress" role="progressbar"
+            aria-label="Использовано бесплатных токенов" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="bar-fill" id="free-bar"></div>
+          </div>
+          <div class="stat-sub">
+            <span class="stat-reset">Сброс: <span id="free-reset"></span></span>
+            <span class="stat-pct" id="free-pct"></span>
+          </div>
+        </article>
+
+        <!-- AgentRouter: таймер до высвобождения пула (когда AgentRouter — активный провайдер) -->
+        <article class="stat" id="card-ar-release" hidden>
+          <div class="stat-top">
+            <span class="stat-head"><span class="stat-label">Высвобождение пула</span> <span class="stat-meta">Claude /
+                GPT</span></span>
+            <span class="stat-value num" id="ar-release-value">—</span>
+          </div>
+          <div class="stat-sub">
+            <span class="stat-reset" id="ar-release-sub">—</span>
+          </div>
+        </article>
       </div>
+    </section>
+
+    <!-- Wallet-карточки: Selora, AgentRouter и OpenRouter в один ряд -->
+    <div class="wallet-cards">
+      <!-- Selora: баланс кошелька и окна расхода (сессия 4 ч / неделя) -->
+      <section id="selora-card" class="stats provider-card provider-card-wallet" hidden>
+        <div class="ar-hero">
+          <div class="provider-name-row">
+            <span class="badge provider-name-badge"><a class="provider-site-link" href="https://selora.lol"
+                target="_blank" rel="noopener noreferrer">Selora</a></span>
+            <span class="badge" id="selora-plan" hidden></span>
+          </div>
+          <span class="stat-value num selora-hero-balance" id="selora-balance">—</span>
+        </div>
+        <div class="stats-row">
+          <article class="stat">
+            <div class="stat-top">
+              <span class="stat-head"><span class="stat-label">Сессия</span> <span class="stat-meta"
+                  id="selora-session-dur"></span></span>
+              <span class="stat-value num" id="selora-session-value">—</span>
+            </div>
+            <div class="bar-track stat-bar" id="selora-session-progress" role="progressbar"
+              aria-label="Использовано в сессии Selora" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div class="bar-fill" id="selora-session-bar"></div>
+            </div>
+            <div class="stat-sub">
+              <span class="stat-reset">Сброс: <span id="selora-session-reset">—</span></span>
+              <span class="stat-pct" id="selora-session-pct"></span>
+            </div>
+          </article>
+          <article class="stat">
+            <div class="stat-top">
+              <span class="stat-head"><span class="stat-label">Неделя</span> <span class="stat-meta"
+                  id="selora-week-dur"></span></span>
+              <span class="stat-value num" id="selora-week-value">—</span>
+            </div>
+            <div class="bar-track stat-bar" id="selora-week-progress" role="progressbar"
+              aria-label="Использовано за неделю Selora" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div class="bar-fill" id="selora-week-bar"></div>
+            </div>
+            <div class="stat-sub">
+              <span class="stat-reset">Сброс: <span id="selora-week-reset">—</span></span>
+              <span class="stat-pct" id="selora-week-pct"></span>
+            </div>
+          </article>
+        </div>
+        <p class="hint" id="selora-error" hidden></p>
+      </section>
+
+      <!-- AgentRouter: баланс кошелька -->
+      <section id="ar-card" class="stats provider-card provider-card-wallet" hidden>
+        <div class="ar-hero">
+          <div class="provider-name-row">
+            <span class="badge provider-name-badge"><a class="provider-site-link" href="https://agentrouter.org/console"
+                target="_blank" rel="noopener noreferrer">AgentRouter</a></span>
+            <span class="badge" id="ar-group" hidden></span>
+          </div>
+        </div>
+        <div class="stats-row">
+          <article class="stat">
+            <div class="stat-top">
+              <span class="stat-label">Баланс</span>
+              <span class="stat-value num" id="ar-balance">—</span>
+            </div>
+          </article>
+          <article class="stat">
+            <div class="stat-top">
+              <span class="stat-label">За сегодня</span>
+              <span class="stat-value num" id="ar-today">—</span>
+            </div>
+          </article>
+        </div>
+        <p class="hint ar-release" id="ar-release" hidden>
+          Высвобождение пула (Claude/GPT): через
+          <strong id="ar-release-countdown">—</strong>
+          <span id="ar-release-at">—</span>
+        </p>
+        <p class="hint" id="ar-error" hidden></p>
+      </section>
+
+      <!-- OpenRouter: баланс кошелька -->
+      <section id="or-card" class="stats provider-card provider-card-wallet" hidden>
+        <div class="ar-hero">
+          <div class="provider-name-row">
+            <span class="badge provider-name-badge"><a class="provider-site-link"
+                href="https://openrouter.ai/settings/keys" target="_blank"
+                rel="noopener noreferrer">OpenRouter</a></span>
+            <span class="badge" id="or-plan" hidden></span>
+          </div>
+        </div>
+        <div class="stats-row">
+          <article class="stat">
+            <div class="stat-top">
+              <span class="stat-label">Баланс</span>
+              <span class="stat-value num" id="or-balance">—</span>
+            </div>
+          </article>
+          <article class="stat">
+            <div class="stat-top">
+              <span class="stat-label">За сегодня</span>
+              <span class="stat-value num" id="or-used">—</span>
+            </div>
+          </article>
+        </div>
+        <p class="hint" id="or-error" hidden></p>
+      </section>
     </div>
-    <div class="stats-row" id="ag-cards"></div>
-    <p class="hint" id="ag-hint" hidden></p>
-  </section>
-</main>
+
+    <!-- Antigravity: квоты Google AI Pro по моделям -->
+    <section id="antigravity-quota" class="stats provider-card" hidden>
+      <div class="stats-head provider-card-head">
+        <div class="provider-identity">
+          <div class="provider-name-row">
+            <span class="badge provider-name-badge"><a class="provider-site-link" href="https://aistudio.google.com"
+                target="_blank" rel="noopener noreferrer">Antigravity</a></span>
+            <span class="badge" id="ag-status-badge"></span>
+          </div>
+        </div>
+        <div class="ag-head-meta">
+          <span class="ag-subtitle">Google AI Pro</span>
+          <span class="ag-email" id="ag-account-email" hidden></span>
+        </div>
+      </div>
+      <div class="stats-row" id="ag-cards"></div>
+      <p class="hint" id="ag-hint" hidden></p>
+    </section>
+  </main>
 
 
-<div id="tpl-dialog"></div>
-<div id="tpl-live"></div>
+  <div id="tpl-dialog"></div>
+  <div id="tpl-live"></div>
 
-<script type="module" src="js/pages/index.js"></script>
+  <script type="module" src="js/pages/index.js"></script>
 </body>
+
 </html>

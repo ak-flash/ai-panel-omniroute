@@ -19,7 +19,7 @@ import { renderAliasRows, collectAliasesFromUI } from './aliases.js';
 import { closeTopbar } from './topbar.js';
 import { emit } from './events.js';
 
-let $dlg, $dlgKey, $dlgArKey, $dlgOrKey, $dlgArUser, $dlgArReleases, $dlgToggle, $dlgArToggle, $dlgOrToggle, $dlgRemove;
+let $dlg, $dlgKey, $dlgArKey, $dlgOrKey, $dlgSeloraKey, $dlgArUser, $dlgArReleases, $dlgToggle, $dlgArToggle, $dlgOrToggle, $dlgSeloraToggle, $dlgRemove;
 
 // Табы диалога: каждый раздел — своя панель и своя кнопка сохранения
 const DLG_TABS = [
@@ -59,7 +59,7 @@ function onDlgTabsKeydown(e) {
   e.preventDefault();
   const next = e.key === 'Home' ? 0
     : e.key === 'End' ? DLG_TABS.length - 1
-    : (idx + step + DLG_TABS.length) % DLG_TABS.length;
+      : (idx + step + DLG_TABS.length) % DLG_TABS.length;
   selectDlgTab(DLG_TABS[next].tab, { focus: true });
 }
 
@@ -79,10 +79,12 @@ function renderDlgProviderFields() {
   const $xkiro = $id('dlg-xkiro-fields');
   const $ar = $id('dlg-agentrouter-fields');
   const $or = $id('dlg-openrouter-fields');
+  const $selora = $id('dlg-selora-fields');
   const $ag = $id('dlg-ag-fields');
   if ($xkiro) $xkiro.hidden = v !== 'xkiro';
   if ($ar) $ar.hidden = v !== 'agentrouter';
   if ($or) $or.hidden = v !== 'openrouter';
+  if ($selora) $selora.hidden = v !== 'selora';
   if ($ag) $ag.hidden = v !== 'antigravity';
   // У Antigravity в диалоге нет ключа: токен задаётся входом через Google,
   // поэтому «Проверить и сохранить» и «Удалить ключ» здесь не показываем
@@ -178,7 +180,7 @@ async function enableArBrowserNotify() {
     const $res = $id('dlg-result-notifications');
     if (perm === 'granted') showResult($res, false, 'Уведомления браузера разрешены');
     else if (perm === 'denied') showResult($res, true, 'Уведомления заблокированы');
-  } catch {}
+  } catch { }
 }
 
 function collectNotificationFields() {
@@ -219,6 +221,7 @@ function openDialog() {
   $dlgKey.value = '';
   if ($dlgArKey) $dlgArKey.value = '';
   if ($dlgOrKey) $dlgOrKey.value = '';
+  if ($dlgSeloraKey) $dlgSeloraKey.value = '';
   if ($dlgArUser) $dlgArUser.value = getAgentRouterUserId();
   if ($dlgArReleases) {
     // Легаси-значение 'hide' (от промежуточной версии) показываем как пустое
@@ -244,7 +247,7 @@ function openDialog() {
     let savedDlgProvider = 'xkiro';
     try { savedDlgProvider = (vaultGet('dlgProvider') || '') || 'xkiro'; } catch { /* нет хранилища */ }
     $dlgProvider.value =
-      savedDlgProvider === 'antigravity' || savedDlgProvider === 'agentrouter' || savedDlgProvider === 'openrouter'
+      savedDlgProvider === 'antigravity' || savedDlgProvider === 'agentrouter' || savedDlgProvider === 'openrouter' || savedDlgProvider === 'selora'
         ? savedDlgProvider
         : 'xkiro';
     renderDlgProviderFields();
@@ -324,7 +327,7 @@ async function agPaste() {
       $st.innerHTML = q && !q.error
         ? ICO_CHECK + ' Авторизация выполнена — квоты загружены'
         : 'Авторизация выполнена, но квоты не получены: ' +
-          ((q && AG_ERROR_MESSAGES[q.error]) || (q && q.error) || 'неизвестная ошибка');
+        ((q && AG_ERROR_MESSAGES[q.error]) || (q && q.error) || 'неизвестная ошибка');
     }
     refreshAgStatus();
   } catch (err) {
@@ -386,9 +389,11 @@ async function saveProviderSettings() {
   const xkiroCandidate = $dlgKey.value.trim();
   const arCandidate = $dlgArKey ? $dlgArKey.value.trim() : '';
   const orCandidate = $dlgOrKey ? $dlgOrKey.value.trim() : '';
+  const seloraCandidate = $dlgSeloraKey ? $dlgSeloraKey.value.trim() : '';
   if (xkiroCandidate) entries.xkiroKey = xkiroCandidate;
   if (arCandidate) entries.agentrouterKey = arCandidate;
   if (orCandidate) entries.openrouterKey = orCandidate;
+  if (seloraCandidate) entries.seloraKey = seloraCandidate;
 
   const $res = $id('dlg-result-provider');
   const saved = await saveSettings(entries);
@@ -401,13 +406,15 @@ async function saveProviderSettings() {
   $dlgKey.value = '';
   if ($dlgArKey) $dlgArKey.value = '';
   if ($dlgOrKey) $dlgOrKey.value = '';
+  if ($dlgSeloraKey) $dlgSeloraKey.value = '';
   emit('settings:changed');
 
   showResult($res, false, 'Сохранено.');
   const setLine = (line, isErr) => showResult($res, isErr, 'Сохранено.<br>' + line);
   const candidate = dlgProvider === 'agentrouter' ? arCandidate
     : dlgProvider === 'openrouter' ? orCandidate
-    : xkiroCandidate;
+      : dlgProvider === 'selora' ? seloraCandidate
+        : xkiroCandidate;
   if (dlgProvider === 'agentrouter') {
     if (candidate) {
       console.info('[AgentRouter] проверка токена…');
@@ -484,6 +491,33 @@ async function saveProviderSettings() {
         hasStored
           ? 'OpenRouter ' + ICO_CHECK + ' ключ сохранён ранее — пустое поле его не меняет'
           : 'OpenRouter: ключ не задан',
+        false
+      );
+    }
+  } else if (dlgProvider === 'selora') {
+    if (candidate) {
+      console.info('[Selora] проверка ключа…');
+      setLine('Selora: проверяю ключ…', false);
+      providerRequest('usage', { provider: { id: 'selora', name: 'Selora' }, key: candidate })
+        .then((data) => {
+          const wallet = (data && data.wallet) || {};
+          const bal = wallet.balance_usd ?? wallet.balance ?? 0;
+          console.info('[Selora] ключ OK', data);
+          setLine('Selora ' + ICO_CHECK + ' ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · план: ' + data.plan : ''), false);
+        })
+        .catch((err) => {
+          console.warn('[Selora] проверка не прошла', err);
+          let msg = 'Selora ' + ICO_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err));
+          if (err && err.status === 401) msg += ' — проверьте ключ';
+          setLine(msg, true);
+        });
+    } else {
+      const hasStored = vaultGet('hasSeloraKey');
+      console.info('[Selora] ключ в поле пустой' + (hasStored ? ' — оставляю сохранённый' : ''));
+      setLine(
+        hasStored
+          ? 'Selora ' + ICO_CHECK + ' ключ сохранён ранее — пустое поле его не меняет'
+          : 'Selora: ключ не задан',
         false
       );
     }
@@ -583,6 +617,7 @@ function removeDialogKey() {
   const dlgProvider = $sel ? $sel.value : 'xkiro';
   if (dlgProvider === 'agentrouter') vaultSet('agentrouterKey', '');
   else if (dlgProvider === 'openrouter') vaultSet('openrouterKey', '');
+  else if (dlgProvider === 'selora') vaultSet('seloraKey', '');
   else removeKey();
   $dlg.close();
   emit('settings:changed');
@@ -593,11 +628,13 @@ export function initSettingsDialog() {
   $dlgKey = $id('dlg-key');
   $dlgArKey = $id('dlg-agentrouter-key');
   $dlgOrKey = $id('dlg-openrouter-key');
+  $dlgSeloraKey = $id('dlg-selora-key');
   $dlgArUser = $id('dlg-agentrouter-user');
   $dlgArReleases = $id('dlg-agentrouter-releases');
   $dlgToggle = $id('dlg-toggle');
   $dlgArToggle = $id('dlg-agentrouter-toggle');
   $dlgOrToggle = $id('dlg-openrouter-toggle');
+  $dlgSeloraToggle = $id('dlg-selora-toggle');
   $dlgRemove = $id('dlg-remove');
   if (!$dlg) return; // диалог есть на всех страницах, но проверимся
 
@@ -630,6 +667,11 @@ export function initSettingsDialog() {
   // Показать/скрыть ключ OpenRouter
   on($dlgOrToggle, 'click', () => {
     if ($dlgOrKey) $dlgOrKey.type = $dlgOrKey.type === 'password' ? 'text' : 'password';
+  });
+
+  // Показать/скрыть ключ Selora
+  on($dlgSeloraToggle, 'click', () => {
+    if ($dlgSeloraKey) $dlgSeloraKey.type = $dlgSeloraKey.type === 'password' ? 'text' : 'password';
   });
 
   on($id('dlg-th-ar-release'), 'change', updateArNotifyPermissionHint);

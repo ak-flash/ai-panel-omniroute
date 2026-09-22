@@ -81,6 +81,7 @@ const _DIALOG_HTML = `<dialog id="dlg">
         <option value="xkiro">xKiro</option>
         <option value="agentrouter">AgentRouter</option>
         <option value="openrouter">OpenRouter</option>
+        <option value="selora">Selora</option>
         <option value="antigravity">Antigravity</option>
       </select>
       <!-- Поля ключа xKiro -->
@@ -130,6 +131,19 @@ const _DIALOG_HTML = `<dialog id="dlg">
           openrouter.ai → Keys → Create key. Один ключ используется и для
           каталога моделей, и для «Обновить рейтинг» на странице Модели
           (Artificial Analysis Coding Index).
+        </p>
+      </div>
+      <!-- Поля Selora: ключ шлюза selora.lol -->
+      <div id="dlg-selora-fields" hidden>
+        <label for="dlg-selora-key">API-ключ</label>
+        <div class="input-group">
+          <input type="password" id="dlg-selora-key" placeholder="sk-gw-…" autocomplete="off">
+          <button type="button" id="dlg-selora-toggle" class="btn btn-ghost" aria-label="Показать/скрыть ключ">${icon('eye')}</button>
+        </div>
+        <p class="hint">
+          selora.lol → Console → API Keys → Create key. Один ключ обслуживает
+          и каталог моделей, и статистику: план, баланс и окна расхода
+          (4-часовая сессия / неделя).
         </p>
       </div>
       <!-- Поля Antigravity (Google AI Pro): вход через Google + вставка ссылки -->
@@ -287,21 +301,21 @@ export function initTheme() {
     var saved = localStorage.getItem('theme');
     if (saved === 'light' || saved === 'dark') apply(saved);
     else apply(null);
-  } catch(e) { apply(null); }
-  document.addEventListener('click', function(e) {
+  } catch (e) { apply(null); }
+  document.addEventListener('click', function (e) {
     var b = e.target.closest('#btn-theme');
     if (!b) return;
     var cur = document.documentElement.getAttribute('data-theme');
     if (!cur) cur = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     var next = cur === 'dark' ? 'light' : 'dark';
-    try { localStorage.setItem('theme', next); } catch(e2) {}
+    try { localStorage.setItem('theme', next); } catch (e2) { }
     apply(next);
   });
   try {
-    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
-      try { if (!localStorage.getItem('theme')) apply(null); } catch(e) {}
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+      try { if (!localStorage.getItem('theme')) apply(null); } catch (e) { }
     });
-  } catch(e) {}
+  } catch (e) { }
 }
 
 export function injectPartials(page) {

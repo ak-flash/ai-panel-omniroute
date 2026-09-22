@@ -7,12 +7,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadProviders } = require('../providers');
 
-test('вшитый список: xKiro, AgentRouter, OpenRouter', () => {
+test('вшитый список: xKiro, AgentRouter, OpenRouter, Selora', () => {
   const list = loadProviders();
-  assert.equal(list.length, 3);
+  assert.equal(list.length, 4);
 
   // xKiro — первый, активный по умолчанию
-  const [xkiro, agentrouter, openrouter] = list;
+  const [xkiro, agentrouter, openrouter, selora] = list;
   assert.equal(xkiro.id, 'xkiro');
   assert.equal(xkiro.name, 'xKiro');
   assert.equal(xkiro.upstream, 'https://api.xkiro.com');
@@ -32,4 +32,11 @@ test('вшитый список: xKiro, AgentRouter, OpenRouter', () => {
   assert.equal(openrouter.upstream, 'https://openrouter.ai/api/v1');
   assert.equal(openrouter.apiKey, '');
   assert.equal(openrouter.authScheme, 'authorization');
+
+  // Selora — каталог моделей, баланс и окна расхода (сессия 4 ч / неделя)
+  assert.equal(selora.id, 'selora');
+  assert.equal(selora.name, 'Selora');
+  assert.equal(selora.upstream, 'https://api.selora.lol');
+  assert.equal(selora.apiKey, '');
+  assert.equal(selora.authScheme, 'x-api-key');
 });

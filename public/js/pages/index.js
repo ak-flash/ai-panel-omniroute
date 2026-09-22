@@ -10,7 +10,7 @@ import { icon } from '../../icons.js';
 import { setStatus, touchUpdated } from '../topbar.js';
 import { showBanner, hideBanner } from '../banner.js';
 import { providerRequest, fetchAntigravityQuota, AG_ERROR_MESSAGES, omniFetch, COMBO_LIST_PATH, COMBO_PATH } from '../api.js';
-import { keyForProvider, getAgentRouterKey, getOpenRouterKey, vaultGet } from '../settings.js';
+import { keyForProvider, getAgentRouterKey, getOpenRouterKey, getSeloraKey, vaultGet } from '../settings.js';
 import { onEvent } from '../events.js';
 import { start } from '../boot.js';
 import { fmtUsd, compact, dur, num, pct, barClass, nextReleaseUtc, clockTime } from '../formatters.js';
@@ -170,8 +170,8 @@ function renderFreeTokens(free) {
     limit == null
       ? `<span class="val-used">${compact(used)}</span>`
       : `<span class="val-used">${compact(used)}</span>` +
-        ` <span class="val-sep">/</span> ` +
-        `<span class="val-limit">${compact(limit)}</span>`;
+      ` <span class="val-sep">/</span> ` +
+      `<span class="val-limit">${compact(limit)}</span>`;
 
   const bar = $freeCard.querySelector('.bar-fill');
   const progress = $freeCard.querySelector('[role="progressbar"]');
@@ -450,7 +450,7 @@ function fireAgentRouterRelease() {
         icon: '/favicon.svg',
         tag: 'agentrouter-release',
       });
-    } catch {}
+    } catch { }
   }
   scheduleAgentRouterReleaseNotify();
   renderAgentRouterRelease();
@@ -517,6 +517,108 @@ function renderOpenRouterCard(data) {
   const usedEl = $id('or-used');
   const used = Number(data.today_usd) || 0;
   if (usedEl) usedEl.textContent = used > 0 ? fmtUsd(used) : '—';
+}
+
+/* ---------- Selora: карточка баланса и окон на главной ---------- */
+
+async function loadSeloraCard() {
+  const $card = $id('selora-card');
+  if (!$card) return;
+  const hasKey =
+    Boolean(getSeloraKey()) ||
+    session.providers.some((p) => p.id === 'selora' && p.hasKey);
+  if (!hasKey || session.activeProvider.id === 'selora') {
+    $card.hidden = true;
+    return;
+  }
+  try {
+    const data = await providerRequest('usage', {
+      provider: { id: 'selora', name: 'Selora' },
+    });
+    renderSeloraCard(data);
+  } catch (err) {
+    $card.hidden = false;
+    const $err = $id('selora-error');
+    if ($err) {
+      $err.hidden = false;
+      $err.textContent =
+        'Не удалось получить статистику — ' +
+        (err && err.message ? err.message : String(err));
+    }
+  }
+}
+
+function renderSeloraCard(data) {
+  const $card = $id('selora-card');
+  if (!$card) return;
+  $card.hidden = false;
+  const $err = $id('selora-error');
+  if ($err) $err.hidden = true;
+
+  const balance = $id('selora-balance');
+  if (balance) balance.textContent = fmtUsd((data.wallet || {}).balance_usd);
+
+  const plan = $id('selora-plan');
+  const planLabel = data.plan ? String(data.plan).trim() : '';
+  if (plan) {
+    plan.textContent = planLabel ? planLabel.toUpperCase() : '';
+    plan.hidden = !planLabel;
+  }
+
+  // Окна: сессия (short) и неделя (long) — формат как в главной ленте
+  const list = Array.isArray(data.windows) ? data.windows : [];
+  const byKind = Object.fromEntries(list.map((w) => [w.kind, w]));
+  renderSeloraWindow(byKind.short, 'selora-session');
+  renderSeloraWindow(byKind.long, 'selora-week');
+}
+
+function renderSeloraWindow(w, prefix) {
+  const $value = $id(prefix + '-value');
+  if (!$value) return;
+  if (!w) {
+    $value.closest('.stat').hidden = true;
+    return;
+  }
+  const $stat = $value.closest('.stat');
+  $stat.hidden = false;
+
+  const meta = $id(prefix + '-dur');
+  if (meta) meta.textContent = dur(w.window_sec);
+
+  $value.innerHTML =
+    `<span class="val-used">${fmtUsd(w.spent_usd)}</span>` +
+    ` <span class="val-sep">/</span> ` +
+    `<span class="val-limit">${w.cap_usd ? fmtUsd(w.cap_usd) : '∞'}</span>`;
+
+  const p = w.cap_usd ? pct(w.spent_usd, w.cap_usd) : 0;
+
+  const pctEl = $id(prefix + '-pct');
+  if (pctEl) pctEl.textContent = w.cap_usd ? Math.round(p) + '%' : 'без лимита';
+
+  // Прогресс-бар — как в окнах xKiro (warn/danger по порогам)
+  const bar = $id(prefix + '-bar');
+  const progress = $id(prefix + '-progress');
+  if (bar) {
+    bar.style.width = p + '%';
+    bar.classList.remove('warn', 'danger');
+    const cls = barClass(p);
+    if (cls) bar.classList.add(cls);
+  }
+  if (progress) {
+    progress.setAttribute('aria-valuenow', String(Math.round(p)));
+    progress.setAttribute(
+      'aria-valuetext',
+      w.cap_usd
+        ? `${fmtUsd(w.spent_usd)} из ${fmtUsd(w.cap_usd)}`
+        : `${fmtUsd(w.spent_usd)} без лимита`,
+    );
+  }
+
+  const reset = $id(prefix + '-reset');
+  if (reset) {
+    reset.textContent =
+      (w.resets_in_sec || 0) > 0 ? dur(w.resets_in_sec) : 'обновляется…';
+  }
 }
 
 /* ---------- Antigravity: квоты Google AI Pro ---------- */
@@ -792,6 +894,7 @@ export async function init() {
     loadAntigravityQuota();
     loadAgentRouterCard();
     loadOpenRouterCard();
+    loadSeloraCard();
     loadIndexComboFirst();
     return;
   }
@@ -804,6 +907,7 @@ export async function init() {
   loadAntigravityQuota();
   loadAgentRouterCard();
   loadOpenRouterCard();
+  loadSeloraCard();
   loadIndexComboFirst();
 }
 
@@ -813,6 +917,7 @@ function refreshAll() {
   loadAntigravityQuota();
   loadAgentRouterCard();
   loadOpenRouterCard();
+  loadSeloraCard();
   renderAgentRouterRelease();
 }
 

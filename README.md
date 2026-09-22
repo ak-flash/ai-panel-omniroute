@@ -175,10 +175,11 @@ Baseline HTTP-контракта и принятые решения описан
 | **xKiro** | План, окна расхода (5 ч / 7 д), бесплатные токены, баланс кошелька; каталог моделей с ценами | API-ключ (`sk-xt-…`) | `FACTORIES` (реестр) |
 | **AgentRouter** | Баланс кошелька, расход за сутки, группа аккаунта; обратный отсчёт до высвобождения пула Claude/GPT (2 раза в сутки — Пекин 10:00/19:00 = UTC 02:00/11:00, в локальном времени) | Access-токен + User ID (`New-Api-User`) | `FACTORIES` (реестр) |
 | **OpenRouter** | Баланс кошелька, расход за сегодня, каталог моделей с ценами и контекстом; рейтинг для кодинга | API-ключ (`sk-or-…`), `Authorization: Bearer` | `FACTORIES` (реестр) |
+| **Selora** | План, баланс кошелька, окна расхода (4-часовая сессия / неделя); каталог моделей с ценами за 1M токенов | API-ключ (`sk-gw-…`), `x-api-key` | `FACTORIES` (реестр) |
 | **Antigravity** | Квоты Google AI Pro по моделям + групповые окна (5 ч / неделя) | Google OAuth (refresh-token) | Отдельный сервис `src/antigravity-service.js` |
 | **OmniRoute** | Combo: список, targets, порядок; последние combo-запросы и реальная модель | Management-ключ (Bearer) | Прокси `src/routes/omniroute.js` |
 
-xKiro, AgentRouter и OpenRouter — вшитые провайдеры реестра (селектор в шапке, `/proxy/{id}/…`); Antigravity и OmniRoute подключаются отдельно через ⚙ Настройки.
+xKiro, AgentRouter, OpenRouter и Selora — вшитые провайдеры реестра (селектор в шапке, `/proxy/{id}/…`); Antigravity и OmniRoute подключаются отдельно через ⚙ Настройки.
 
 Логика работы с API конкретного провайдера — фабрика адаптера в каталоге `providers/`:
 
@@ -191,6 +192,7 @@ flowchart TD
     R --> X[xKiro]
     R --> A[AgentRouter]
     R --> OR[OpenRouter]
+    R --> SEL[Selora]
     S --> G[Antigravity и Google OAuth]
     S --> OM[OmniRoute]
     S --> V[src/store]
@@ -200,6 +202,7 @@ flowchart TD
 - `providers/xkiro.js` — `createXKiroProvider(config)` возвращает адаптер с функциями `getUsage(key)`, `getModels(key)` и авторизацией `x-api-key`
 - `providers/agentrouter.js` — `createAgentRouterProvider(config)` — пока только баланс кошелька: `getUsage(key)` читает профиль `GET /api/user/self`, авторизация `Authorization: Bearer <access-токен>`
 - `providers/openrouter.js` — `createOpenRouterProvider(config)`: `getUsage(key)` читает кредиты `GET /auth/key`, `getModels(key)` — каталог `GET /models` (нормализуется в формат панели); авторизация `Authorization: Bearer <ключ>`
+- `providers/selora.js` — `createSeloraProvider(config)`: `getUsage(key)` собирает профиль `GET /v1/me` и окна расхода `GET /v1/me/windows` (сессия 4 ч / неделя, фолбэк на окна из профиля), `getModels(key)` — каталог `GET /v1/models` без авторизации; авторизация `x-api-key <ключ>`
 - `providers/antigravity.js` — `createAntigravityProvider(config)`: `getQuota({token, project})` и `getQuotaSummary({token, project})` для квот Google AI Pro; токен берётся из OAuth-flow, а не из ключа. В `FACTORIES` не входит — адаптер использует `src/antigravity-service.js`
 - `providers/google-oauth.js` — `createGoogleOauth(config)`: `exchangeCode(…)` (обмен одноразового кода после входа) и `refresh(…)` (автообновление access-token по refresh-token)
 - `providers/index.js` — реестр: `FACTORIES` (id → фабрика) и `loadProviders()`, возвращает список вшитых адаптеров
@@ -314,6 +317,7 @@ npm test        # или: node --test
 - `test/providers-registry.test.js` — реестр вшитых провайдеров: список по умолчанию
 - `test/openrouter.test.js` — адаптер OpenRouter (usage/models, нормализация, ошибки) и обновление рейтинга: ключ из хранилища, ошибка без ключа, кэш
 - `test/xkiro-adapter.test.js` — фабрика адаптера xKiro против mock-upstream: пути, приоритет ключей, ошибки сети и формата ответа
+- `test/selora-adapter.test.js` — фабрика адаптера Selora против mock-upstream: профиль и окна (сессия 4 ч / неделя), фолбэк окон из профиля, каталог без авторизации, ошибки сети и формата ответа
 - `test/model-match.test.js` — сопоставление модели из combo с каталогом (префикс провайдера, «:free»-варианты, тарифные бейджи)
 - `test/call-logs.test.js` — разбор call logs OmniRoute: combo-строки, реальная модель, сортировка, сводка по моделям
 - `test/server.test.js` — интеграционные: сервер поднимается через `createApp` с адаптерами на mock-upstream (плюс smoke-тест CLI-запуска), проверяются `/api/config`, `/api/providers/…`, оба формата прокси и статика

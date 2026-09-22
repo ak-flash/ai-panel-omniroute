@@ -38,7 +38,7 @@ const ACTIVE_ACCOUNT_KEY = 'activeAccount';
 // Allowlist ключей панели (схема хранилища). Писать можно только их;
 // чтение (snapshot) остаётся терпимым к унаследованным записям.
 const STORE_KEYS = [
-  'xkiroKey', 'agentrouterKey', 'openrouterKey', 'agentrouterUserId',
+  'xkiroKey', 'agentrouterKey', 'openrouterKey', 'seloraKey', 'agentrouterUserId',
   'omniUrl', 'omniUrls', 'omniKey',
   'agRefreshToken', 'agProject', 'agEmail',
   'aliases', 'comboActive', 'dlgProvider', 'dlgTab', 'modelsProvider', 'statsProvider',

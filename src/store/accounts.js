@@ -10,7 +10,8 @@
 //   - account_name — пользовательский псевдоним (например, "work", "personal").
 //     Допустимы только [a-z0-9_-], длина 1..32. Регистр сохраняется, но
 //     сравнение в lookup делается case-insensitive.
-//   - provider_id — фиксированный список (xkiro, agentrouter, omniroute, antigravity).
+//   - provider_id — фиксированный список (xkiro, agentrouter, openrouter,
+//     selora, omniroute, antigravity).
 //   - credential_type — внутренний тег (api_key, oauth_refresh, url_key_pair,
 //     user_id) для будущего расширения.
 //   - encrypted_value — то же представление v1:<iv>:<tag>:<data>, что и kv.
@@ -22,7 +23,7 @@ const { StoreError, encryptValue, decryptValue } = require('./crypto');
 
 const ACCOUNT_NAME_PATTERN = /^[a-z0-9_-]{1,32}$/;
 
-const PROVIDER_IDS = ['xkiro', 'agentrouter', 'openrouter', 'omniroute', 'antigravity'];
+const PROVIDER_IDS = ['xkiro', 'agentrouter', 'openrouter', 'selora', 'omniroute', 'antigravity'];
 
 // Сколько может быть разных провайдеров на один (account_name, provider_id):
 //  - xkiro: api_key
@@ -130,6 +131,8 @@ function accountToPublicView(name, byProvider, createdAt, updatedAt) {
     updatedAt: Number(updatedAt),
     hasXkiro: Boolean(byProvider.xkiro),
     hasAgentrouter: Boolean(byProvider.agentrouter),
+    hasOpenrouter: Boolean(byProvider.openrouter),
+    hasSelora: Boolean(byProvider.selora),
     hasOmniroute: Boolean(byProvider.omniroute),
     hasAntigravity: Boolean(byProvider.antigravity),
   };
@@ -178,15 +181,15 @@ function createAccountStore({
     if (typeof ensureSchema === 'function') return ensureSchema();
     exec(
       'CREATE TABLE IF NOT EXISTS credentials (' +
-        'id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
-        'account_name TEXT NOT NULL, ' +
-        'provider_id TEXT NOT NULL, ' +
-        'credential_type TEXT NOT NULL, ' +
-        'encrypted_value TEXT NOT NULL, ' +
-        'created_at INTEGER NOT NULL, ' +
-        'updated_at INTEGER NOT NULL, ' +
-        'UNIQUE(account_name, provider_id, credential_type)' +
-        ')',
+      'id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
+      'account_name TEXT NOT NULL, ' +
+      'provider_id TEXT NOT NULL, ' +
+      'credential_type TEXT NOT NULL, ' +
+      'encrypted_value TEXT NOT NULL, ' +
+      'created_at INTEGER NOT NULL, ' +
+      'updated_at INTEGER NOT NULL, ' +
+      'UNIQUE(account_name, provider_id, credential_type)' +
+      ')',
     );
     exec('CREATE INDEX IF NOT EXISTS idx_credentials_account ON credentials(account_name)');
   }
@@ -195,7 +198,7 @@ function createAccountStore({
     assertAccountName(name);
     const rows = select(
       'SELECT created_at, updated_at FROM credentials WHERE account_name = ? ' +
-        'ORDER BY updated_at DESC LIMIT 1',
+      'ORDER BY updated_at DESC LIMIT 1',
       [name],
     );
     return rows[0] || null;
@@ -205,7 +208,7 @@ function createAccountStore({
     assertAccountName(name);
     const rows = select(
       'SELECT account_name, provider_id, credential_type, encrypted_value, created_at, updated_at ' +
-        'FROM credentials WHERE account_name = ?',
+      'FROM credentials WHERE account_name = ?',
       [name],
     );
     return selectRowsForAccount(rows, name);
@@ -216,7 +219,7 @@ function createAccountStore({
     // Получаем уникальные имена с временем последнего обновления
     const nameRows = select(
       'SELECT account_name, MIN(created_at) as created_at, MAX(updated_at) as updated_at ' +
-        'FROM credentials GROUP BY account_name ORDER BY MIN(created_at) ASC',
+      'FROM credentials GROUP BY account_name ORDER BY MIN(created_at) ASC',
     );
     const result = [];
     for (const [name, createdAt, updatedAt] of nameRows) {
@@ -250,7 +253,7 @@ function createAccountStore({
     for (const { providerId, credentialType, value } of normalized) {
       exec(
         'INSERT INTO credentials (account_name, provider_id, credential_type, encrypted_value, created_at, updated_at) ' +
-          'VALUES (?, ?, ?, ?, ?, ?)',
+        'VALUES (?, ?, ?, ?, ?, ?)',
         [name, providerId, credentialType, encryptValue(masterKey, value), now, now],
       );
     }
@@ -273,9 +276,9 @@ function createAccountStore({
     for (const { providerId, credentialType, value } of normalized) {
       exec(
         'INSERT INTO credentials (account_name, provider_id, credential_type, encrypted_value, created_at, updated_at) ' +
-          'VALUES (?, ?, ?, ?, ?, ?) ' +
-          'ON CONFLICT(account_name, provider_id, credential_type) DO UPDATE SET ' +
-          'encrypted_value = excluded.encrypted_value, updated_at = excluded.updated_at',
+        'VALUES (?, ?, ?, ?, ?, ?) ' +
+        'ON CONFLICT(account_name, provider_id, credential_type) DO UPDATE SET ' +
+        'encrypted_value = excluded.encrypted_value, updated_at = excluded.updated_at',
         [name, providerId, credentialType, encryptValue(masterKey, value), now, now],
       );
     }
@@ -310,7 +313,7 @@ function createAccountStore({
     assertProviderId(providerId);
     const rows = select(
       'SELECT credential_type, encrypted_value FROM credentials ' +
-        'WHERE account_name = ? AND provider_id = ?',
+      'WHERE account_name = ? AND provider_id = ?',
       [accountName, providerId],
     );
     if (!rows.length) return null;
@@ -351,6 +354,8 @@ function createAccountStore({
       agentrouter: legacy.agentrouterKey
         ? { key: legacy.agentrouterKey, userId: legacy.agentrouterUserId }
         : null,
+      openrouter: legacy.openrouterKey || null,
+      selora: legacy.seloraKey || null,
       omniroute: legacy.omniUrl ? { url: legacy.omniUrl, key: legacy.omniKey } : null,
       antigravity: legacy.agRefreshToken
         ? { refreshToken: legacy.agRefreshToken, project: legacy.agProject, email: legacy.agEmail }

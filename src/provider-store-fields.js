@@ -16,6 +16,7 @@ const PROVIDER_STORE_KEYS = {
   xkiro: 'xkiroKey',
   agentrouter: 'agentrouterKey',
   openrouter: 'openrouterKey',
+  selora: 'seloraKey',
 };
 
 /** Дополнительные поля авторизации (у AgentRouter — числовой ID
