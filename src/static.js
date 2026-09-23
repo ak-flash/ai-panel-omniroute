@@ -54,7 +54,9 @@ function createStaticHandler({ publicDir }) {
       const mime = MIME[ext] || 'application/octet-stream';
       res.writeHead(200, {
         'content-type': mime,
-        'cache-control': ext === '.html' ? 'no-store' : 'max-age=3600',
+        // Локальный инструмент: кеш только в памяти браузера (нет
+        // conditional-запросов), правки файлов подхватываются без Ctrl+F5
+        'cache-control': 'no-cache',
       });
       const stream = fs.createReadStream(filePath);
       stream.on('error', () => res.destroy());

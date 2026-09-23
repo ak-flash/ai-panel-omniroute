@@ -44,7 +44,7 @@ const STORE_KEYS = [
   'aliases', 'comboActive', 'dlgProvider', 'dlgTab', 'modelsProvider', 'statsProvider',
   'agentrouterDayBalance',
   'agentrouterReleaseHoursUtc',
-  'notificationThresholds',
+  'notificationThresholds', 'comboDisabled',
   ACTIVE_ACCOUNT_KEY,
 ];
 

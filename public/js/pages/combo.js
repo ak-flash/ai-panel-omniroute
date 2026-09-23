@@ -14,6 +14,9 @@ import { extractComboTargets, combosFromResponse } from '../combos.js';
 import { recentComboRows, requestedOf, realModelOf, formatCallLogTime, modelUsageSummary, formatTokensOf, tokensTitle } from '../call-logs.js';
 import { matchModel } from '../../model-match.js';
 import { showToast } from '../toast.js';
+import { icon } from '../../icons.js';
+
+const COMBO_DISABLED_CONFIG_KEY = 'comboDisabled';
 
 // Статичные элементы страницы — доступны на момент eval модуля
 const $comboSelect = $id('combo-select');
@@ -34,6 +37,8 @@ const $comboRecentSummary = $id('combo-recent-summary');
 const RECENT_LIMIT = 10;
 // Сколько записей лога запросить у OmniRoute, чтобы выбрать из них combo-строки
 const RECENT_FETCH_LIMIT = 200;
+// Таймаут тестового запроса модели
+const MODEL_TEST_TIMEOUT_MS = 30000;
 
 // Состояние страницы Combo (локальное — другим страницам не нужно)
 let combos = [];
@@ -42,6 +47,11 @@ let comboError = null;   // текст последней ошибки загр�
 let activeComboId = null;
 let comboModels = [];    // массив target-объектов: { provider, model, display, weight }
 let activeComboData = null; // полный объект combo с сервера для PUT
+let disabledComboTargets = new Set();
+let disabledComboRaw = new Map();
+let disabledComboModels = [];
+// Результаты проверки моделей: key -> { state: 'loading'|'ok'|'err', ms, detail }
+let comboTestResults = new Map();
 
 /** Сохраняет выбранную combo в хранилище сервера */
 function saveActiveCombo() {
@@ -50,6 +60,37 @@ function saveActiveCombo() {
 
 function activeCombo() {
   return combos.find((c) => c.id === activeComboId) || null;
+}
+
+function comboTargetKey(target) {
+  const raw = target && target._raw;
+  if (raw && typeof raw === 'object' && raw.id) return String(raw.id);
+  return String(target && (target.key || target.modelId || target.display) || '');
+}
+
+function loadDisabledComboTargets() {
+  disabledComboTargets = new Set();
+  disabledComboRaw = new Map();
+  try {
+    const data = JSON.parse(vaultGet(COMBO_DISABLED_CONFIG_KEY) || '{}');
+    const saved = data && data[activeComboId];
+    if (!Array.isArray(saved)) return;
+    for (const item of saved) {
+      const key = item && item.key != null ? String(item.key) : '';
+      if (!key) continue;
+      disabledComboTargets.add(key);
+      if (item.raw != null) disabledComboRaw.set(key, item.raw);
+    }
+  } catch { /* повреждённая настройка — считаем все модели включёнными */ }
+}
+
+async function saveDisabledComboTargets() {
+  let data;
+  try { data = JSON.parse(vaultGet(COMBO_DISABLED_CONFIG_KEY) || '{}') || {}; } catch { data = {}; }
+  const saved = [...disabledComboTargets].map((key) => ({ key, raw: disabledComboRaw.get(key) }));
+  if (saved.length) data[activeComboId] = saved;
+  else delete data[activeComboId];
+  await vaultSet(COMBO_DISABLED_CONFIG_KEY, JSON.stringify(data));
 }
 
 function renderComboControls() {
@@ -155,18 +196,57 @@ function endPointerDrag(commit) {
   if (commit) moveModel(st.idx, st.overIdx);
 }
 
-function saveReorderedCombo() {
+async function toggleComboModel(target) {
+  const key = comboTargetKey(target);
+  const isDisabled = disabledComboTargets.has(key);
+  if (isDisabled) {
+    disabledComboTargets.delete(key);
+    disabledComboRaw.delete(key);
+    const restored = disabledComboModels.find((item) => comboTargetKey(item) === key) || target;
+    disabledComboModels = disabledComboModels.filter((item) => comboTargetKey(item) !== key);
+    comboModels.push(restored);
+  } else {
+    if (comboModels.length <= 1) {
+      showToast('Нельзя выключить последнюю включённую модель', { type: 'error' });
+      return;
+    }
+    disabledComboTargets.add(key);
+    disabledComboRaw.set(key, target._raw);
+    comboModels = comboModels.filter((item) => comboTargetKey(item) !== key);
+    disabledComboModels.push(target);
+  }
+
+  renderComboDetails();
+  const arr = comboTargetArray();
+  if (!arr) return;
+  arr.length = 0;
+  comboModels.forEach((item) => arr.push(item._raw));
+  try {
+    await saveDisabledComboTargets();
+    await omniFetch(COMBO_PATH(activeComboId), { method: 'PUT', body: activeComboData });
+    showToast(isDisabled ? 'Модель включена' : 'Модель выключена');
+    $comboStatus.textContent = '';
+  } catch (err) {
+    console.error('[Combo] toggle model failed:', err);
+    showToast('Не удалось изменить состояние модели: ' + (err && err.message ? err.message : err), { type: 'error', timeout: 6000 });
+    loadComboModels();
+  }
+}
+
+function comboTargetArray() {
+  if (Array.isArray(activeComboData.models)) return activeComboData.models;
+  if (Array.isArray(activeComboData.targets)) return activeComboData.targets;
+  if (activeComboData.config && activeComboData.config.auto && Array.isArray(activeComboData.config.auto.candidatePool)) {
+    return activeComboData.config.auto.candidatePool;
+  }
+  return null;
+}
+
+function saveReorderedCombo(successMessage = 'Порядок сохранён') {
   const combo = activeCombo();
   if (!combo || !activeComboData) return;
 
-  // Определяем целевой массив внутри activeComboData
-  const arr = Array.isArray(activeComboData.models)
-    ? activeComboData.models
-    : Array.isArray(activeComboData.targets)
-      ? activeComboData.targets
-      : activeComboData.config && activeComboData.config.auto && Array.isArray(activeComboData.config.auto.candidatePool)
-        ? activeComboData.config.auto.candidatePool
-        : null;
+  const arr = comboTargetArray();
   if (!arr) {
     console.warn('[Combo] saveReorderedCombo: no models/targets/candidatePool array found');
     return;
@@ -189,7 +269,7 @@ function saveReorderedCombo() {
     body: activeComboData,
   }).then(() => {
     $comboStatus.textContent = '';
-    showToast('Порядок сохранён');
+    showToast(successMessage);
   }).catch((err) => {
     console.error('[Combo] saveReorderedCombo PUT failed:', err);
     showToast('Не удалось сохранить порядок: ' + (err && err.message ? err.message : err), { type: 'error', timeout: 6000 });
@@ -197,14 +277,97 @@ function saveReorderedCombo() {
   });
 }
 
+/* ---------- проверка модели мини-запросом через OmniRoute ---------- */
+
+function comboTestModelId(target) {
+  if (target.modelId) return String(target.modelId);
+  const raw = target._raw;
+  if (raw && typeof raw === 'object') {
+    if (raw.model) return String(raw.model);
+    if (raw.modelId) return String(raw.modelId);
+    if (raw.id) return String(raw.id);
+  }
+  return String(target.display || '');
+}
+
+/** Мини-запрос к конкретной модели через OmniRoute: max_tokens 1,
+ *  без кеша и памяти. Возвращает время ответа или кидает ошибку. */
+async function testComboModel(modelId) {
+  const startedAt = performance.now();
+  let response;
+  try {
+    response = await fetch('/omniroute/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'X-OmniRoute-No-Cache': 'true' },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 1,
+        stream: false,
+      }),
+      signal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const ms = Math.round(performance.now() - startedAt);
+    const e = new Error(
+      err && err.name === 'TimeoutError'
+        ? 'таймаут ' + Math.round(MODEL_TEST_TIMEOUT_MS / 1000) + ' с'
+        : 'нет ответа от OmniRoute',
+    );
+    e.ms = ms;
+    throw e;
+  }
+
+  if (!response.ok) {
+    let payload = null;
+    try { payload = await response.json(); } catch { /* не JSON */ }
+    const detail = payload && (payload.error && payload.error.message || payload.message)
+      ? (payload.error.message || payload.message)
+      : 'HTTP ' + response.status;
+    const e = new Error(detail);
+    e.ms = Math.round(performance.now() - startedAt);
+    throw e;
+  }
+
+  // Ответ не читаем целиком — достаточно заголовков (латентность реального вызова)
+  const latencyHeader = parseInt(response.headers.get('X-OmniRoute-Latency-Ms'), 10);
+  const ms = Number.isFinite(latencyHeader) && latencyHeader > 0
+    ? latencyHeader
+    : Math.round(performance.now() - startedAt);
+  // Освобождаем соединение — тело тестового ответа панель не нужна
+  try { await response.body.cancel(); } catch { /* уже закрыт */ }
+  return { ms, model: response.headers.get('X-OmniRoute-Model') || modelId };
+}
+
+async function checkComboModel(target, key) {
+  const prev = comboTestResults.get(key);
+  if (prev && prev.state === 'loading') return; // проверка уже идёт
+  comboTestResults.set(key, { state: 'loading' });
+  renderComboList();
+  try {
+    const res = await testComboModel(comboTestModelId(target));
+    comboTestResults.set(key, { state: 'ok', ms: res.ms });
+    showToast('Модель отвечает: ' + res.ms + ' мс');
+  } catch (err) {
+    comboTestResults.set(key, { state: 'err', ms: err.ms, detail: err.message });
+    showToast('Проверка не удалась: ' + err.message, { type: 'error', timeout: 6000 });
+  }
+  renderComboList();
+}
+
 function renderComboList() {
   if (!$comboList) return; // элемент есть только на странице Combo
   $comboList.replaceChildren();
-  comboModels.forEach((t, i) => {
+  const visibleModels = comboModels.concat(disabledComboModels);
+  visibleModels.forEach((t, i) => {
+    const key = comboTargetKey(t);
+    const isDisabled = disabledComboTargets.has(key);
     const li = document.createElement('li');
-    if (i === 0) li.classList.add('top');
-    li.draggable = true;
+    if (i === 0 && !isDisabled) li.classList.add('top');
+    if (isDisabled) li.classList.add('is-disabled');
+    li.draggable = !isDisabled;
     li.dataset.idx = String(i);
+    li.dataset.key = key;
 
     const dragHandle = document.createElement('span');
     dragHandle.className = 'combo-drag-handle';
@@ -239,14 +402,66 @@ function renderComboList() {
       li.appendChild(wBadge);
     }
 
-    if (i === 0) {
-      const badge = document.createElement('span');
-      badge.className = 'badge top';
-      badge.textContent = 'первая';
-      li.appendChild(badge);
+    // Кнопка проверки (иконка check-circle) всегда в DOM — иначе
+    // высота ряда прыгает. Во время проверки скрыта, при ошибке
+    // становится красным x-circle, при успехе рядом цифры «N мс».
+    const testState = comboTestResults.get(key);
+    const testBtn = document.createElement('button');
+    testBtn.type = 'button';
+    testBtn.className = 'btn-icon combo-test-btn';
+    testBtn.setAttribute('aria-label', 'Проверить модель ' + t.display);
+    testBtn.title = 'Проверить модель тестовым запросом';
+    if (testState && testState.state === 'loading') {
+      testBtn.classList.add('combo-test-btn-hidden');
+      testBtn.tabIndex = -1;
+      testBtn.disabled = true;
+    } else if (testState && testState.state === 'err') {
+      testBtn.innerHTML = icon('x-circle');
+      testBtn.classList.add('combo-test-err');
+      testBtn.title = (testState.detail || 'Модель не ответила') + ' — проверить снова';
+      testBtn.addEventListener('click', () => checkComboModel(t, key));
+    } else {
+      testBtn.innerHTML = icon('check-circle');
+      if (testState && testState.state === 'ok') {
+        testBtn.title = 'Модель ответила за ' + testState.ms + ' мс — проверить снова';
+      }
+      testBtn.addEventListener('click', () => checkComboModel(t, key));
+    }
+    li.appendChild(testBtn);
+
+    if (testState && testState.state === 'loading') {
+      const testBadge = document.createElement('span');
+      testBadge.className = 'badge combo-test-badge combo-test-loading';
+      testBadge.textContent = 'проверяю…';
+      testBadge.title = 'Идёт проверка модели…';
+      li.appendChild(testBadge);
+    } else if (testState && testState.state === 'ok') {
+      const msSpan = document.createElement('span');
+      msSpan.className = 'combo-test-ms num combo-test-ok';
+      msSpan.textContent = testState.ms + ' мс';
+      msSpan.title = 'Модель ответила за ' + testState.ms + ' мс';
+      li.appendChild(msSpan);
+    }
+
+    // У первой включённой модели переключателя нет — она всегда активна
+    if (!(i === 0 && !isDisabled)) {
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'combo-switch';
+      toggle.setAttribute('role', 'switch');
+      toggle.setAttribute('aria-checked', String(!isDisabled));
+      toggle.setAttribute('aria-label',
+        (isDisabled ? 'Включить модель ' : 'Выключить модель ') + t.display);
+      toggle.title = isDisabled ? 'Включить модель' : 'Выключить модель';
+      toggle.addEventListener('click', () => toggleComboModel(t));
+      li.appendChild(toggle);
     }
 
     li.addEventListener('dragstart', (e) => {
+      if (isDisabled) {
+        e.preventDefault();
+        return;
+      }
       dragSrcIdx = i;
       li.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
@@ -260,7 +475,7 @@ function renderComboList() {
     });
 
     li.addEventListener('dragover', (e) => {
-      if (dragSrcIdx == null || dragSrcIdx === i) return;
+      if (isDisabled || dragSrcIdx == null || dragSrcIdx === i) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       li.classList.add('drag-over');
@@ -273,9 +488,13 @@ function renderComboList() {
     li.addEventListener('drop', (e) => {
       e.preventDefault();
       li.classList.remove('drag-over');
-      if (dragSrcIdx == null || dragSrcIdx === i) return;
+      if (isDisabled || dragSrcIdx == null || dragSrcIdx === i) return;
       moveModel(dragSrcIdx, i);
     });
+
+    if (isDisabled) {
+      dragHandle.hidden = true;
+    }
 
     /* Тач/перо: HTML5 DnD не срабатывает — эмулируем через Pointer Events.
        Старт — только за ручку, чтобы свайпы по строке листали страницу. */
@@ -307,14 +526,13 @@ function renderComboList() {
 }
 
 function renderComboDetails() {
-  if (!comboModels.length) {
+  if (!comboModels.length && !disabledComboModels.length) {
     $comboDetails.hidden = true;
     $comboStatus.textContent = 'Combo пуста или не содержит targets.';
     return;
   }
 
   $comboDetails.hidden = false;
-
   renderComboList();
 }
 
@@ -327,15 +545,28 @@ async function loadComboModels() {
   try {
     const data = await omniFetch(COMBO_PATH(combo.id));
     activeComboData = data;
-    comboModels = extractComboTargets(data);
+    loadDisabledComboTargets();
+    const loadedTargets = extractComboTargets(data);
+    const savedDisabled = [...disabledComboTargets]
+      .map((key) => disabledComboRaw.has(key) ? { key, raw: disabledComboRaw.get(key) } : null)
+      .filter(Boolean)
+      .map((item) => extractComboTargets({ models: [item.raw] })[0])
+      .filter(Boolean);
+    disabledComboModels = savedDisabled;
+    comboModels = loadedTargets.filter((target) => !disabledComboTargets.has(comboTargetKey(target)));
+    for (const target of loadedTargets) {
+      const key = comboTargetKey(target);
+      if (disabledComboTargets.has(key)) disabledComboRaw.set(key, target._raw);
+    }
+    disabledComboModels = [...disabledComboModels, ...loadedTargets.filter((target) => disabledComboTargets.has(comboTargetKey(target)) && !disabledComboModels.some((item) => comboTargetKey(item) === comboTargetKey(target)))];
     // Стратегия и число targets из шапки панели
     if ($comboStrategyBadge) {
       $comboStrategyBadge.textContent = data.strategy || '?';
       $comboStrategyBadge.hidden = !data.strategy;
     }
     if ($comboTargetsCount) {
-      $comboTargetsCount.textContent = comboModels.length
-        ? 'targets: ' + comboModels.length
+      $comboTargetsCount.textContent = (comboModels.length + disabledComboModels.length)
+        ? 'targets: ' + comboModels.length + ', выключено: ' + disabledComboModels.length
         : '';
     }
     renderComboDetails();

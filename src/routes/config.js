@@ -39,7 +39,7 @@ async function validateOmniUrls(value, validateUpstreamUrl) {
 const WRITABLE_KEYS = [
   'xkiroKey', 'agentrouterKey', 'openrouterKey', 'seloraKey', 'agentrouterUserId', 'omniUrl', 'omniUrls', 'omniKey',
   'agRefreshToken', 'agProject', 'aliases', 'comboActive', 'dlgProvider',
-  'dlgTab', 'modelsProvider', 'statsProvider', 'notificationThresholds',
+  'dlgTab', 'modelsProvider', 'statsProvider', 'notificationThresholds', 'comboDisabled',
   'agentrouterReleaseHoursUtc',
 ];
 
@@ -143,6 +143,7 @@ function registerConfigRoutes(router, {
       modelsProvider: s.modelsProvider || '',
       statsProvider: s.statsProvider || '',
       notificationThresholds: s.notificationThresholds || '',
+      comboDisabled: s.comboDisabled || '',
       agentrouterUserId: s.agentrouterUserId || '',
       agentrouterReleaseHoursUtc: s.agentrouterReleaseHoursUtc || '',
       omniUrl: s.omniUrl || '',
