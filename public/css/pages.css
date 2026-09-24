@@ -680,6 +680,42 @@
   padding-bottom: 2px;
 }
 
+/* Квота истрачена: пустой трек подсвечен красным, процент — статус */
+.ag-bar.exhausted {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklch, var(--danger) 30%, var(--surface)),
+    color-mix(in oklch, var(--danger) 30%, var(--surface)) 4px,
+    color-mix(in oklch, var(--danger) 12%, var(--surface)) 4px,
+    color-mix(in oklch, var(--danger) 12%, var(--surface)) 8px
+  );
+}
+
+.ag-pct.exhausted {
+  color: var(--danger);
+}
+
+
+
+/* Время восстановления квоты прямо в карточке модели */
+.ag-card-reset {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.ag-card-reset > span {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ag-card-reset.exhausted > span {
+  color: var(--danger);
+}
+
 /* Группы моделей Antigravity со сворачиваемой шапкой */
 .ag-group {
   margin-top: 10px;

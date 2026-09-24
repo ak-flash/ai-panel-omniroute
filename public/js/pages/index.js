@@ -694,15 +694,30 @@ function agCard(model) {
   const barRow = document.createElement('div');
   barRow.className = 'ag-bar-row';
 
+  const hasRem = Number.isFinite(rem);
+  const exhausted = hasRem && rem <= 0;
+
+  // Сколько осталось до восстановления квоты модели
+  const remainSec = model.resetTime
+    ? Math.floor((new Date(model.resetTime) - Date.now()) / 1000)
+    : null;
+  const resetText = remainSec !== null && remainSec > 0
+    ? dur(remainSec)
+    : 'обновляется…';
+
   const bar = document.createElement('div');
-  bar.className = 'bar-track ag-bar';
+  bar.className = 'bar-track ag-bar' + (exhausted ? ' exhausted' : '');
   bar.setAttribute('role', 'progressbar');
   bar.setAttribute('aria-label', `Остаток квоты ${model.name || model.id || ''}`.trim());
   bar.setAttribute('aria-valuemin', '0');
   bar.setAttribute('aria-valuemax', '100');
   const fill = document.createElement('div');
   fill.className = 'bar-fill';
-  if (Number.isFinite(rem)) {
+  if (exhausted) {
+    fill.style.width = '0%';
+    bar.setAttribute('aria-valuenow', '0');
+    bar.setAttribute('aria-valuetext', 'Квота истрачена');
+  } else if (hasRem) {
     const remainingPct = Math.round(Math.min(100, Math.max(0, rem * 100)));
     fill.style.width = remainingPct + '%';
     bar.setAttribute('aria-valuenow', String(remainingPct));
@@ -710,20 +725,34 @@ function agCard(model) {
     const cls = agRemClass(rem);
     if (cls) fill.classList.add(cls);
   } else {
+    // Нет данных от Google — трактуем как 0%, но без красного акцента
     fill.style.width = '0%';
+    bar.setAttribute('aria-valuenow', '0');
     bar.setAttribute('aria-valuetext', 'Нет данных');
   }
   bar.appendChild(fill);
   barRow.appendChild(bar);
 
   const pctLabel = document.createElement('span');
-  pctLabel.className = 'ag-pct';
-  pctLabel.textContent = Number.isFinite(rem)
-    ? Math.round(rem * 100) + '%'
-    : '—';
+  pctLabel.className = 'ag-pct' + (exhausted ? ' exhausted' : '');
+  pctLabel.textContent = exhausted ? 'истрачено' : Math.round((hasRem ? rem : 0) * 100) + '%';
   barRow.appendChild(pctLabel);
 
   main.appendChild(barRow);
+
+  // Когда квота кончилась или почти кончилась — время восстановления
+  // прямо в карточке (группа при этом может быть свёрнута)
+  if (remainSec !== null && (exhausted || rem < 0.25)) {
+    const resetLine = document.createElement('div');
+    resetLine.className = 'ag-card-reset' + (exhausted ? ' exhausted' : '');
+    resetLine.appendChild(document.createTextNode('Сброс: '));
+    const resetVal = document.createElement('span');
+    resetVal.textContent = resetText;
+    if (exhausted) resetVal.setAttribute('aria-label', 'Квота истрачена, восстановление через ' + resetText);
+    resetLine.appendChild(resetVal);
+    main.appendChild(resetLine);
+  }
+
   card.appendChild(main);
   return card;
 }
