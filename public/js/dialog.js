@@ -19,7 +19,7 @@ import { renderAliasRows, collectAliasesFromUI } from './aliases.js';
 import { closeTopbar } from './topbar.js';
 import { emit } from './events.js';
 
-let $dlg, $dlgKey, $dlgArKey, $dlgOrKey, $dlgSeloraKey, $dlgArUser, $dlgArReleases, $dlgToggle, $dlgArToggle, $dlgOrToggle, $dlgSeloraToggle, $dlgRemove;
+let $dlg, $dlgKey, $dlgArKey, $dlgOrKey, $dlgSeloraKey, $dlgExperientialKey, $dlgArUser, $dlgArReleases, $dlgToggle, $dlgArToggle, $dlgOrToggle, $dlgSeloraToggle, $dlgExperientialToggle, $dlgRemove;
 
 // Табы диалога: каждый раздел — своя панель и своя кнопка сохранения
 const DLG_TABS = [
@@ -80,11 +80,13 @@ function renderDlgProviderFields() {
   const $ar = $id('dlg-agentrouter-fields');
   const $or = $id('dlg-openrouter-fields');
   const $selora = $id('dlg-selora-fields');
+  const $experiential = $id('dlg-experiential-fields');
   const $ag = $id('dlg-ag-fields');
   if ($xkiro) $xkiro.hidden = v !== 'xkiro';
   if ($ar) $ar.hidden = v !== 'agentrouter';
   if ($or) $or.hidden = v !== 'openrouter';
   if ($selora) $selora.hidden = v !== 'selora';
+  if ($experiential) $experiential.hidden = v !== 'experiential';
   if ($ag) $ag.hidden = v !== 'antigravity';
   // У Antigravity в диалоге нет ключа: токен задаётся входом через Google,
   // поэтому «Проверить и сохранить» и «Удалить ключ» здесь не показываем
@@ -390,10 +392,12 @@ async function saveProviderSettings() {
   const arCandidate = $dlgArKey ? $dlgArKey.value.trim() : '';
   const orCandidate = $dlgOrKey ? $dlgOrKey.value.trim() : '';
   const seloraCandidate = $dlgSeloraKey ? $dlgSeloraKey.value.trim() : '';
+  const experientialCandidate = $dlgExperientialKey ? $dlgExperientialKey.value.trim() : '';
   if (xkiroCandidate) entries.xkiroKey = xkiroCandidate;
   if (arCandidate) entries.agentrouterKey = arCandidate;
   if (orCandidate) entries.openrouterKey = orCandidate;
   if (seloraCandidate) entries.seloraKey = seloraCandidate;
+  if (experientialCandidate) entries.experientialKey = experientialCandidate;
 
   const $res = $id('dlg-result-provider');
   const saved = await saveSettings(entries);
@@ -407,6 +411,7 @@ async function saveProviderSettings() {
   if ($dlgArKey) $dlgArKey.value = '';
   if ($dlgOrKey) $dlgOrKey.value = '';
   if ($dlgSeloraKey) $dlgSeloraKey.value = '';
+  if ($dlgExperientialKey) $dlgExperientialKey.value = '';
   emit('settings:changed');
 
   showResult($res, false, 'Сохранено.');
@@ -414,7 +419,8 @@ async function saveProviderSettings() {
   const candidate = dlgProvider === 'agentrouter' ? arCandidate
     : dlgProvider === 'openrouter' ? orCandidate
       : dlgProvider === 'selora' ? seloraCandidate
-        : xkiroCandidate;
+        : dlgProvider === 'experiential' ? experientialCandidate
+          : xkiroCandidate;
   if (dlgProvider === 'agentrouter') {
     if (candidate) {
       console.info('[AgentRouter] проверка токена…');
@@ -493,6 +499,17 @@ async function saveProviderSettings() {
           : 'OpenRouter: ключ не задан',
         false
       );
+    }
+  } else if (dlgProvider === 'experiential') {
+    if (candidate) {
+      console.info('[Experiential Labs] проверка ключа…');
+      setLine('Experiential Labs: проверяю ключ…', false);
+      providerRequest('usage', { provider: { id: 'experiential', name: 'Experiential Labs' }, key: candidate })
+        .then(() => setLine('Experiential Labs ' + ICO_CHECK + ' ключ работает', false))
+        .catch((err) => setLine('Experiential Labs ' + ICO_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err)), true));
+    } else {
+      const hasStored = vaultGet('hasExperientialKey');
+      setLine(hasStored ? 'Experiential Labs ' + ICO_CHECK + ' ключ сохранён ранее — пустое поле его не меняет' : 'Experiential Labs: ключ не задан', false);
     }
   } else if (dlgProvider === 'selora') {
     if (candidate) {
@@ -618,6 +635,7 @@ function removeDialogKey() {
   if (dlgProvider === 'agentrouter') vaultSet('agentrouterKey', '');
   else if (dlgProvider === 'openrouter') vaultSet('openrouterKey', '');
   else if (dlgProvider === 'selora') vaultSet('seloraKey', '');
+  else if (dlgProvider === 'experiential') vaultSet('experientialKey', '');
   else removeKey();
   $dlg.close();
   emit('settings:changed');
@@ -629,12 +647,14 @@ export function initSettingsDialog() {
   $dlgArKey = $id('dlg-agentrouter-key');
   $dlgOrKey = $id('dlg-openrouter-key');
   $dlgSeloraKey = $id('dlg-selora-key');
+  $dlgExperientialKey = $id('dlg-experiential-key');
   $dlgArUser = $id('dlg-agentrouter-user');
   $dlgArReleases = $id('dlg-agentrouter-releases');
   $dlgToggle = $id('dlg-toggle');
   $dlgArToggle = $id('dlg-agentrouter-toggle');
   $dlgOrToggle = $id('dlg-openrouter-toggle');
   $dlgSeloraToggle = $id('dlg-selora-toggle');
+  $dlgExperientialToggle = $id('dlg-experiential-toggle');
   $dlgRemove = $id('dlg-remove');
   if (!$dlg) return; // диалог есть на всех страницах, но проверимся
 
@@ -672,6 +692,10 @@ export function initSettingsDialog() {
   // Показать/скрыть ключ Selora
   on($dlgSeloraToggle, 'click', () => {
     if ($dlgSeloraKey) $dlgSeloraKey.type = $dlgSeloraKey.type === 'password' ? 'text' : 'password';
+  });
+
+  on($dlgExperientialToggle, 'click', () => {
+    if ($dlgExperientialKey) $dlgExperientialKey.type = $dlgExperientialKey.type === 'password' ? 'text' : 'password';
   });
 
   on($id('dlg-th-ar-release'), 'change', updateArNotifyPermissionHint);

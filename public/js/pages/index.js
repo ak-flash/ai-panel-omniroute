@@ -34,6 +34,52 @@ const $agCards = $id('ag-cards');
 const $agHint = $id('ag-hint');
 const $agBadge = $id('ag-status-badge');
 const $agEmail = $id('ag-account-email');
+const $experientialCard = $id('experiential-card');
+
+async function loadExperientialCard() {
+  if (!$experientialCard) return;
+  const hasKey = Boolean(keyForProvider('experiential')) ||
+    session.providers.some((p) => p.id === 'experiential' && p.hasKey);
+  if (!hasKey || session.activeProvider.id === 'experiential') {
+    $experientialCard.hidden = true;
+    return;
+  }
+  try {
+    const data = await providerRequest('usage', {
+      provider: { id: 'experiential', name: 'Experiential Labs' },
+    });
+    renderExperientialCard(data);
+  } catch (err) {
+    $experientialCard.hidden = false;
+    const error = $id('experiential-error');
+    if (error) {
+      error.hidden = false;
+      error.textContent = 'Не удалось получить статистику — ' +
+        (err && err.message ? err.message : String(err));
+    }
+  }
+}
+
+function renderExperientialCard(data) {
+  if (!$experientialCard) return;
+  $experientialCard.hidden = false;
+  const error = $id('experiential-error');
+  if (error) error.hidden = true;
+  const plan = $id('experiential-plan');
+  const planLabel = data.plan ? String(data.plan).trim() : '';
+  if (plan) {
+    plan.textContent = planLabel.toUpperCase();
+    plan.hidden = !planLabel;
+  }
+  const balance = $id('experiential-balance');
+  if (balance) {
+    const value = (data.wallet || {}).balance_usd;
+    const number = typeof value === 'string' ? parseFloat(value) : value;
+    balance.textContent = Number.isFinite(number) ? fmtUsd(number) : '—';
+  }
+  const used = $id('experiential-used');
+  if (used) used.textContent = Number(data.today_usd) > 0 ? fmtUsd(data.today_usd) : '—';
+}
 
 // Состояние страницы (локальное)
 let usage = null;
@@ -325,7 +371,7 @@ function renderAgentRouterCard(data) {
   const hasDay = Number.isFinite(dayBal) && Number.isFinite(bal) && dayBal > 0;
   const today = hasDay ? Math.max(0, dayBal - bal) : null;
   if (todayEl) {
-    todayEl.textContent = today !== null ? fmtUsd(today) : '—';
+    todayEl.textContent = today !== null && today > 0 ? fmtUsd(today) : '—';
     if (today !== null) {
       todayEl.classList.toggle('val-used', today > 0);
     }
@@ -940,6 +986,7 @@ export async function init() {
     loadAgentRouterCard();
     loadOpenRouterCard();
     loadSeloraCard();
+    loadExperientialCard();
     loadIndexComboFirst();
     return;
   }
@@ -953,6 +1000,7 @@ export async function init() {
   loadAgentRouterCard();
   loadOpenRouterCard();
   loadSeloraCard();
+  loadExperientialCard();
   loadIndexComboFirst();
 }
 
@@ -963,6 +1011,7 @@ function refreshAll() {
   loadAgentRouterCard();
   loadOpenRouterCard();
   loadSeloraCard();
+  loadExperientialCard();
   renderAgentRouterRelease();
 }
 

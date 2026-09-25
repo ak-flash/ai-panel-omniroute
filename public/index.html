@@ -155,7 +155,7 @@
       </div>
     </section>
 
-    <!-- Wallet-карточки: Selora, AgentRouter и OpenRouter в один ряд -->
+    <!-- Карточки Selora и Antigravity в один ряд -->
     <div class="wallet-cards">
       <!-- Selora: баланс кошелька и окна расхода (сессия 4 ч / неделя) -->
       <section id="selora-card" class="stats provider-card provider-card-wallet" hidden>
@@ -202,6 +202,28 @@
         <p class="hint" id="selora-error" hidden></p>
       </section>
 
+      <!-- Antigravity: квоты Google AI Pro по моделям -->
+      <section id="antigravity-quota" class="stats provider-card" hidden>
+        <div class="stats-head provider-card-head">
+          <div class="provider-identity">
+            <div class="provider-name-row">
+              <span class="badge provider-name-badge"><a class="provider-site-link" href="https://aistudio.google.com"
+                  target="_blank" rel="noopener noreferrer">Antigravity</a></span>
+              <span class="badge" id="ag-status-badge"></span>
+            </div>
+          </div>
+          <div class="ag-head-meta">
+            <span class="ag-subtitle">Google AI Pro</span>
+            <span class="ag-email" id="ag-account-email" hidden></span>
+          </div>
+        </div>
+        <div class="stats-row" id="ag-cards"></div>
+        <p class="hint" id="ag-hint" hidden></p>
+      </section>
+
+    </div>
+
+    <div class="provider-dashboard-row">
       <!-- AgentRouter: баланс кошелька -->
       <section id="ar-card" class="stats provider-card provider-card-wallet" hidden>
         <div class="ar-hero">
@@ -233,6 +255,33 @@
         <p class="hint" id="ar-error" hidden></p>
       </section>
 
+      <!-- Experiential Labs: статистика использования -->
+      <section id="experiential-card" class="stats provider-card provider-card-wallet" hidden>
+        <div class="ar-hero">
+          <div class="provider-name-row">
+            <span class="badge provider-name-badge"><a class="provider-site-link"
+                href="https://platform.experientiallabs.ai/overview" target="_blank"
+                rel="noopener noreferrer">Experiential Labs</a></span>
+            <span class="badge" id="experiential-plan" hidden></span>
+          </div>
+        </div>
+        <div class="stats-row">
+          <article class="stat">
+            <div class="stat-top">
+              <span class="stat-label">Баланс</span>
+              <span class="stat-value num" id="experiential-balance">—</span>
+            </div>
+          </article>
+          <article class="stat">
+            <div class="stat-top">
+              <span class="stat-label">За сегодня</span>
+              <span class="stat-value num" id="experiential-used">—</span>
+            </div>
+          </article>
+        </div>
+        <p class="hint" id="experiential-error" hidden></p>
+      </section>
+
       <!-- OpenRouter: баланс кошелька -->
       <section id="or-card" class="stats provider-card provider-card-wallet" hidden>
         <div class="ar-hero">
@@ -240,7 +289,7 @@
             <span class="badge provider-name-badge"><a class="provider-site-link"
                 href="https://openrouter.ai/settings/keys" target="_blank"
                 rel="noopener noreferrer">OpenRouter</a></span>
-            <span class="badge" id="or-plan" hidden></span>
+            
           </div>
         </div>
         <div class="stats-row">
@@ -259,26 +308,8 @@
         </div>
         <p class="hint" id="or-error" hidden></p>
       </section>
-    </div>
 
-    <!-- Antigravity: квоты Google AI Pro по моделям -->
-    <section id="antigravity-quota" class="stats provider-card" hidden>
-      <div class="stats-head provider-card-head">
-        <div class="provider-identity">
-          <div class="provider-name-row">
-            <span class="badge provider-name-badge"><a class="provider-site-link" href="https://aistudio.google.com"
-                target="_blank" rel="noopener noreferrer">Antigravity</a></span>
-            <span class="badge" id="ag-status-badge"></span>
-          </div>
-        </div>
-        <div class="ag-head-meta">
-          <span class="ag-subtitle">Google AI Pro</span>
-          <span class="ag-email" id="ag-account-email" hidden></span>
-        </div>
-      </div>
-      <div class="stats-row" id="ag-cards"></div>
-      <p class="hint" id="ag-hint" hidden></p>
-    </section>
+    </div>
   </main>
 
 

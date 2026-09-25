@@ -45,7 +45,7 @@ function registerProviderRoutes(router, {
           const userField = userFields[params.id];
           if (!clientUserId && userField && s[userField]) clientUserId = s[userField];
         }
-      } catch {}
+      } catch { }
     }
 
     const fn = action === 'usage' ? provider.getUsage : provider.getModels;
@@ -53,7 +53,7 @@ function registerProviderRoutes(router, {
     if (result.status === 502 || result.status === 0) {
       logger.warn(
         `[providers] ${params.id} ${action}: HTTP ${result.status}` +
-          (result.data && result.data.message ? ` — ${result.data.message}` : ''),
+        (result.data && result.data.message ? ` — ${result.data.message}` : ''),
       );
     }
     if (result.status === 200 && params.id === 'agentrouter' && result.data) {

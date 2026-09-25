@@ -17,6 +17,7 @@ const PROVIDER_STORE_KEYS = {
   agentrouter: 'agentrouterKey',
   openrouter: 'openrouterKey',
   selora: 'seloraKey',
+  experiential: 'experientialKey',
 };
 
 /** Дополнительные поля авторизации (у AgentRouter — числовой ID

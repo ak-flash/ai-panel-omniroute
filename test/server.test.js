@@ -465,6 +465,7 @@ test('CLI: node server.js поднимается и отдаёт /api/config', a
         { id: 'agentrouter', name: 'AgentRouter' },
         { id: 'openrouter', name: 'OpenRouter' },
         { id: 'selora', name: 'Selora' },
+        { id: 'experiential', name: 'Experiential Labs' },
       ]
     );
     assert.ok(cfg.providers.every((p) => typeof p.hasKey === 'boolean'));

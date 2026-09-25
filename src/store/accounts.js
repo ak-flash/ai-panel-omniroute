@@ -23,7 +23,7 @@ const { StoreError, encryptValue, decryptValue } = require('./crypto');
 
 const ACCOUNT_NAME_PATTERN = /^[a-z0-9_-]{1,32}$/;
 
-const PROVIDER_IDS = ['xkiro', 'agentrouter', 'openrouter', 'selora', 'omniroute', 'antigravity'];
+const PROVIDER_IDS = ['xkiro', 'agentrouter', 'openrouter', 'selora', 'experiential', 'omniroute', 'antigravity'];
 
 // Сколько может быть разных провайдеров на один (account_name, provider_id):
 //  - xkiro: api_key

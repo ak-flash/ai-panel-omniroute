@@ -19,6 +19,18 @@
   margin-top: 16px;
 }
 
+.provider-dashboard-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.provider-dashboard-row .provider-card {
+  min-width: 0;
+  margin: 0;
+}
+
 #index-combo {
   position: relative;
   overflow: hidden;
@@ -415,6 +427,11 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }
 
+#experiential-card>.stats-row {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
 .provider-card-wallet .provider-card-head {
   margin-bottom: -16px;
   border-bottom: 0;
@@ -621,8 +638,8 @@
   flex-direction: row;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 8px 12px;
-  padding: 10px 14px;
+  gap: 4px 10px;
+  padding: 6px 12px;
 }
 
 .stat.compact .stat-value {
@@ -682,13 +699,11 @@
 
 /* Квота истрачена: пустой трек подсвечен красным, процент — статус */
 .ag-bar.exhausted {
-  background: repeating-linear-gradient(
-    -45deg,
-    color-mix(in oklch, var(--danger) 30%, var(--surface)),
-    color-mix(in oklch, var(--danger) 30%, var(--surface)) 4px,
-    color-mix(in oklch, var(--danger) 12%, var(--surface)) 4px,
-    color-mix(in oklch, var(--danger) 12%, var(--surface)) 8px
-  );
+  background: repeating-linear-gradient(-45deg,
+      color-mix(in oklch, var(--danger) 30%, var(--surface)),
+      color-mix(in oklch, var(--danger) 30%, var(--surface)) 4px,
+      color-mix(in oklch, var(--danger) 12%, var(--surface)) 4px,
+      color-mix(in oklch, var(--danger) 12%, var(--surface)) 8px);
 }
 
 .ag-pct.exhausted {
@@ -706,38 +721,39 @@
   white-space: nowrap;
 }
 
-.ag-card-reset > span {
+.ag-card-reset>span {
   font-size: 13px;
   font-weight: 700;
   color: var(--text);
 }
 
-.ag-card-reset.exhausted > span {
+.ag-card-reset.exhausted>span {
   color: var(--danger);
 }
 
 /* Группы моделей Antigravity со сворачиваемой шапкой */
 .ag-group {
-  margin-top: 10px;
+  margin-top: 0;
   width: 100%;
 }
 
 .ag-group+.ag-group {
   border-top: 1px solid var(--border);
-  padding-top: 6px;
+  padding-top: 8px;
 }
 
 .ag-group-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   background: none;
   border: 0;
-  padding: 4px 0;
+  padding: 2px 0;
   cursor: pointer;
   font: inherit;
   color: var(--text);
+  padding-bottom: 6px;
 }
 
 .ag-group-title {
@@ -779,9 +795,9 @@
 
 .ag-group-body {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px 12px;
-  margin-top: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 12px;
+  margin-top: 0;
 }
 
 .ag-group.collapsed .ag-group-body {
@@ -1192,11 +1208,14 @@ td.coding-col {
 }
 
 @keyframes combo-test-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Switch «модель включена/выключена» — кнопка с role="switch" */
-.combo-switch {  flex: 0 0 auto;
+.combo-switch {
+  flex: 0 0 auto;
   margin-inline-start: auto;
   align-self: center;
   position: relative;

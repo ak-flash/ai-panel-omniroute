@@ -11,6 +11,6 @@ const { PROVIDER_IDS } = require('../src/store/accounts');
 test('PROVIDER_IDS содержит 6 ожидаемых провайдеров', () => {
   assert.deepEqual(
     PROVIDER_IDS.sort(),
-    ['agentrouter', 'antigravity', 'omniroute', 'openrouter', 'selora', 'xkiro'],
+    ['agentrouter', 'antigravity', 'experiential', 'omniroute', 'openrouter', 'selora', 'xkiro'],
   );
 });

@@ -82,6 +82,7 @@ const _DIALOG_HTML = `<dialog id="dlg">
         <option value="agentrouter">AgentRouter</option>
         <option value="openrouter">OpenRouter</option>
         <option value="selora">Selora</option>
+        <option value="experiential">Experiential Labs</option>
         <option value="antigravity">Antigravity</option>
       </select>
       <!-- Поля ключа xKiro -->
@@ -145,6 +146,15 @@ const _DIALOG_HTML = `<dialog id="dlg">
           и каталог моделей, и статистику: план, баланс и окна расхода
           (4-часовая сессия / неделя).
         </p>
+      </div>
+      <!-- Поля Experiential Labs -->
+      <div id="dlg-experiential-fields" hidden>
+        <label for="dlg-experiential-key">API-ключ</label>
+        <div class="input-group">
+          <input type="password" id="dlg-experiential-key" placeholder="sk-…" autocomplete="off">
+          <button type="button" id="dlg-experiential-toggle" class="btn btn-ghost" aria-label="Показать/скрыть ключ">${icon('eye')}</button>
+        </div>
+        <p class="hint">Ключ создаётся в Experiential Labs → API Keys. API совместим с OpenAI.</p>
       </div>
       <!-- Поля Antigravity (Google AI Pro): вход через Google + вставка ссылки -->
       <div id="dlg-ag-fields" hidden>

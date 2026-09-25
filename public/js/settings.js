@@ -129,12 +129,15 @@ export function setOpenRouterKey(k) { vaultSet('openrouterKey', k); }
 // Ключ Selora (sk-gw-…) — обслуживает и каталог моделей, и статистику
 export function getSeloraKey() { return vaultGet('seloraKey') || ''; }
 export function setSeloraKey(k) { vaultSet('seloraKey', k); }
+export function getExperientialKey() { return vaultGet('experientialKey') || ''; }
+export function setExperientialKey(k) { vaultSet('experientialKey', k); }
 
 // Сохранить ключ произвольного вшитого провайдера (экран «Нужен ключ»)
 export function setProviderKey(id, key) {
   if (id === 'openrouter') return vaultSet('openrouterKey', key);
   if (id === 'agentrouter') return vaultSet('agentrouterKey', key);
   if (id === 'selora') return vaultSet('seloraKey', key);
+  if (id === 'experiential') return vaultSet('experientialKey', key);
   return vaultSet('xkiroKey', key);
 }
 
@@ -145,6 +148,7 @@ export function keyForProvider(id) {
   if (id === 'agentrouter') return getAgentRouterKey();
   if (id === 'openrouter') return getOpenRouterKey();
   if (id === 'selora') return getSeloraKey();
+  if (id === 'experiential') return getExperientialKey();
   return '';
 }
 

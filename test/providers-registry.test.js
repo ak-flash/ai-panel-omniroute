@@ -7,12 +7,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadProviders } = require('../providers');
 
-test('вшитый список: xKiro, AgentRouter, OpenRouter, Selora', () => {
+test('вшитый список: xKiro, AgentRouter, OpenRouter, Selora, Experiential Labs', () => {
   const list = loadProviders();
-  assert.equal(list.length, 4);
+  assert.equal(list.length, 5);
 
   // xKiro — первый, активный по умолчанию
-  const [xkiro, agentrouter, openrouter, selora] = list;
+  const [xkiro, agentrouter, openrouter, selora, experiential] = list;
   assert.equal(xkiro.id, 'xkiro');
   assert.equal(xkiro.name, 'xKiro');
   assert.equal(xkiro.upstream, 'https://api.xkiro.com');
@@ -39,4 +39,11 @@ test('вшитый список: xKiro, AgentRouter, OpenRouter, Selora', () => 
   assert.equal(selora.upstream, 'https://api.selora.lol');
   assert.equal(selora.apiKey, '');
   assert.equal(selora.authScheme, 'x-api-key');
+
+  assert.equal(experiential.id, 'experiential');
+  assert.equal(experiential.name, 'Experiential Labs');
+  assert.equal(experiential.upstream, 'https://api.experientiallabs.ai/v1');
+  assert.equal(experiential.site, 'https://platform.experientiallabs.ai/overview');
+  assert.equal(experiential.apiKey, '');
+  assert.equal(experiential.authScheme, 'authorization');
 });
