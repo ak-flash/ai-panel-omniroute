@@ -37,13 +37,34 @@ test('по умолчанию: loopback, порт 8765, data/ и logs/ в кор
 });
 
 test('PUBLIC_ORIGIN включает bind на 0.0.0.0 и remote-режим', () => {
-  const config = loadConfig({ PUBLIC_ORIGIN: 'https://panel.example/path', PORT: '9000' });
+  const TOKEN = 'a'.repeat(32);
+  const config = loadConfig({ PUBLIC_ORIGIN: 'https://panel.example/path', PORT: '9000', AIPANEL_AUTH_TOKEN: TOKEN });
   assert.equal(config.host, '0.0.0.0');
   assert.equal(config.port, 9000);
   assert.equal(config.publicOrigin, 'https://panel.example');
   assert.equal(config.remoteMode, true);
-  assert.equal(loadConfig({ HOST: '0.0.0.0' }).remoteMode, true);
+  assert.equal(loadConfig({ HOST: '0.0.0.0', AIPANEL_AUTH_TOKEN: TOKEN }).remoteMode, true);
   assert.equal(loadConfig({ HOST: 'localhost' }).remoteMode, false);
+});
+
+test('remote-режим требует AIPANEL_AUTH_TOKEN, а токен — минимум 16 символов', () => {
+  assert.throws(() => loadConfig({ PUBLIC_ORIGIN: 'https://panel.example' }), /AIPANEL_AUTH_TOKEN/);
+  assert.throws(() => loadConfig({ HOST: '0.0.0.0' }), /AIPANEL_AUTH_TOKEN/);
+  assert.throws(() => loadConfig({ AIPANEL_AUTH_TOKEN: 'short' }), /AIPANEL_AUTH_TOKEN/);
+  const config = loadConfig({ PUBLIC_ORIGIN: 'https://panel.example', AIPANEL_AUTH_TOKEN: 'x'.repeat(16) });
+  assert.equal(config.authToken, 'x'.repeat(16));
+});
+
+test('ALLOWED_HOSTS и TRUST_PROXY разбираются и попадают в конфигурацию', () => {
+  const config = loadConfig({
+    ALLOWED_HOSTS: 'panel.example, 192.168.1.10',
+    TRUST_PROXY: 'true',
+  });
+  assert.deepEqual(config.allowedHosts, ['panel.example', '192.168.1.10']);
+  assert.equal(config.trustProxy, true);
+  // HOST-адреса тоже попадают в allowlist
+  assert.deepEqual(loadConfig({ HOST: '10.0.0.5', AIPANEL_AUTH_TOKEN: 'y'.repeat(16) }).allowedHosts, ['10.0.0.5']);
+  assert.throws(() => loadConfig({ ALLOWED_HOSTS: 'not a host' }), /ALLOWED_HOSTS/);
 });
 
 test('невалидные значения останавливают старт понятной ошибкой', () => {

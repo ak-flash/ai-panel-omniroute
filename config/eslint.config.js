@@ -5,6 +5,7 @@
 
 const js = require('@eslint/js');
 const globals = require('globals');
+const noUnsanitized = require('eslint-plugin-no-unsanitized');
 
 const rules = {
   ...js.configs.recommended.rules,
@@ -53,6 +54,13 @@ module.exports = [
       sourceType: 'module',
       globals: { ...globals.browser },
     },
-    rules,
+    plugins: { 'no-unsanitized': noUnsanitized },
+    rules: {
+      ...rules,
+      // Данные провайдеров/сервера не должны попадать в HTML-разметку:
+      // текст выводится текстовыми узлами (public/js/dom.js: renderMessage/setIcon)
+      'no-unsanitized/method': 'error',
+      'no-unsanitized/property': 'error',
+    },
   },
 ];

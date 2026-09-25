@@ -18,7 +18,15 @@ const { AGENTROUTER_POOL_RELEASE_TIMEZONE } = require('../providers/agentrouter'
 const { createAntigravityProvider } = require('../providers/antigravity');
 const { createGoogleOauth } = require('../providers/google-oauth');
 const { createStore } = require('./store');
-const { createRequestContext, handleError, requestPath, sendJson } = require('./http');
+const {
+  AppError,
+  createRequestContext,
+  handleError,
+  parseRequestUrl,
+  requestPath,
+  sendJson,
+} = require('./http');
+const { createAuth, readCookie } = require('./auth');
 const { getMetrics } = require('./metrics');
 const { normalizeLog } = require('./file-logger');
 const { Router } = require('./router');
@@ -35,6 +43,33 @@ const { registerAntigravityRoutes } = require('./routes/antigravity');
 const { registerConfigRoutes } = require('./routes/config');
 const { registerAccountRoutes } = require('./routes/accounts');
 const { registerCodingRatingsRoutes } = require('./routes/coding-ratings');
+const { registerAuthRoutes } = require('./routes/auth');
+
+// Без сессии доступны только проверки живости, вход и ресурсы страницы входа
+const PUBLIC_PATHS = new Set([
+  '/api/health',
+  '/api/ready',
+  '/api/auth/status',
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/antigravity-auth/callback',
+  '/login.html',
+  '/js/login.js',
+  '/js/theme-init.js',
+  '/favicon.svg',
+]);
+const PUBLIC_PREFIXES = ['/css/'];
+
+/** Проверка по декодированному нормализованному пути — так же его видит раздача статики. */
+function isPublicPath(pathname) {
+  let decoded;
+  try {
+    decoded = path.posix.normalize(decodeURIComponent(pathname));
+  } catch {
+    return false;
+  }
+  return PUBLIC_PATHS.has(decoded) || PUBLIC_PREFIXES.some((prefix) => decoded.startsWith(prefix));
+}
 
 /**
  * Собирает HTTP-сервер панели. Провайдеры/адаптеры передаются
@@ -56,8 +91,14 @@ function createApp({
   providerDebug = config.providerDebug,
   agentrouterReleaseHoursUtc = config.agentrouterReleaseHoursUtc,
   codingCachePath = config.codingCachePath,
+  authToken = config.authToken,
+  allowedHosts = config.allowedHosts,
+  trustProxy = config.trustProxy,
 } = {}) {
   const activeProvider = providers[0] || null;
+  const auth = createAuth({ token: authToken });
+  const hostAllowlist = [...allowedHosts];
+  if (publicOrigin) hostAllowlist.push(new URL(publicOrigin).hostname);
   // Не перетираем явно переданный antigravity/googleOauth (тесты передают mock).
   const providerLog = normalizeLog(providerLogger);
   const appLog = normalizeLog(logger);
@@ -152,11 +193,35 @@ function createApp({
   });
   registerAccountRoutes(router, { getStore });
   registerCodingRatingsRoutes(router, { getStore, logger: appLog, cachePath: codingCachePath });
+  registerAuthRoutes(router, { auth, publicOrigin, trustProxy, logger: appLog });
   const serveStatic = createStaticHandler({ publicDir: path.join(__dirname, '..', 'public') });
   router.add(['GET', 'HEAD'], '*', ({ req, res, url }) => serveStatic(req, res, url.pathname));
 
+  /** Без сессии: страницы — на вход (с возвратом), остальное — 401 auth_required. */
+  function rejectUnauthenticated(req, res, url) {
+    const isPage =
+      (req.method === 'GET' || req.method === 'HEAD') &&
+      (url.pathname === '/' || url.pathname.endsWith('.html'));
+    if (!isPage) throw new AppError(401, 'auth_required', 'Требуется вход в панель');
+    res.writeHead(302, {
+      location: '/login.html?next=' + encodeURIComponent(url.pathname + url.search),
+      'cache-control': 'no-store',
+    });
+    res.end();
+  }
+
   async function handleRequest(req, res) {
-    if (!applyRequestSecurity(req, res, allowedOrigins, publicOrigin)) return;
+    const allowed = applyRequestSecurity(req, res, {
+      allowedOrigins,
+      publicOrigin,
+      allowedHosts: hostAllowlist,
+      trustProxy,
+    });
+    if (!allowed) return;
+    if (auth.enabled && !auth.verifySession(readCookie(req))) {
+      const url = parseRequestUrl(req.url);
+      if (!isPublicPath(url.pathname)) return rejectUnauthenticated(req, res, url);
+    }
     return router.dispatch(req, res, {});
   }
 

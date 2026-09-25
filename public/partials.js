@@ -5,6 +5,7 @@
    ============================================================ */
 
 import { icon } from './icons.js';
+import { setIcon } from './js/dom.js';
 
 const _NAV = [
   { href: 'index.html', label: 'Статистика', page: 'index', icon: 'bar-chart' },
@@ -43,6 +44,7 @@ export function topbarHTML(page) {
   </div>
   <div class="topbar-end">
     <button id="btn-theme" class="btn" aria-label="Переключить тему" title="Переключить тему">${icon('moon')}</button>
+    <button id="btn-logout" class="btn" hidden aria-label="Выйти" title="Выйти">Выйти</button>
     <button id="btn-topbar-toggle" class="topbar-toggle" aria-expanded="false" aria-controls="topbar-collapse" aria-label="Меню">${icon('bars-3')}</button>
   </div>
 </header>`;
@@ -243,7 +245,7 @@ const _DIALOG_HTML = `<dialog id="dlg">
               <span class="dlg-th-unit">уведомлять</span>
             </span>
           </div>
-          <p class="hint" id="dlg-th-ar-notify-hint" aria-live="polite" style="margin:0"></p>
+          <p class="hint hint-flush" id="dlg-th-ar-notify-hint" aria-live="polite"></p>
           <button type="button" id="dlg-th-ar-notify-enable" class="btn btn-ghost" hidden>Включить уведомления браузера</button>
         </div>
         <div class="dlg-th-group" role="group" aria-labelledby="dlg-th-ag-title">
@@ -273,7 +275,7 @@ const _DIALOG_HTML = `<dialog id="dlg">
         </div>
         <button type="button" id="dlg-alias-add" class="btn btn-ghost dlg-card-action">+ Добавить</button>
       </div>
-      <p class="hint" style="margin-top:0">Напр. <code>openai-compatible-chat-…</code> → <code>xKiro</code></p>
+      <p class="hint hint-top-flush">Напр. <code>openai-compatible-chat-…</code> → <code>xKiro</code></p>
       <div id="dlg-aliases-list"></div>
     </div>
     <div id="dlg-result-aliases" class="dlg-result" role="status" hidden></div>
@@ -302,7 +304,7 @@ export function initTheme() {
     var btn = document.getElementById('btn-theme');
     if (btn) {
       var isDark = t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-      btn.innerHTML = isDark ? icon('sun') : icon('moon');
+      setIcon(btn, isDark ? 'sun' : 'moon');
       btn.title = isDark ? 'Светлая тема' : 'Тёмная тема';
       btn.setAttribute('aria-label', btn.title);
     }
@@ -330,6 +332,9 @@ export function initTheme() {
 
 export function injectPartials(page) {
   const topbar = document.getElementById('tpl-topbar');
+  // Разметка шаблонов — константы этого модуля (иконки из icons.js),
+  // пользовательские данные сюда не подставляются
+  /* eslint-disable no-unsanitized/property -- статичные шаблоны partials.js */
   if (topbar) topbar.outerHTML = topbarHTML(page);
 
   const banner = document.getElementById('tpl-banner');
@@ -340,5 +345,6 @@ export function injectPartials(page) {
 
   const live = document.getElementById('tpl-live');
   if (live) live.outerHTML = liveRegionHTML();
+  /* eslint-enable no-unsanitized/property */
   initTheme();
 }

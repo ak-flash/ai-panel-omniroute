@@ -719,6 +719,8 @@ test('start: Host без порта → redirect_uri на произвольно
   const panel = await startPanel({
     providers: [],
     antigravity: createAntigravityProvider({ url: mock.url }),
+    // Host «свой» — иначе его отклонит allowlist Host (защита от DNS rebinding)
+    env: { ALLOWED_HOSTS: 'ai-panel.home.ak-vps.ru' },
   });
   try {
     const body = await new Promise((resolve, reject) => {
