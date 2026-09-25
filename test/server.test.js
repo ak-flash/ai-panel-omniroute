@@ -6,8 +6,11 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { startMockUpstream, startAgentRouterUpstream, startPanel, startServerProcess } = require('./helpers');
-const { createStore } = require('../src/compat/store');
+const net = require('net');
+const path = require('path');
+const { startMockUpstream, startAgentRouterUpstream, startPanel, startServerProcess, makeTmpDir } = require('./helpers');
+const { createAgentRouterProvider } = require('../providers/agentrouter');
+const { createStore } = require('../src/store');
 const { WRITABLE_KEYS } = require('../src/routes/config');
 const { STORE_KEYS } = require('../src/store');
 
@@ -40,22 +43,15 @@ test('agentrouterReleases в /api/config: дефолт графика и пер�
   }
 
   // Переопределение через env (как в проде): часы меняются, якорь тот же
-  const prev = process.env.AGENTROUTER_RELEASE_HOURS_UTC;
-  process.env.AGENTROUTER_RELEASE_HOURS_UTC = '4,12';
+  const panel2 = await startPanel({ env: { AGENTROUTER_RELEASE_HOURS_UTC: '4,12' } });
   try {
-    const panel2 = await startPanel();
-    try {
-      const cfg = await (await fetch(panel2.base + '/api/config')).json();
-      assert.deepEqual(cfg.data.agentrouterReleases, {
-        timezone: 'Asia/Shanghai',
-        hoursUtc: [4, 12],
-      });
-    } finally {
-      await panel2.stop();
-    }
+    const cfg = await (await fetch(panel2.base + '/api/config')).json();
+    assert.deepEqual(cfg.data.agentrouterReleases, {
+      timezone: 'Asia/Shanghai',
+      hoursUtc: [4, 12],
+    });
   } finally {
-    if (prev === undefined) delete process.env.AGENTROUTER_RELEASE_HOURS_UTC;
-    else process.env.AGENTROUTER_RELEASE_HOURS_UTC = prev;
+    await panel2.stop();
   }
 });
 
@@ -352,7 +348,7 @@ test('нет ключа у клиента → 401 от upstream доходит �
 
 test('agentrouter: ключ и User ID из хранилища уходят адаптеру, hasKey в /api/config', async () => {
   const { createAgentRouterProvider } = require('../providers/agentrouter');
-  const { createStore } = require('../src/compat/store');
+  const { createStore } = require('../src/store');
   const mock = await startAgentRouterUpstream();
   const store = await createStore({ memory: true });
   await store.set('agentrouterKey', STORED_TOKEN);
@@ -392,7 +388,7 @@ test('agentrouter: ключ и User ID из хранилища уходят ад
 
 test('agentrouter: разовый снимок баланса дня сохраняется и уходит в usage', async () => {
   const { createAgentRouterProvider } = require('../providers/agentrouter');
-  const { createStore } = require('../src/compat/store');
+  const { createStore } = require('../src/store');
   const mock = await startAgentRouterUpstream();
   const store = await createStore({ memory: true });
   await store.set('agentrouterKey', STORED_TOKEN);
@@ -450,14 +446,15 @@ test('прокси: /proxy/<id>/… и легаси /proxy/…', async () => {
   }
 });
 
-test('CLI: node server.js поднимается и отдаёт /api/config', async () => {
+test('CLI: node server.js поднимается, отдаёт /api/config и корректно останавливается', async () => {
+  const fs = require('fs');
+  const path = require('path');
   const panel = await startServerProcess();
+  let exitCode;
   try {
     const cfg = await (await fetch(panel.base + '/api/config')).json();
     assert.equal(cfg.ok, true);
     assert.equal(cfg.activeProvider, 'xkiro');
-    // Состав вшитых провайдеров; hasKey зависит от реального data/store.db
-    // (пользовательского), поэтому проверяем только тип
     assert.deepEqual(
       cfg.providers.map((p) => ({ id: p.id, name: p.name })),
       [
@@ -468,7 +465,115 @@ test('CLI: node server.js поднимается и отдаёт /api/config', a
         { id: 'experiential', name: 'Experiential Labs' },
       ]
     );
-    assert.ok(cfg.providers.every((p) => typeof p.hasKey === 'boolean'));
+    // Хранилище свежее и изолированное: ключей нет ни у одного провайдера
+    assert.ok(cfg.providers.every((p) => p.hasKey === false));
+  } finally {
+    exitCode = await panel.stop();
+  }
+  // SIGTERM → graceful shutdown с кодом 0
+  assert.equal(exitCode, 0);
+  // База, ключ и лог — во временных каталогах, а не в репозитории
+  assert.ok(fs.existsSync(path.join(panel.dataDir, 'store.db')));
+  assert.ok(fs.existsSync(path.join(panel.dataDir, 'store.db.key')));
+  assert.ok(fs.existsSync(path.join(panel.logDir, 'ai-panel.log')));
+  assert.equal(fs.statSync(path.join(panel.dataDir, 'store.db')).mode & 0o777, 0o600);
+});
+
+test('CLI: неверная конфигурация — выход с кодом 1 и запись в лог', async () => {
+  await assert.rejects(startServerProcess({ PORT: 'not-a-port' }), /упал при запуске/);
+});
+
+/** Сырой HTTP-запрос через сокет: fetch не отправит некорректную строку запроса. */
+function rawRequest(base, payload) {
+  const { port } = new URL(base);
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(Number(port), '127.0.0.1');
+    let data = '';
+    socket.setEncoding('utf8');
+    socket.on('data', (chunk) => {
+      data += chunk;
+    });
+    socket.on('close', () => resolve(data));
+    socket.on('error', reject);
+    socket.write(payload);
+  });
+}
+
+test('HTTP: некорректный URL в строке запроса → 400, процесс продолжает работать', async () => {
+  const panel = await startPanel();
+  try {
+    const response = await rawRequest(
+      panel.base,
+      'GET http://[ HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n'
+    );
+    assert.match(response, /^HTTP\/1\.1 400 /);
+    const health = await fetch(panel.base + '/api/health');
+    assert.equal(health.status, 200);
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('HTTP: битая %-последовательность в параметре пути → 400 bad_request', async () => {
+  const panel = await startPanel();
+  try {
+    const res = await fetch(panel.base + '/api/providers/%E0%A4%A/usage');
+    assert.equal(res.status, 400);
+    assert.equal((await res.json()).error, 'bad_request');
+    const statics = await fetch(panel.base + '/%E0%A4%A.js');
+    assert.equal(statics.status, 400);
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('/api/ready: 200 при рабочем хранилище и трекере, 503 при сбое записи', async () => {
+  const dbPath = path.join(makeTmpDir('ready-'), 'store.db');
+  const store = await createStore({
+    dbPath,
+    masterKey: 'c'.repeat(64),
+    persistRetryDelaysMs: [],
+    logger: { warn() {} },
+  });
+  const panel = await startPanel({
+    store,
+    providers: [createAgentRouterProvider({ url: 'http://127.0.0.1:1' })],
+  });
+  try {
+    let res = await fetch(panel.base + '/api/ready');
+    assert.equal(res.status, 503);
+    assert.deepEqual(await res.json(), { ready: false, store: true, persisted: true, tracker: false });
+
+    await panel.app.startDailyAgentRouterTracker();
+    res = await fetch(panel.base + '/api/ready');
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ready: true, store: true, persisted: true, tracker: true });
+
+    // Запись на диск сломана: изменения только в памяти → не готов
+    const fs = require('fs');
+    fs.rmSync(dbPath);
+    fs.mkdirSync(dbPath);
+    fs.writeFileSync(path.join(dbPath, 'blocker'), 'x');
+    await assert.rejects(store.set('omniKey', 'x'));
+    res = await fetch(panel.base + '/api/ready');
+    assert.equal(res.status, 503);
+    assert.equal((await res.json()).persisted, false);
+    fs.rmSync(dbPath, { recursive: true });
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('/api/ready без AgentRouter не ждёт трекер; /api/metrics считает запросы', async () => {
+  const panel = await startPanel();
+  try {
+    const ready = await fetch(panel.base + '/api/ready');
+    assert.equal(ready.status, 200);
+    await fetch(panel.base + '/api/nope');
+    const metrics = await (await fetch(panel.base + '/api/metrics')).json();
+    assert.ok(metrics.requests >= 2);
+    assert.equal(typeof metrics.errors, 'number');
+    assert.equal(typeof metrics.avgDurationMs, 'number');
   } finally {
     await panel.stop();
   }

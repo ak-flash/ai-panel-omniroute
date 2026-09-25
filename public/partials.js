@@ -311,21 +311,21 @@ export function initTheme() {
     var saved = localStorage.getItem('theme');
     if (saved === 'light' || saved === 'dark') apply(saved);
     else apply(null);
-  } catch (e) { apply(null); }
+  } catch { apply(null); }
   document.addEventListener('click', function (e) {
     var b = e.target.closest('#btn-theme');
     if (!b) return;
     var cur = document.documentElement.getAttribute('data-theme');
     if (!cur) cur = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     var next = cur === 'dark' ? 'light' : 'dark';
-    try { localStorage.setItem('theme', next); } catch (e2) { }
+    try { localStorage.setItem('theme', next); } catch { }
     apply(next);
   });
   try {
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
-      try { if (!localStorage.getItem('theme')) apply(null); } catch (e) { }
+      try { if (!localStorage.getItem('theme')) apply(null); } catch { }
     });
-  } catch (e) { }
+  } catch { }
 }
 
 export function injectPartials(page) {

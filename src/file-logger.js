@@ -11,35 +11,29 @@
 // Ошибки записи не роняют сервер: после первой неудачи файл
 // больше не трогается, остаётся только консоль. Ротация простая:
 // при превышении maxBytes файл переименовывается в <имя>.old
-// (старый .old перезаписывается).
+// (старый .old перезаписывается). Файл создаётся с правами 0600,
+// каталог — 0700: в логе бывают адреса upstream и диагностика.
+
+
 // ============================================================
 
 const fs = require('fs');
 const path = require('path');
 
-// 5 МБ — примерно 20-30 тысяч диагностических строк
-const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
+// Общий лимит ротации для всех логгеров процесса (пишут в один файл)
+const DEFAULT_MAX_BYTES = 50 * 1024 * 1024;
 
-/**
- * Создаёт логгер-объект с методами info/warn/error + обратно
- * совместимую функцию log(...args) (level=warn).
- *
- * opts:
- *   file     — путь к лог-файлу (пустой/undefined — только консоль)
- *   maxBytes — порог ротации (по умолчанию 5 МБ)
- *   mirror   — куда дублировать строки (по умолчанию console)
- */
 /**
  * Создаёт файловый логгер.
  *
  * Возвращает обратно совместимую функцию log(...args) (уровень warn,
  * формат «таймстамп сообщение») с дополнительными методами
- * info/warn/error, которые добавляют уровень в запись. Так принят
- * и старый вызов log(...), и новый structured-подход logger.error(...).
+ * info/warn/error, которые добавляют уровень в запись, и
+ * infoFile/warnFile/errorFile — только в файл, без консоли.
  *
  * opts:
  *   file     — путь к лог-файлу (пустой/undefined — только консоль)
- *   maxBytes — порог ротации (по умолчанию 5 МБ)
+ *   maxBytes — порог ротации (по умолчанию 50 МБ)
  *   mirror   — куда дублировать строки (по умолчанию console)
  */
 function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console } = {}) {
@@ -71,9 +65,9 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
     if (broken || !file) return;
     const line = (levelTag ? levelTag + ' ' : '') + body;
     try {
-      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
       rotateIfNeeded();
-      fs.appendFileSync(file, new Date().toISOString() + ' ' + line + '\n');
+      fs.appendFileSync(file, new Date().toISOString() + ' ' + line + '\n', { mode: 0o600 });
     } catch {
       broken = true;
     }
@@ -115,4 +109,25 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
   return log;
 }
 
-module.exports = { createFileLogger, DEFAULT_MAX_BYTES };
+/**
+ * Приводит логгер к одному интерфейсу: функция log(...args) уровня warn
+ * с методами info/warn/error. Принимает файловый логгер, любую функцию
+ * (в т.ч. связанную через bind — у неё нет методов), объект с методами
+ * (console) или ничего — тогда пишет в console.
+ */
+function normalizeLog(logger) {
+  const target = logger || console;
+  const method = (level) =>
+    typeof target[level] === 'function' ? (...args) => target[level](...args) : null;
+  const base =
+    typeof target === 'function'
+      ? (...args) => target(...args)
+      : method('warn') || ((...args) => console.warn(...args));
+  const log = (...args) => base(...args);
+  log.info = method('info') || base;
+  log.warn = method('warn') || base;
+  log.error = method('error') || base;
+  return log;
+}
+
+module.exports = { createFileLogger, normalizeLog, DEFAULT_MAX_BYTES };

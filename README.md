@@ -23,7 +23,7 @@
 
 ### Вариант А — через локальный сервер (рекомендуется)
 
-Официальная версия для разработки — Node.js 22 LTS (`.nvmrc`); минимально поддерживается Node.js 18.
+Официальная версия для разработки — Node.js 22 LTS (`.nvmrc`); поддерживаются Node.js 22 и 24 (CI проверяет обе).
 
 ```
 node server.js
@@ -136,18 +136,23 @@ pm2 restart ai-panel --update-env
 
 | Переменная | По умолчанию | Описание |
 |---|---|---|
+| `AIPANEL_ENV_FILE` | `.env` в корне проекта | Путь к env-файлу; задаётся только в окружении, `none` — не читать файл |
 | `HOST` | `127.0.0.1` или `0.0.0.0` при `PUBLIC_ORIGIN` | Адрес прослушивания |
+| `PORT` | `8765` | Порт сервера (0–65535) |
 | `PUBLIC_ORIGIN` | _(пусто)_ | Внешний `https://` origin reverse proxy; явно включает remote deployment |
-| `PORT` | `8765` | Порт локального сервера |
 | `ALLOWED_ORIGINS` | _(пусто)_ | Явный CORS allowlist браузерных origins через запятую |
-| `AIPANEL_MASTER_KEY` | генерируется локально | Необязательный переносимый master key: ровно 64 hex-символа |
+| `AIPANEL_MASTER_KEY` | генерируется локально | Необязательный переносимый master key: ровно 64 hex-символа (`openssl rand -hex 32`); пусто — ключ создаётся в `<AIPANEL_DATA_DIR>/store.db.key` |
+| `AIPANEL_DATA_DIR` | `data/` | Каталог хранилища (`store.db`, `store.db.key`) и кэша рейтинга; относительный путь считается от корня проекта |
+| `AIPANEL_LOG_DIR` | `logs/` | Каталог лога `ai-panel.log` |
+| `AIPANEL_PROVIDER_DEBUG` | `false` | Подробный лог запросов к провайдерам (`true`/`false`); ключи маскируются |
+| `AIPANEL_CODING_CACHE_PATH` | `<AIPANEL_DATA_DIR>/coding-ratings.json` | Файл кэша рейтинга для кодинга |
 | `GOOGLE_CLIENT_ID` | _(пусто)_ | ID клиента OAuth для кнопки «Войти через Google» (Antigravity) |
 | `GOOGLE_CLIENT_SECRET` | _(пусто)_ | Секрет клиента OAuth (для типа «Настольное приложение» обычно не нужен) |
 | `AGENTROUTER_RELEASE_HOURS_UTC` | `2,11` | Часы высвобождения пула AgentRouter (Claude/GPT) в UTC через запятую. По графику провайдера: Пекин 10:00/19:00 = UTC 02:00/11:00; якорь — `Asia/Shanghai`. Переопределяется также в настройках провайдера (поле «Окна сброса») |
 
-Реальные переменные окружения (`PORT=9000 node server.js`) имеют приоритет над `.env`.
+Реальные переменные окружения (`PORT=9000 node server.js`) имеют приоритет над `.env`. Все переменные читает один модуль `src/config.js`; некорректное значение (например, `PORT=abc` или master key не из 64 hex-символов) останавливает старт с понятной ошибкой в логе.
 
-Baseline HTTP-контракта и принятые решения описаны в [`docs/BASELINE.md`](docs/BASELINE.md), [`docs/DECISIONS.md`](docs/DECISIONS.md) и [`docs/TESTING.md`](docs/TESTING.md). Устройство encrypted store, бэкап и ротация master-ключа — в [`docs/STORE.md`](docs/STORE.md).
+Бэкап, восстановление и диагностика — в разделе [«Эксплуатация»](#эксплуатация).
 
 **Откуда брать `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`** (Google Cloud Console):
 
@@ -176,10 +181,11 @@ Baseline HTTP-контракта и принятые решения описан
 | **AgentRouter** | Баланс кошелька, расход за сутки, группа аккаунта; обратный отсчёт до высвобождения пула Claude/GPT (2 раза в сутки — Пекин 10:00/19:00 = UTC 02:00/11:00, в локальном времени) | Access-токен + User ID (`New-Api-User`) | `FACTORIES` (реестр) |
 | **OpenRouter** | Баланс кошелька, расход за сегодня, каталог моделей с ценами и контекстом; рейтинг для кодинга | API-ключ (`sk-or-…`), `Authorization: Bearer` | `FACTORIES` (реестр) |
 | **Selora** | План, баланс кошелька, окна расхода (4-часовая сессия / неделя); каталог моделей с ценами за 1M токенов | API-ключ (`sk-gw-…`), `x-api-key` | `FACTORIES` (реестр) |
+| **Experiential Labs** | Баланс кредитов, расход и число запросов за сегодня (UTC); каталог моделей с ценами | API-ключ, `Authorization: Bearer` | `FACTORIES` (реестр) |
 | **Antigravity** | Квоты Google AI Pro по моделям + групповые окна (5 ч / неделя) | Google OAuth (refresh-token) | Отдельный сервис `src/antigravity-service.js` |
 | **OmniRoute** | Combo: список, targets, порядок; последние combo-запросы и реальная модель | Management-ключ (Bearer) | Прокси `src/routes/omniroute.js` |
 
-xKiro, AgentRouter, OpenRouter и Selora — вшитые провайдеры реестра (селектор в шапке, `/proxy/{id}/…`); Antigravity и OmniRoute подключаются отдельно через ⚙ Настройки.
+xKiro, AgentRouter, OpenRouter, Selora и Experiential Labs — вшитые провайдеры реестра (селектор в шапке, `/proxy/{id}/…`); Antigravity и OmniRoute подключаются отдельно через ⚙ Настройки.
 
 Логика работы с API конкретного провайдера — фабрика адаптера в каталоге `providers/`:
 
@@ -193,6 +199,7 @@ flowchart TD
     R --> A[AgentRouter]
     R --> OR[OpenRouter]
     R --> SEL[Selora]
+    R --> EXP[Experiential Labs]
     S --> G[Antigravity и Google OAuth]
     S --> OM[OmniRoute]
     S --> V[src/store]
@@ -200,14 +207,15 @@ flowchart TD
 ```
 
 - `providers/xkiro.js` — `createXKiroProvider(config)` возвращает адаптер с функциями `getUsage(key)`, `getModels(key)` и авторизацией `x-api-key`
-- `providers/agentrouter.js` — `createAgentRouterProvider(config)` — пока только баланс кошелька: `getUsage(key)` читает профиль `GET /api/user/self`, авторизация `Authorization: Bearer <access-токен>`
+- `providers/agentrouter.js` — `createAgentRouterProvider(config)`: `getUsage(key, userId)` читает профиль `GET /api/user/self` (баланс кошелька), `getModels(key, userId)` — список моделей `GET /api/user/models`; авторизация `Authorization: Bearer <access-токен>` + `New-Api-User`
 - `providers/openrouter.js` — `createOpenRouterProvider(config)`: `getUsage(key)` читает кредиты `GET /auth/key`, `getModels(key)` — каталог `GET /models` (нормализуется в формат панели); авторизация `Authorization: Bearer <ключ>`
 - `providers/selora.js` — `createSeloraProvider(config)`: `getUsage(key)` собирает профиль `GET /v1/me` и окна расхода `GET /v1/me/windows` (сессия 4 ч / неделя, фолбэк на окна из профиля), `getModels(key)` — каталог `GET /v1/models` без авторизации; авторизация `x-api-key <ключ>`
+- `providers/experiential.js` — `createExperientialProvider(config)`: `getUsage(key)` — кредиты `GET /api/v1/credits` и дневной расход `GET /api/gateway/usage/daily`, `getModels(key)` — каталог `GET /api/models`; авторизация `Authorization: Bearer <ключ>`
 - `providers/antigravity.js` — `createAntigravityProvider(config)`: `getQuota({token, project})` и `getQuotaSummary({token, project})` для квот Google AI Pro; токен берётся из OAuth-flow, а не из ключа. В `FACTORIES` не входит — адаптер использует `src/antigravity-service.js`
 - `providers/google-oauth.js` — `createGoogleOauth(config)`: `exchangeCode(…)` (обмен одноразового кода после входа) и `refresh(…)` (автообновление access-token по refresh-token)
 - `providers/index.js` — реестр: `FACTORIES` (id → фабрика) и `loadProviders()`, возвращает список вшитых адаптеров
 
-Набор провайдеров вшит в код: активен каждый из `FACTORIES`, первый — активный по умолчанию. Настройки провайдеров в окружении не задаются (в `.env` — только `PORT`): адрес API вшит в фабрику, ключ всегда присылает клиент.
+Набор провайдеров вшит в код: активен каждый из `FACTORIES`, первый — активный по умолчанию. Настройки провайдеров в окружении не задаются: адрес API вшит в фабрику, ключи хранятся в encrypted store сервера.
 
 Панель получает данные через эндпоинты сервера:
 
@@ -217,20 +225,29 @@ flowchart TD
 | `PUT /api/config` | Write-only сохранение настроек и секретов |
 | `GET /api/providers/{id}/usage` | Статистика через адаптер провайдера |
 | `GET /api/providers/{id}/models` | Каталог моделей через адаптер провайдера |
-| `POST /api/settings/google-token` | Приём Antigravity OAuth-токена (хранится в памяти процесса) |
+| `GET/POST/DELETE /api/settings/google-token` | Статус, приём и сброс учётных данных Antigravity (access token — в памяти процесса) |
+| `GET /api/antigravity-auth/start` | Ссылка входа Google (OAuth, одноразовый `state` с TTL) |
+| `GET /api/antigravity-auth/callback` | Страница-подсказка после входа Google (код остаётся в адресной строке) |
+| `POST /api/antigravity-auth/paste` | Обмен кода из вставленной ссылки на токены |
 | `GET /api/antigravity-quota` | Квоты Antigravity по моделям (кеш 60 с) |
 | `/proxy/{id}/v1/…` | Сырой прокси к API провайдера (или `/proxy/v1/…` — активный) |
 | `/omniroute/…` | Прокси к сохранённому на сервере OmniRoute URL |
 | `GET /api/coding-ratings` | Онлайн-рейтинг для кодинга (кэш Artificial Analysis Coding Index) |
 | `POST /api/coding-ratings/refresh` | Обновить рейтинг (берёт ключ OpenRouter из хранилища) |
+| `GET /api/accounts`, `POST /api/accounts` | Мультиаккаунты: список (только признаки `has*`) и создание |
+| `GET/PUT /api/accounts/active` | Активный аккаунт |
+| `PUT/DELETE /api/accounts/{name}` | Обновление и удаление аккаунта |
+| `GET /api/health` | Liveness: процесс отвечает |
+| `GET /api/ready` | Readiness: хранилище открыто и последние изменения записаны на диск, трекер AgentRouter запущен; иначе 503 |
+| `GET /api/metrics` | Число запросов, ошибок 5xx и среднее время ответа с момента старта |
 
 Ключ провайдера берётся из encrypted store; временный `x-api-key` поддерживается для совместимости. Ответ upstream нормализуется адаптером провайдера.
 
-**Добавить нового провайдера:** файл `providers/<id>.js` с фабрикой по образцу `xkiro.js` (функции `getUsage`/`getModels`, `authScheme`, `upstream`) и строка в `FACTORIES` в `providers/index.js`. Настройки в `.env` не нужны — там только `PORT`.
+**Добавить нового провайдера:** файл `providers/<id>.js` с фабрикой по образцу `xkiro.js` (функции `getUsage`/`getModels`, `upstream`) и строка в `FACTORIES` в `providers/index.js`; поле ключа — в `src/provider-store-fields.js`, `STORE_KEYS` и `WRITABLE_KEYS`, форма и карточка — во фронтенде. Настройки в `.env` не нужны.
 
 ## AgentRouter (баланс кошелька)
 
-Провайдер [agentrouter.org](https://agentrouter.org) (платформа new-api) — пока только **баланс кошелька**; каталог моделей и окна расхода не подключены. На главной есть отдельная карточка **AgentRouter** (баланс и расход за сутки, группа аккаунта); она показывается, когда токен задан, и прячется, если в полосе статистики уже выбран этот провайдер. В самой полосе провайдер выбирается селектором рядом с балансом (выбор запоминается).
+Провайдер [agentrouter.org](https://agentrouter.org) (платформа new-api) — **баланс кошелька**, расход за сутки и список доступных моделей; окон расхода у new-api нет. На главной есть отдельная карточка **AgentRouter** (баланс и расход за сутки, группа аккаунта); она показывается, когда токен задан, и прячется, если в полосе статистики уже выбран этот провайдер. В самой полосе провайдер выбирается селектором рядом с балансом (выбор запоминается).
 
 **Настройка:** ⚙ Настройки → провайдер **AgentRouter** → вставьте **access-токен** и **User ID** аккаунта (в одной строке):
 
@@ -238,7 +255,7 @@ flowchart TD
 2. Вставьте токен в поле «Access-токен», а в поле «User ID» — числовой ID из профиля сайта → **Проверить и сохранить**. Панель покажет баланс. Учтите: повторная генерация отзывает старый токен.
 3. Поле **«Окна сброса»** задаёт часы высвобождения пула — именно оно управляет блоком «Высвобождение пула» и уведомлением о сбросе. Формат — часы 0–23 через запятую (напр. «2,11»); дефолт провайдера — Пекин 10:00/19:00 = UTC 02:00/11:00. **Пусто — блок и уведомления скрыты** (не показывается даже дефолт). Переопределяет `AGENTROUTER_RELEASE_HOURS_UTC` из `.env`.
 
-Токен уходит в заголовке `Authorization: Bearer <token>` на `GET /api/user/self`, а рядом — `New-Api-User: <User ID>` (новые версии new-api требуют ID пользователя вместе с токеном — защита от кражи токенов; без него сайт отвечает 401 «未提供 New-Api-User»). Баланс считается как `data.quota / 500000` (в `/api/status` сайта это поле `quota_per_unit`), до двух знаков; там же берётся `used_quota` → «Израсходовано». Группа аккаунта показывается badge-ем. Для «расхода за сутки» сервер раз в день (~00:00) снимает стартовый баланс дня и хранит его в БД (только последний день) — карточка вычитает из него текущий баланс. API-ключ (sk-…) **не подходит** — он авторизует только запросы к моделям `/v1/*`.
+Токен уходит в заголовке `Authorization: Bearer <token>` на `GET /api/user/self`, а рядом — `New-Api-User: <User ID>` (новые версии new-api требуют ID пользователя вместе с токеном — защита от кражи токенов; без него сайт отвечает 401 «未提供 New-Api-User»). Баланс считается как `data.quota / 500000` (в `/api/status` сайта это поле `quota_per_unit`), до двух знаков; там же берётся `used_quota` → «Израсходовано». Группа аккаунта показывается badge-ем. Для «расхода за сутки» сервер раз в сутки (граница — 00:00 UTC, как у OpenRouter и Experiential) снимает стартовый баланс дня и хранит его в БД (только последний день) — карточка вычитает из него текущий баланс. Перезапуск сервера днём снимок не переснимает. API-ключ (sk-…) **не подходит** — он авторизует только запросы к моделям `/v1/*`.
 
 Токен и User ID хранятся на сервере в зашифрованном виде (поля `agentrouterKey` и `agentrouterUserId` хранилища) и не возвращаются клиенту — как и ключ xKiro.
 
@@ -304,15 +321,33 @@ Access token хранится в памяти, refresh token — в encrypted st
 
 Колонка **Код** — онлайн-оценка модели для кодинга (Artificial Analysis Coding Index, 0–100) из OpenRouter Benchmarks API. Кнопка **«Обновить рейтинг»** загружает свежие данные; без них модели помечаются «нет данных».
 
-Ключ тот же, что у провайдера **OpenRouter** в Настройках: маршрут `POST /api/coding-ratings/refresh` берёт его из серверного хранилища (клиентский `x-openrouter-api-key`/`x-api-key` приоритетнее). Кэш — `data/coding-ratings.json` (24 ч). Окружение для этого не используется.
+Ключ тот же, что у провайдера **OpenRouter** в Настройках: маршрут `POST /api/coding-ratings/refresh` берёт его из серверного хранилища (клиентский `x-openrouter-api-key`/`x-api-key` приоритетнее). Кэш — `<AIPANEL_DATA_DIR>/coding-ratings.json` или `AIPANEL_CODING_CACHE_PATH` (24 ч).
+
+## Эксплуатация
+
+**Где что лежит.** Хранилище — `<AIPANEL_DATA_DIR>/store.db` (SQLite, каждое значение зашифровано AES-256-GCM), master key — `<AIPANEL_DATA_DIR>/store.db.key` или `AIPANEL_MASTER_KEY`. Лог — `<AIPANEL_LOG_DIR>/ai-panel.log` (одна строка на событие, при 50 МБ файл переименовывается в `.old`). Файлы создаются с правами `0600`, каталоги — `0700`.
+
+**Бэкап.** Скопируйте `store.db` **вместе** с ключом (`store.db.key` или значение `AIPANEL_MASTER_KEY`): без ключа данные не расшифровать. База записывается атомарно (временный файл → `fsync` → `rename`), поэтому копировать её можно на работающем сервере. Ключ храните отдельно от копии базы.
+
+**Восстановление.** Остановите сервер, положите `store.db` и `store.db.key` в `AIPANEL_DATA_DIR` (или задайте `AIPANEL_MASTER_KEY`), запустите. Сервер проверяет ключ при старте и не запустится, если:
+
+- `wrong_key` — ключ не подходит к базе: верните ключ от этой копии;
+- `corrupted` — повреждены отдельные записи: восстановите базу из более ранней копии.
+
+**Мониторинг.** `GET /api/health` — процесс жив; `GET /api/ready` — хранилище открыто, последние изменения на диске, трекер запущен (иначе 503). Если запись на диск не удалась (нет места, права), сервер продолжает работать, повторяет запись с паузой и пишет предупреждение в лог; `/api/ready` отвечает 503, пока запись не пройдёт.
+
+**Остановка.** По `SIGTERM`/`SIGINT` сервер дожидается завершения запросов и записи хранилища; если за 5 с не уложился или данные не сохранились — выходит с кодом 1 и пишет причину в лог.
 
 ## Тесты
 
 ```
-npm test        # или: node --test
+npm test            # unit + интеграционные (node:test)
+npm run test:ci     # то же с порогом покрытия src/, providers/, public/
+npm run lint:docs   # README и .env.example соответствуют коду
 ```
 
-Зависимостей нет — используется встроенный раннер Node (`node:test`):
+Зависимостей нет — используется встроенный раннер Node (`node:test`). Тесты не трогают рабочие данные: конфигурация строится из явного env (`test/helpers.js` → `testEnv`), `data/` и `logs/` создаются во временном каталоге, `.env` не читается.
+
 
 - `test/providers-registry.test.js` — реестр вшитых провайдеров: список по умолчанию
 - `test/openrouter.test.js` — адаптер OpenRouter (usage/models, нормализация, ошибки) и обновление рейтинга: ключ из хранилища, ошибка без ключа, кэш
@@ -323,7 +358,7 @@ npm test        # или: node --test
 - `test/server.test.js` — интеграционные: сервер поднимается через `createApp` с адаптерами на mock-upstream (плюс smoke-тест CLI-запуска), проверяются `/api/config`, `/api/providers/…`, оба формата прокси и статика
 - `test/antigravity.test.js` — квоты Antigravity против mock-Google: заголовки (Bearer + User-Agent), fallback `{}` при 403, кеш 60 с, все коды ошибок, refresh-token flow (автообновление, повтор после 401, invalid_grant), групповые окна weekly/5h и тесты «токен/секреты не попадают в ответы/логи»
 
-Реальный API xKiro не вызывается: адаптеры в тестах смотрят на mock-upstream, передаваемый напрямую в сервер (через `createApp`), так что локальный `.env` на результат не влияет.
+Реальные API провайдеров не вызываются: адаптеры в тестах смотрят на mock-upstream, передаваемый напрямую в сервер (через `createApp`).
 
 ## Combo (OmniRoute)
 
@@ -365,54 +400,48 @@ Combo создаются и удаляются в самом OmniRoute (Dashboar
 
 ```
 ai-panel/
-├── server.js          # точка входа-shim: вся логика в src/ (node server.js работает как раньше)
-├── src/               # серверная часть (этап 3 рефакторинга)
+├── server.js          # точка входа (node server.js, PM2): сборка — src/app.js, запуск — src/main.js
+├── src/               # серверная часть
+│   ├── config.js      # единственное место чтения переменных окружения (ENV_VARS, loadConfig)
 │   ├── app.js         # createApp: сборка приложения, security-периметр, error boundary, lifecycle
-│   ├── main.js        # CLI-запуск: .env, проверка конфига, listen, graceful shutdown
+│   ├── main.js        # CLI-запуск: env-файл, конфигурация, listen, graceful shutdown
 │   ├── http.js        # HTTP-инфраструктура: AppError, sendJson, readJson, request ID
-│   ├── router.js      # декларативный роутер (params, 405/404)
-│   ├── security.js    # CORS/same-origin, security headers, валидация upstream и master key
-│   ├── file-logger.js # файловый лог диагностики провайдеров (logs/ai-panel.log)
+│   ├── router.js      # декларативный роутер (params, 400/404/405)
+│   ├── security.js    # CORS/same-origin, security headers, валидация upstream URL
+│   ├── file-logger.js # файловый лог (logs/ai-panel.log), normalizeLog
+│   ├── metrics.js     # счётчики запросов для /api/metrics
 │   ├── routes/        # модули маршрутов: providers, proxy, omniroute, antigravity,
-│   │                  #   config, coding-ratings
+│   │                  #   config, accounts, coding-ratings
 │   ├── antigravity-service.js # состояние Google-авторизации и кеш квот
 │   ├── agentrouter-tracker.js # ежедневный снимок баланса AgentRouter
 │   ├── coding-ratings.js # рейтинг для кодинга: Artificial Analysis через OpenRouter, кеш 24 ч
+│   ├── fetch-utils.js # fetch с таймаутом и разбором JSON
 │   ├── static.js      # раздача public/ (path traversal-защита)
 │   ├── proxy.js       # универсальный прозрачный прокси (/proxy, /omniroute)
-│   ├── store/         # encrypted store (этап 4): фасад index.js, crypto,
-│   │                  #   master-key, persistence, CLI rotate-key
-│   ├── compat/store.js # shim над src/store (обратная совместимость импортов)
+│   ├── store/         # encrypted store: фасад index.js, crypto, master-key,
+│   │                  #   persistence, accounts, CLI rotate-key
 │   └── provider-store-fields.js # маппинг провайдер → поля хранилища
 ├── config/            # конфиги инструментов: eslint.config.js, playwright.config.js
 ├── providers/         # провайдеры AI-API
 │   ├── index.js       # реестр: FACTORIES + loadProviders()
-│   ├── xkiro.js       # фабрика адаптера xKiro (getUsage, getModels)
-│   ├── agentrouter.js # фабрика адаптера AgentRouter (баланс кошелька)
-│   ├── openrouter.js  # фабрика адаптера OpenRouter (getUsage, getModels)
-│   ├── antigravity.js # фабрика адаптера Antigravity (getQuota, getQuotaSummary)
-│   └── google-oauth.js# обновление Google access-token по refresh-token
-├── test/              # тесты (node:test, без зависимостей)
-│   ├── helpers.js     # mock-upstream (xKiro, AgentRouter) и запуск панели в тестах
-│   ├── http.test.js   # readJson/readBody/safeLog/Router
-│   ├── security.test.js # CORS, headers, master key, SSRF-валидация
-│   ├── store.test.js  # encrypted store: открытие, allowlist, ротация
-│   ├── formatters.test.js # чистые форматтеры фронтенда
-│   ├── providers-registry.test.js
-│   ├── xkiro-adapter.test.js
-│   ├── agentrouter-adapter.test.js
-│   ├── openrouter.test.js # адаптер OpenRouter и обновление рейтинга для кодинга
-│   ├── antigravity.test.js
-│   ├── model-match.test.js
-│   ├── call-logs.test.js # разбор call logs (combo → реальная модель)
-│   └── server.test.js
-├── package.json       # скрипты start/test/lint/stylelint/check:secrets;
+│   ├── xkiro.js       # адаптер xKiro (getUsage, getModels)
+│   ├── agentrouter.js # адаптер AgentRouter (баланс кошелька, модели, график пула)
+│   ├── openrouter.js  # адаптер OpenRouter (getUsage, getModels)
+│   ├── selora.js      # адаптер Selora (профиль, окна расхода, модели)
+│   ├── experiential.js# адаптер Experiential Labs (кредиты, расход за сегодня, модели)
+│   ├── antigravity.js # адаптер Antigravity (getQuota, getQuotaSummary)
+│   └── google-oauth.js# Google OAuth: обмен кода, refresh, userinfo
+├── scripts/           # check-docs.js (README ↔ код), check-secrets.js
+├── test/              # тесты node:test: helpers.js (mock-upstream, запуск панели,
+│                      #   изолированная конфигурация) и *.test.js по модулям
+├── tests/playwright/  # браузерные тесты (smoke, вкладки настроек)
+├── package.json       # скрипты start/test/lint/stylelint/lint:docs/check:secrets;
 │                      #   prod-зависимость одна (sql.js), остальное — dev-инструменты
-├── .github/workflows/ # CI: lint, stylelint, тесты (Node 20/22), Playwright smoke
-├── logs/              # диагностика провайдеров (ai-panel.log) — не коммитится
-├── .env               # настройки (порт) — не коммитится
+├── .github/workflows/ # CI: lint, документация, тесты с покрытием, Playwright, audit
+├── data/              # хранилище (AIPANEL_DATA_DIR) — не коммитится
+├── logs/              # лог (AIPANEL_LOG_DIR) — не коммитится
+├── .env               # настройки — не коммитится
 ├── .env.example       # шаблон настроек
-├── .gitignore
 └── public/
     ├── index.html     # страница «Статистика» (главная)
     ├── models.html    # страница «Модели»: каталог моделей
@@ -422,12 +451,13 @@ ai-panel/
     ├── partials.js    # ES-модуль: общие HTML-компоненты (шапка, диалог, баннер)
     ├── model-match.js # ES-модуль: сопоставление модели combo с каталогом
     ├── coding-rating.js # ES-модуль: онлайн-рейтинг для кодинга (колонка «Код»)
-    ├── js/            # фронтенд-модули (этап 5 рефакторинга)
+    ├── js/            # фронтенд-модули
     │   ├── boot.js    # запуск страницы: partials → общий UI → page.init()
     │   ├── session.js # общее состояние: провайдеры, каталог моделей
     │   ├── settings.js# settings client: серверное хранилище, write-only секреты
     │   ├── api.js     # API client: провайдеры, OmniRoute, Antigravity
     │   ├── dialog.js  # диалог настроек: батч-сохранение, проверка ключей
+    │   ├── notifications.js # браузерные уведомления о лимитах
     │   ├── topbar.js  # статус, время обновления, мобильное меню
     │   ├── banner.js  # баннер ошибок
     │   ├── dom.js     # $id/on, инлайн-иконки статуса
@@ -438,7 +468,7 @@ ai-panel/
     │   ├── formatters.js # чистые форматтеры (unit-тесты)
     │   └── pages/     # entry и логика каждой страницы:
     │                  #   index, models, combo, cheatsheet
-    ├── css/           # стили (этап 6 рефакторинга), порядок подключения важен:
+    ├── css/           # стили, порядок подключения важен:
     │                  #   themes, base, layout, components,
     │                  #   pages, dialogs, responsive
     ├── favicon.svg
@@ -448,11 +478,13 @@ ai-panel/
 ## Планы развития
 
 - [x] OmniRoute: переключение моделей в combo (auto-coding и др.) по их API
-- [x] Провайдеры: фабрики-адаптеры в `providers/` (xKiro, AgentRouter, OpenRouter, Antigravity + refresh-token flow)
+- [x] Провайдеры: фабрики-адаптеры в `providers/` (xKiro, AgentRouter, OpenRouter, Selora, Experiential Labs, Antigravity + refresh-token flow)
 - [x] Страница «Управление» с командой обновления opencode
 - [x] Алиасы имён провайдеров для OmniRoute
-- [ ] AgentRouter: каталог моделей и окна расхода (сейчас — только баланс)
-- [ ] Другие провайдеры: новые адаптеры в `providers/` и переключение в панели
-- [ ] Уведомление при приближении к лимиту окна (>80 %)
-- [ ] Несколько ключей/аккаунтов с быстрым переключением
-- [ ] Кнопка запуска/остановки dev-процессов (через сервер)
+- [x] AgentRouter: список моделей и расход за сутки (окон расхода у new-api нет)
+- [x] Уведомления при приближении к лимитам (пороги настраиваются в диалоге настроек)
+- [ ] История расходов по провайдерам с графиком за неделю/месяц
+- [ ] Внешние каналы уведомлений (Telegram, webhook)
+- [ ] Кнопка запуска/остановки dev-процессов — только после аутентификации и по allowlist команд
+
+Текущий план работ — [`IMPROVEMENT_PLAN.md`](IMPROVEMENT_PLAN.md).

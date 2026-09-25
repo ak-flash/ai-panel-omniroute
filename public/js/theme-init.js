@@ -10,4 +10,4 @@
 try {
   var t = localStorage.getItem('theme');
   if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
-} catch (e) { /* нет localStorage — останется системная тема */ }
+} catch { /* нет localStorage — останется системная тема */ }

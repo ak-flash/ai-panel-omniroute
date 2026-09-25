@@ -3,24 +3,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  getServerConfig,
   isPrivateAddress,
   isSameOrigin,
-  parseAllowedOrigins,
-  validateMasterKey,
   validateUpstreamUrl,
 } = require('../src/security');
-
-test('server config использует loopback локально и bind all для PUBLIC_ORIGIN', () => {
-  assert.deepEqual(getServerConfig({}), {
-    host: '127.0.0.1', port: 8765, publicOrigin: '', remoteMode: false,
-  });
-  assert.deepEqual(getServerConfig({ PUBLIC_ORIGIN: 'https://panel.example/path', PORT: '9000' }), {
-    host: '0.0.0.0', port: '9000', publicOrigin: 'https://panel.example', remoteMode: true,
-  });
-  assert.equal(getServerConfig({ HOST: '0.0.0.0' }).remoteMode, true);
-  assert.throws(() => getServerConfig({ PUBLIC_ORIGIN: 'not a URL' }), /PUBLIC_ORIGIN/);
-});
 
 test('same-origin учитывает reverse proxy headers и PUBLIC_ORIGIN', () => {
   const request = {
@@ -50,18 +36,6 @@ test('same-origin отклоняет DNS rebinding при настроенном
   // и LAN-адрес без allowlist не пройдут
   assert.equal(isSameOrigin({ headers: { host: 'evil.example:8765' } }, 'http://evil.example:8765', 'https://panel.example'), false);
   assert.equal(isSameOrigin({ headers: { host: '192.168.1.5:8765' } }, 'http://192.168.1.5:8765', 'https://panel.example'), false);
-});
-
-test('CORS allowlist нормализует origins', () => {
-  assert.deepEqual(
-    parseAllowedOrigins('https://panel.example/path, http://localhost:8765'),
-    ['https://panel.example', 'http://localhost:8765'],
-  );
-});
-
-test('master key принимает только 32 байта в hex', () => {
-  assert.doesNotThrow(() => validateMasterKey('ab'.repeat(32)));
-  assert.throws(() => validateMasterKey('weak'), /64 hexadecimal/);
 });
 
 test('private address detector покрывает loopback, private, link-local и IPv6', () => {

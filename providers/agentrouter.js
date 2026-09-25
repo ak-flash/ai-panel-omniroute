@@ -22,6 +22,7 @@ const DEFAULT_NAME = 'AgentRouter';
 const DEFAULT_URL = 'https://agentrouter.org'; // вшит в фабрику — не выносится в настройки
 
 const { fetchJson } = require('../src/fetch-utils');
+const { normalizeLog } = require('../src/file-logger');
 
 // $1 = 500000 внутренних единиц (quota_per_unit из /api/status AgentRouter)
 const QUOTA_PER_UNIT = 500000;
@@ -101,7 +102,7 @@ function createAgentRouterProvider(config = {}) {
   const configUserId = config.userId || '';
   // Диагностика уходит в log из config (в CLI — файловый логгер,
   // см. src/file-logger.js); по умолчанию — консоль (тесты, dev)
-  const log = typeof config.log === 'function' ? config.log : console.warn;
+  const log = normalizeLog(config.log);
   const debug = config.debug === true;
 
   // Авторизация: Authorization: Bearer <access-токен> + New-Api-User <id>

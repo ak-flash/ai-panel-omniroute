@@ -413,8 +413,7 @@ test('401 от Google → refresh → повторный запрос успеш
   // Mock отвечает 401 на старый токен, 200 — на обновлённый
   const seen = [];
   const server = http.createServer((req, res) => {
-    let body = '';
-    req.on('data', (c) => { body += c; });
+    req.resume();
     req.on('end', () => {
       if (req.url.includes('retrieveUserQuotaSummary')) return json(res, 200, { groups: [] });
       seen.push(req.headers['authorization']);
@@ -542,15 +541,15 @@ test('секреты refresh-связки не возвращаются клие
 
 test('start: ссылка Google с вшитым client_id и loopback redirect_uri', async () => {
   const mock = await startMockGoogle();
-  // client_id/secret берутся из окружения — подставляем фикстурные значения,
-  // чтобы не коммитить реальные (и не триггерить push-protection).
-  const prevId = process.env.GOOGLE_CLIENT_ID;
-  const prevSecret = process.env.GOOGLE_CLIENT_SECRET;
-  process.env.GOOGLE_CLIENT_ID = 'test-google-client-id.apps.googleusercontent.com';
-  process.env.GOOGLE_CLIENT_SECRET = 'test-google-client-secret';
+  // client_id/secret берутся из конфигурации (env) — подставляем фикстурные
+  // значения, чтобы не коммитить реальные (и не триггерить push-protection).
   const panel = await startPanel({
     providers: [],
     antigravity: createAntigravityProvider({ url: mock.url }),
+    env: {
+      GOOGLE_CLIENT_ID: 'test-google-client-id.apps.googleusercontent.com',
+      GOOGLE_CLIENT_SECRET: 'test-google-client-secret',
+    },
   });
   try {
     const res = await fetch(panel.base + '/api/antigravity-auth/start');
@@ -570,8 +569,6 @@ test('start: ссылка Google с вшитым client_id и loopback redirect_
     assert.equal(redirect.port, new URL(panel.base).port);
     assert.ok(params.get('state'));
   } finally {
-    if (prevId === undefined) delete process.env.GOOGLE_CLIENT_ID; else process.env.GOOGLE_CLIENT_ID = prevId;
-    if (prevSecret === undefined) delete process.env.GOOGLE_CLIENT_SECRET; else process.env.GOOGLE_CLIENT_SECRET = prevSecret;
     await panel.stop();
     await mock.close();
   }
@@ -801,72 +798,4 @@ test('tokenExpiresAt появляется после paste-обмена', async 
     await panel.stop();
     await mock.close();
   }
-});
-
-test.skip('legacy refresh headers removed in security stage', async () => {
-  const mock = await startMockGoogle();
-  const oauth = await startMockOauth({ accessToken: 'restored-token' });
-
-  // "Первый запуск": связка известна серверу напрямую (POST из настроек)
-  const first = await startPanel({
-    providers: [],
-    antigravity: createAntigravityProvider({ url: mock.url }),
-    googleOauth: createGoogleOauth({ url: oauth.url }),
-  });
-  const saved = await setRefreshOnly(first);
-  assert.equal(saved.hasRefresh, true);
-  let res = await fetch(first.base + '/api/antigravity-quota');
-  assert.equal(res.status, 200);
-  await first.stop();
-
-  // "Перезапуск": память пуста (hasToken false), но браузер в localStorage
-  // хранит связку и присылает её заголовками x-ag-* → сервер сам обновляет токен
-  const second = await startPanel({
-    providers: [],
-    antigravity: createAntigravityProvider({ url: mock.url }),
-    googleOauth: createGoogleOauth({ url: oauth.url }),
-  });
-  res = await fetch(second.base + '/api/settings/google-token');
-  const st = await res.json();
-  assert.equal(st.hasToken, false);
-  assert.equal(st.hasRefresh, false);
-
-  res = await fetch(second.base + '/api/antigravity-quota', {
-    headers: {
-      'x-ag-refresh-token': 'rt-123',
-      'x-ag-client-id': 'cid',
-      'x-ag-client-secret': 'csec',
-    },
-  });
-  assert.equal(res.status, 200);
-  // OAuth: refresh прошёл по связке из заголовка локального хранилища
-  assert.equal(oauth.seen.filter((r) => r.grant_type === 'refresh_token').length, 2);
-  const lastRefresh = oauth.seen[oauth.seen.length - 1];
-  assert.equal(lastRefresh.refresh_token, 'rt-123');
-  assert.equal(lastRefresh.client_id, 'cid');
-  assert.equal(lastRefresh.client_secret, 'csec');
-  // В Google ушёл обновлённый токен
-  assert.equal(modelCalls(mock)[modelCalls(mock).length - 1].auth, 'Bearer restored-token');
-  await second.stop();
-
-  // Сменилась связка (другой аккаунт) → старый access-токен не используется
-  const third = await startPanel({
-    providers: [],
-    antigravity: createAntigravityProvider({ url: mock.url }),
-    googleOauth: createGoogleOauth({ url: oauth.url }),
-  });
-  const before = oauth.seen.length;
-  res = await fetch(third.base + '/api/antigravity-quota', {
-    headers: {
-      'x-ag-refresh-token': 'rt-other',
-      'x-ag-client-id': 'cid',
-      'x-ag-client-secret': 'csec',
-    },
-  });
-  assert.equal(res.status, 200);
-  assert.equal(oauth.seen[before].refresh_token, 'rt-other');
-  await third.stop();
-
-  await mock.close();
-  await oauth.close();
 });

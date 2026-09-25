@@ -5,3 +5,5 @@ data/
 logs/
 test-results/
 playwright-report/
+.dbg/
+coverage/

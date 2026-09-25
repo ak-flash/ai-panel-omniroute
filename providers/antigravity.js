@@ -15,6 +15,7 @@ const DEFAULT_NAME = 'Antigravity';
 const DEFAULT_URL = 'https://cloudcode-pa.googleapis.com';
 
 const { fetchJson } = require('../src/fetch-utils');
+const { normalizeLog } = require('../src/file-logger');
 
 // Требуемый User-Agent (Google отвергает запросы без него)
 const USER_AGENT = 'vscode/1.96.0 (Antigravity/4.3.0)';
@@ -33,7 +34,7 @@ function createAntigravityProvider(config = {}) {
   const upstream = String(config.url || DEFAULT_URL).replace(/\/+$/, '');
   // Диагностика сети/токенов в log из config (в CLI — файловый логгер);
   // по умолчанию — консоль (тесты, dev)
-  const log = typeof config.log === 'function' ? config.log : console.warn;
+  const log = normalizeLog(config.log);
   const debug = config.debug === true;
 
   /** Один POST к указанному internal-методу Google. */

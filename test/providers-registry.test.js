@@ -47,3 +47,42 @@ test('вшитый список: xKiro, AgentRouter, OpenRouter, Selora, Experie
   assert.equal(experiential.apiKey, '');
   assert.equal(experiential.authScheme, 'authorization');
 });
+
+test('каждый адаптер в debug-режиме работает с логгером без методов (регрессия log.info)', async () => {
+  const http = require('http');
+  const { FACTORIES } = require('../providers');
+  const { createAntigravityProvider } = require('../providers/antigravity');
+  const { createFileLogger } = require('../src/file-logger');
+
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const url = 'http://127.0.0.1:' + server.address().port;
+
+  const lines = [];
+  const plainLog = (...args) => lines.push(args.join(' ')); // функция без .info/.warn
+  const fileLogger = createFileLogger({ file: '', mirror: { warn: (line) => lines.push(line) } });
+  // Ровно то, что раньше передавал src/main.js: bind теряет методы
+  const boundLog = fileLogger.log.bind(fileLogger);
+  try {
+    for (const [id, factory] of Object.entries(FACTORIES)) {
+      for (const log of [plainLog, boundLog, fileLogger]) {
+        const provider = factory({ url, debug: true, log, retryDelayMs: 0 });
+        const usage = await provider.getUsage('key', '1');
+        const models = await provider.getModels('key', '1');
+        assert.equal(typeof usage.status, 'number', id);
+        assert.equal(typeof models.status, 'number', id);
+      }
+    }
+    const antigravity = createAntigravityProvider({ url, debug: true, log: boundLog });
+    assert.equal((await antigravity.getQuota({ token: 't' })).status, 200);
+  } finally {
+    server.closeIdleConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+  // Debug-строки дошли до логгера (секреты замаскированы)
+  assert.ok(lines.some((line) => line.includes('[xKiro] /v1/usage')));
+  assert.ok(lines.every((line) => !line.includes('Bearer key')));
+});

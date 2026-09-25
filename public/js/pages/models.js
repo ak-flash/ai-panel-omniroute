@@ -10,7 +10,7 @@ import { providerRequest, omniFetch, COMBO_LIST_PATH, COMBO_PATH } from '../api.
 import { vaultSet, keyForProvider, setProviderKey } from '../settings.js';
 import { rebootPage, start } from '../boot.js';
 import { compact } from '../formatters.js';
-import { matchModel, normModelName } from '../../model-match.js';
+import { matchModel } from '../../model-match.js';
 import {
   codingRatingResolved,
   codingScoreResolved,
@@ -333,7 +333,6 @@ async function loadModelsComboMarks() {
   try {
     const data = await omniFetch(COMBO_LIST_PATH);
     const combos = combosFromResponse(data);
-    const set = new Set();
     const ids = [];
     for (const c of combos) {
       let targets = extractComboTargets(c);
@@ -341,12 +340,11 @@ async function loadModelsComboMarks() {
         try { const d = await omniFetch(COMBO_PATH(c.id)); targets = extractComboTargets(d); } catch { /* нет деталей — пропускаем */ }
       }
       for (const t of targets) {
-        if (t.modelId) { set.add(normModelName(t.modelId)); ids.push(t.modelId); }
-        if (t.key && t.key !== t.modelId) { set.add(normModelName(t.key)); ids.push(t.key); }
-        if (t.display && t.display !== t.modelId) { set.add(normModelName(t.display)); ids.push(t.display); }
+        if (t.modelId) ids.push(t.modelId);
+        if (t.key && t.key !== t.modelId) ids.push(t.key);
+        if (t.display && t.display !== t.modelId) ids.push(t.display);
       }
     }
-    session.comboModelKeys = set;
     session.comboTargetIds = ids;
     console.debug('[Combo] marks', ids.length, ids.slice(0, 3));
     if (session.models) filterModels();

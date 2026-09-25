@@ -7,6 +7,7 @@
 // ============================================================
 
 const { fetchJson } = require('../src/fetch-utils');
+const { normalizeLog } = require('../src/file-logger');
 
 const DEFAULT_NAME = 'xKiro';
 const DEFAULT_URL = 'https://api.xkiro.com'; // вшит в фабрику — не выносится в настройки
@@ -36,7 +37,7 @@ function createXKiroProvider(config = {}) {
   const apiKey = config.apiKey || '';
   // Диагностика уходит в log из config (в CLI — файловый логгер,
   // см. src/file-logger.js); по умолчанию — консоль (тесты, dev)
-  const log = typeof config.log === 'function' ? config.log : console.warn;
+  const log = normalizeLog(config.log);
   const debug = config.debug === true;
 
   // xKiro авторизует запросы заголовком x-api-key

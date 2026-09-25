@@ -3,10 +3,10 @@
 // ============================================================
 // Encrypted store панели — фасад над компонентами:
 //   crypto.js       — AES-256-GCM шифрование значений (формат v1);
-//   master-key.js   — источник master-ключа (env → файл → генерация);
+//   master-key.js   — источник master-ключа (явный → файл → генерация);
 //   persistence.js  — sql.js и атомарная запись на диск.
 //
-// Гарантии (этап 4 плана рефакторинга):
+// Гарантии:
 //   - master-ключ проверяется при открытии: проверочная запись
 //     __verify содержит известную строку под текущим ключом; для
 //     legacy-баз без неё ключ подтверждается самими данными.
@@ -15,16 +15,19 @@
 //   - запись ограничена allowlist (STORE_KEYS) — произвольное имя
 //     ключа через публичный API записать нельзя;
 //   - setMany() — батч-транзакция: либо все ключи, либо ни один;
-//   - flush() дожидается записи на диск, close() освобождает базу.
+//   - flush() дожидается записи на диск, close() освобождает базу;
+//   - сбой записи не теряет изменения: очередь повторяет запись,
+//     состояние видно через status() (→ /api/ready).
+//
+// Бэкап, восстановление и ротация ключа — README, раздел «Эксплуатация».
 // ============================================================
 
-const path = require('path');
 const { StoreError, encryptValue, decryptValue } = require('./crypto');
 const { resolveMasterKey } = require('./master-key');
 const { openDatabase, createPersistQueue } = require('./persistence');
 const { createAccountStore } = require('./accounts');
 
-const DATA_DIR = path.join(__dirname, '..', '..', 'data');
+const SEE_OPERATIONS = '(см. README, раздел «Эксплуатация»)';
 
 // Внутренняя проверочная запись: известная строка, зашифрованная
 // master-ключом. Не расшифровывается → ключ неверный.
@@ -60,20 +63,31 @@ function readRows(db, sql, params) {
 /**
  * Создаёт готовое хранилище (async — sql.js инициализируется асинхронно).
  * opts:
- *   dbPath    — путь к файлу SQLite (по умолчанию data/store.db)
+ *   dbPath    — путь к файлу SQLite (обязателен для файловой базы;
+ *               в приложении — config.dbPath из src/config.js)
  *   keyPath   — путь к файлу master-ключа (по умолчанию <dbPath>.key)
  *   memory    — true для in-memory базы (тесты): диск не используется
- *   masterKey — явный master-ключ (тесты/ротация); иначе env/файл/генерация
+ *   masterKey — явный master-ключ (AIPANEL_MASTER_KEY, тесты, ротация);
+ *               иначе файл <db>.key или генерация
+ *   logger    — куда писать предупреждения (сбой записи, миграции)
+ *   persistRetryDelaysMs — паузы повторов записи (тесты)
  */
-async function createStore({ dbPath, keyPath, memory = false, masterKey: explicitKey } = {}) {
+async function createStore({
+  dbPath,
+  keyPath,
+  memory = false,
+  masterKey: explicitKey,
+  logger = console,
+  persistRetryDelaysMs,
+} = {}) {
   const inMemory = Boolean(memory);
   const fileDb = !inMemory;
+  if (fileDb && !dbPath) {
+    throw new StoreError('bad_config', 'Не задан путь к файлу хранилища (dbPath)');
+  }
 
-  const resolvedDbPath = fileDb ? dbPath || path.join(DATA_DIR, 'store.db') : null;
-  const resolvedKeyPath =
-    fileDb && !explicitKey && !process.env.AIPANEL_MASTER_KEY
-      ? keyPath || (resolvedDbPath + '.key')
-      : null;
+  const resolvedDbPath = fileDb ? dbPath : null;
+  const resolvedKeyPath = fileDb && !explicitKey ? keyPath || resolvedDbPath + '.key' : null;
 
   const masterKey = resolveMasterKey({
     keyPath: resolvedKeyPath,
@@ -83,7 +97,17 @@ async function createStore({ dbPath, keyPath, memory = false, masterKey: explici
 
   const { db } = await openDatabase({ dbPath: resolvedDbPath, inMemory });
   db.run('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
-  const queue = createPersistQueue({ db, dbPath: resolvedDbPath, inMemory });
+  const warn = (...args) => {
+    if (logger && typeof logger.warn === 'function') logger.warn(...args);
+  };
+  const queue = createPersistQueue({
+    db,
+    dbPath: resolvedDbPath,
+    inMemory,
+    retryDelaysMs: persistRetryDelaysMs,
+    onError: (err) =>
+      warn('[store] не удалось записать базу на диск, повторю позже:', err && err.message),
+  });
 
   // ---------- Multi-Account Credentials (RFC-0003) ----------
   // Создаём аккаунт-стор и мигрируем legacy-ключи в аккаунт 'default',
@@ -150,8 +174,8 @@ async function createStore({ dbPath, keyPath, memory = false, masterKey: explici
   try {
     await accountStore.migrateFromLegacyIfNeeded();
   } catch (err) {
-    // Миграция не критична — продолжаем без неё, лог выведется наверху
-    if (process.env.AIPANEL_DEBUG) console.warn('[store] legacy migration skipped:', err.message);
+    // Миграция не критична — продолжаем без неё
+    warn('[store] миграция legacy-ключей пропущена:', err && err.message);
   }
 
   // ---------- Проверка целостности и master-ключа при открытии ----------
@@ -175,17 +199,17 @@ async function createStore({ dbPath, keyPath, memory = false, masterKey: explici
     const verifyFailure = failures.find((f) => f.key === VERIFY_KEY);
     if (verifyFailure) {
       if (verifyFailure.reason === 'format') {
-        throw new StoreError('corrupted', 'Проверочная запись хранилища повреждена — восстановите базу из бэкапа (см. docs/STORE.md)');
+        throw new StoreError('corrupted', 'Проверочная запись хранилища повреждена — восстановите базу из бэкапа ' + SEE_OPERATIONS);
       }
       if (failures.length === rows.length) {
-        throw new StoreError('wrong_key', 'Master key не подходит к базе: ни одна запись не расшифровывается. Проверьте AIPANEL_MASTER_KEY / файл <db>.key (см. docs/STORE.md)');
+        throw new StoreError('wrong_key', 'Master key не подходит к базе: ни одна запись не расшифровывается. Проверьте AIPANEL_MASTER_KEY / файл <db>.key ' + SEE_OPERATIONS);
       }
-      throw new StoreError('corrupted', 'Проверочная запись не расшифровывается, хотя данные читаются — база повреждена, восстановите из бэкапа (см. docs/STORE.md)');
+      throw new StoreError('corrupted', 'Проверочная запись не расшифровывается, хотя данные читаются — база повреждена, восстановите из бэкапа ' + SEE_OPERATIONS);
     }
 
     if (failures.length > 0) {
       const names = failures.map((f) => '«' + f.key + '»').join(', ');
-      throw new StoreError('corrupted', failures.length + ' записей базы повреждены (' + names + ') — восстановите из бэкапа (см. docs/STORE.md)');
+      throw new StoreError('corrupted', failures.length + ' записей базы повреждены (' + names + ') — восстановите из бэкапа ' + SEE_OPERATIONS);
     }
 
     const verifyRow = rows.find(([key]) => key === VERIFY_KEY);
@@ -200,7 +224,7 @@ async function createStore({ dbPath, keyPath, memory = false, masterKey: explici
     } else {
       const magic = decryptValue(masterKey, verifyRow[1]);
       if (magic.value !== VERIFY_MAGIC) {
-        throw new StoreError('corrupted', 'Проверочная запись не совпадает с ожидаемой — база повреждена (см. docs/STORE.md)');
+        throw new StoreError('corrupted', 'Проверочная запись не совпадает с ожидаемой — база повреждена ' + SEE_OPERATIONS);
       }
     }
   }
@@ -231,7 +255,7 @@ async function createStore({ dbPath, keyPath, memory = false, masterKey: explici
     const found = readRows(db, 'SELECT value FROM kv WHERE key = ?', [key]);
     if (!found.length) return null;
     const res = decryptValue(masterKey, found[0][0]);
-    if (!res.ok) throw new StoreError('corrupted', 'Запись «' + key + '» повреждена (см. docs/STORE.md)');
+    if (!res.ok) throw new StoreError('corrupted', 'Запись «' + key + '» повреждена ' + SEE_OPERATIONS);
     return res.value;
   }
 
@@ -262,7 +286,7 @@ async function createStore({ dbPath, keyPath, memory = false, masterKey: explici
     for (const [key, payload] of readRows(db, 'SELECT key, value FROM kv')) {
       if (key === VERIFY_KEY) continue;
       const res = decryptValue(masterKey, payload);
-      if (!res.ok) throw new StoreError('corrupted', 'Запись «' + key + '» повреждена (см. docs/STORE.md)');
+      if (!res.ok) throw new StoreError('corrupted', 'Запись «' + key + '» повреждена ' + SEE_OPERATIONS);
       out[key] = res.value;
     }
     return out;
@@ -277,8 +301,14 @@ async function createStore({ dbPath, keyPath, memory = false, masterKey: explici
   /** Сбрасывает изменения и закрывает базу. Идемпотентен. */
   async function close() {
     if (closed) return;
-    await queue.close();
     closed = true;
+    await queue.close();
+  }
+
+  /** Готовность хранилища: открыто и последние изменения на диске. */
+  function status() {
+    const persist = queue.status();
+    return { open: !closed, persisted: persist.ok, ...persist };
   }
 
   return {
@@ -289,9 +319,10 @@ async function createStore({ dbPath, keyPath, memory = false, masterKey: explici
     snapshot,
     flush,
     close,
+    status,
     accounts: accountStore,
     _masterKey: masterKey,
   };
 }
 
-module.exports = { createStore, DATA_DIR, STORE_KEYS, StoreError, ACTIVE_ACCOUNT_KEY };
+module.exports = { createStore, STORE_KEYS, StoreError, ACTIVE_ACCOUNT_KEY };

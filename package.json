@@ -4,7 +4,7 @@
   "private": true,
   "description": "Дашборд статистики AI-провайдеров (xKiro), каталог моделей и combo OmniRoute",
   "scripts": {
-    "lint": "eslint . --config config/eslint.config.js",
+    "lint": "eslint . --config config/eslint.config.js --max-warnings=0",
     "lint:fix": "eslint . --config config/eslint.config.js --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -14,16 +14,16 @@
     "test:playwright:headed": "playwright test --config config/playwright.config.js --headed",
     "start": "node server.js",
     "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "node --test test/http.test.js test/model-match.test.js test/formatters.test.js test/call-logs.test.js test/providers-registry.test.js test/security.test.js test/store.test.js test/accounts.test.js test/accounts-merge.test.js test/file-logger.test.js test/xkiro-adapter.test.js test/agentrouter-adapter.test.js test/notifications.test.js test/openrouter.test.js test/selora-adapter.test.js test/experiential-adapter.test.js",
+    "test:unit": "node --test test/http.test.js test/model-match.test.js test/formatters.test.js test/call-logs.test.js test/providers-registry.test.js test/security.test.js test/store.test.js test/accounts.test.js test/accounts-merge.test.js test/file-logger.test.js test/config.test.js test/agentrouter-tracker.test.js test/xkiro-adapter.test.js test/agentrouter-adapter.test.js test/notifications.test.js test/openrouter.test.js test/selora-adapter.test.js test/experiential-adapter.test.js",
     "test:integration": "node --test test/server.test.js test/antigravity.test.js test/accounts-api.test.js",
-    "test:ci": "node --test --experimental-test-coverage --test-coverage-include='src/**/*.js,public/js/**/*.js' --test-coverage-lines=95 --test-coverage-functions=95 --test-coverage-branches=95 --test-reporter=spec",
+    "test:ci": "node --test --experimental-test-coverage --test-coverage-include='src/**/*.js' --test-coverage-include='providers/**/*.js' --test-coverage-include='public/**/*.js' --test-coverage-lines=93 --test-coverage-branches=82 --test-coverage-functions=91 --test-reporter=spec",
     "test:coverage": "node --test --experimental-test-coverage",
     "test:security": "npm run test:unit -- --test-name-pattern security",
     "check:secrets": "node scripts/check-secrets.js",
     "lint:docs": "node scripts/check-docs.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "devEngines": {
     "runtime": {

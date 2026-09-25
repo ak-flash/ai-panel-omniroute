@@ -72,3 +72,29 @@ test('без file — работает как обычная консольна�
   log('только консоль');
   assert.deepEqual(seen, ['только консоль']);
 });
+
+test('normalizeLog: функция, файловый логгер, console-подобный объект, пусто', () => {
+  const { normalizeLog } = require('../src/file-logger');
+  const calls = [];
+  const fn = (...args) => calls.push(['fn', ...args]);
+  const plain = normalizeLog(fn);
+  plain('a');
+  plain.info('b');
+  plain.error('c');
+  assert.deepEqual(calls, [['fn', 'a'], ['fn', 'b'], ['fn', 'c']]);
+
+  const obj = {
+    info: (...args) => calls.push(['info', ...args]),
+    warn: (...args) => calls.push(['warn', ...args]),
+    error: (...args) => calls.push(['error', ...args]),
+  };
+  calls.length = 0;
+  const wrapped = normalizeLog(obj);
+  wrapped('x');
+  wrapped.info('y');
+  wrapped.error('z');
+  assert.deepEqual(calls, [['warn', 'x'], ['info', 'y'], ['error', 'z']]);
+
+  const fallback = normalizeLog();
+  for (const level of ['info', 'warn', 'error']) assert.equal(typeof fallback[level], 'function');
+});

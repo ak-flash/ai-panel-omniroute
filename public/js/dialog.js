@@ -12,7 +12,7 @@
 
 import { $id, on, ICO_CHECK, ICO_X } from './dom.js';
 import { icon } from '../icons.js';
-import { vaultGet, vaultSet, setKey, removeKey, getAgentRouterUserId, getAgRefreshToken, getOmniUrls, normalizeOmniUrls, saveSettings } from './settings.js';
+import { vaultGet, vaultSet, removeKey, getAgentRouterUserId, getAgRefreshToken, getOmniUrls, normalizeOmniUrls, saveSettings } from './settings.js';
 import { providerRequest, omniFetch, COMBO_LIST_PATH, fetchGoogleTokenStatus, startGoogleAuth, pasteGoogleAuth, AG_ERROR_MESSAGES } from './api.js';
 import { fmtUsd, dur } from './formatters.js';
 import { renderAliasRows, collectAliasesFromUI } from './aliases.js';
