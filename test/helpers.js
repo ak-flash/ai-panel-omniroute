@@ -7,18 +7,45 @@
 //   - startServerProcess  — CLI-запуск node server.js (smoke-тест входной точки)
 //   - getFreePort         — свободный порт для слушающих сокетов
 //
-// Провайдеры передаются в панель напрямую (инъекция), окружение
-// не настраивается — в env остаётся только PORT.
+// Провайдеры передаются в панель напрямую (инъекция). Конфигурация
+// строится из явного env (testEnv), а не из окружения разработчика:
+// каталоги data/ и logs/ — во временной папке, .env не читается.
 // ============================================================
 
+const fs = require('fs');
 const http = require('http');
 const net = require('net');
+const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const { createApp } = require('../server');
+const { ENV_VARS, loadConfig } = require('../src/config');
 const { createXKiroProvider } = require('../providers/xkiro');
 
 const ROOT = path.join(__dirname, '..');
+
+// Временный корень на процесс тест-файла; удаляется при выходе
+const TMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-panel-test-'));
+process.on('exit', () => {
+  try {
+    fs.rmSync(TMP_ROOT, { recursive: true, force: true });
+  } catch {}
+});
+
+/** Новый пустой каталог внутри TMP_ROOT. */
+function makeTmpDir(prefix = 'dir-') {
+  return fs.mkdtempSync(path.join(TMP_ROOT, prefix));
+}
+
+/** Env панели для тестов: изолированные data/logs + переопределения. */
+function testEnv(extra = {}) {
+  return {
+    AIPANEL_ENV_FILE: 'none',
+    AIPANEL_DATA_DIR: path.join(TMP_ROOT, 'data'),
+    AIPANEL_LOG_DIR: path.join(TMP_ROOT, 'logs'),
+    ...extra,
+  };
+}
 
 /** Возвращает свободный порт (listen(0) → close). */
 function getFreePort() {
@@ -183,9 +210,10 @@ async function startPanel(opts = {}) {
   const port = await getFreePort();
   const providers = opts.providers ||
     [createXKiroProvider({ url: opts.upstream || 'http://127.0.0.1:1' })];
-  const { createStore } = require('../src/compat/store');
+  const { createStore } = require('../src/store');
   const store = opts.store || await createStore({ memory: true });
   const app = createApp({
+    config: opts.config || loadConfig(testEnv(opts.env)),
     providers,
     antigravity: opts.antigravity,
     googleOauth: opts.googleOauth,
@@ -212,14 +240,25 @@ async function startPanel(opts = {}) {
 /**
  * CLI-запуск: node server.js как дочерний процесс — smoke-тест
  * входной точки (поднялся, слушает порт, отдаёт /api/config).
- * Провайдеры вшитые, upstream не вызывается.
+ * Провайдеры вшитые, upstream не вызывается. Переменные панели из
+ * окружения разработчика не наследуются; data/ и logs/ — во временной
+ * папке (возвращаются как dataDir/logDir). stop() → код выхода.
  */
-async function startServerProcess() {
+async function startServerProcess(extraEnv = {}) {
   const port = await getFreePort();
+  const dir = makeTmpDir('cli-');
+  const env = { ...process.env };
+  for (const name of ENV_VARS) delete env[name];
+  Object.assign(env, testEnv({
+    AIPANEL_DATA_DIR: path.join(dir, 'data'),
+    AIPANEL_LOG_DIR: path.join(dir, 'logs'),
+    PORT: String(port),
+    ...extraEnv,
+  }));
   const proc = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
     cwd: ROOT,
     stdio: ['ignore', 'ignore', 'pipe'],
-    env: { ...process.env, PORT: String(port) },
+    env,
   });
 
   let stderr = '';
@@ -247,19 +286,32 @@ async function startServerProcess() {
 
   return {
     base,
+    dataDir: env.AIPANEL_DATA_DIR,
+    logDir: env.AIPANEL_LOG_DIR,
     stop: () =>
       new Promise((resolve) => {
         const timer = setTimeout(() => {
           try { proc.kill('SIGKILL'); } catch {}
-          resolve();
-        }, 3000);
-        proc.once('exit', () => {
+          resolve(null);
+        }, 8000);
+        proc.once('exit', (code) => {
           clearTimeout(timer);
-          resolve();
+          resolve(code);
         });
-        proc.kill();
+        proc.kill('SIGTERM');
       }),
   };
 }
 
-module.exports = { ROOT, getFreePort, json, startMockUpstream, startAgentRouterUpstream, startPanel, startServerProcess };
+module.exports = {
+  ROOT,
+  TMP_ROOT,
+  getFreePort,
+  json,
+  makeTmpDir,
+  startMockUpstream,
+  startAgentRouterUpstream,
+  startPanel,
+  startServerProcess,
+  testEnv,
+};

@@ -19,6 +19,7 @@
 // ============================================================
 
 const { fetchJson } = require('../src/fetch-utils');
+const { normalizeLog } = require('../src/file-logger');
 
 const DEFAULT_NAME = 'OpenRouter';
 const DEFAULT_URL = 'https://openrouter.ai/api/v1'; // вшит в фабрику — не выносится в настройки
@@ -48,7 +49,7 @@ function createOpenRouterProvider(config = {}) {
   const apiKey = config.apiKey || '';
   // Диагностика уходит в log из config (в CLI — файловый логгер,
   // см. src/file-logger.js); по умолчанию — консоль (тесты, dev)
-  const log = typeof config.log === 'function' ? config.log : console.warn;
+  const log = normalizeLog(config.log);
   const debug = config.debug === true;
 
   // OpenRouter авторизует запросы заголовком Authorization: Bearer

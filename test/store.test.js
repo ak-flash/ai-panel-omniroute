@@ -10,7 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { createStore, StoreError, STORE_KEYS } = require('../src/compat/store');
+const { createStore, StoreError, STORE_KEYS } = require('../src/store');
 const { rotateKey } = require('../src/store/rotate-key');
 
 const KEY_A = 'a'.repeat(64);
@@ -216,4 +216,98 @@ test('невалидный master key (не 64 hex) отклоняется', asy
     () => createStore({ memory: true, masterKey: 'nothex' }),
     (err) => err.code === 'bad_master_key',
   );
+});
+
+/** Ломает запись: на месте файла базы — непустой каталог, rename упадёт. */
+function breakWrites(dbPath) {
+  fs.rmSync(dbPath, { force: true });
+  fs.mkdirSync(dbPath);
+  fs.writeFileSync(path.join(dbPath, 'blocker'), 'x');
+}
+
+async function waitFor(predicate, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error('условие не выполнилось за ' + timeoutMs + ' мс');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+test('сбой записи не ломает очередь: следующая запись сохраняет все изменения', async () => {
+  const { dbPath } = tmpDb();
+  const warnings = [];
+  const store = await createStore({
+    dbPath,
+    masterKey: KEY_A,
+    persistRetryDelaysMs: [], // без повторов по таймеру — проверяем саму очередь
+    logger: { warn: (...args) => warnings.push(args.join(' ')) },
+  });
+  await store.set('omniUrl', 'https://one.example');
+  breakWrites(dbPath);
+
+  await assert.rejects(store.set('omniKey', 'k1'));
+  await assert.rejects(store.set('aliases', 'a'));
+  assert.equal(store.status().persisted, false);
+  assert.equal(store.status().failures, 2);
+  assert.equal(warnings.length, 2);
+  assert.match(warnings[0], /не удалось записать базу/);
+  await assert.rejects(store.flush());
+
+  fs.rmSync(dbPath, { recursive: true });
+  await store.set('comboActive', 'main');
+  assert.equal(store.status().persisted, true);
+  await store.flush();
+
+  const reopened = await createStore({ dbPath, masterKey: KEY_A });
+  assert.equal(await reopened.get('omniUrl'), 'https://one.example');
+  assert.equal(await reopened.get('omniKey'), 'k1');
+  assert.equal(await reopened.get('aliases'), 'a');
+  assert.equal(await reopened.get('comboActive'), 'main');
+  await reopened.close();
+  await store.close();
+});
+
+test('после сбоя запись повторяется по таймеру без новых изменений', async () => {
+  const { dbPath } = tmpDb();
+  const store = await createStore({
+    dbPath,
+    masterKey: KEY_A,
+    persistRetryDelaysMs: [20],
+    logger: { warn() {} },
+  });
+  breakWrites(dbPath);
+  await assert.rejects(store.set('omniKey', 'retry-me'));
+  fs.rmSync(dbPath, { recursive: true });
+  await waitFor(() => store.status().persisted);
+
+  const reopened = await createStore({ dbPath, masterKey: KEY_A });
+  assert.equal(await reopened.get('omniKey'), 'retry-me');
+  await reopened.close();
+  await store.close();
+});
+
+test('close() «грязной» базы закрывает её и сообщает об ошибке', async () => {
+  const { dbPath } = tmpDb();
+  const store = await createStore({ dbPath, masterKey: KEY_A, persistRetryDelaysMs: [], logger: { warn() {} } });
+  breakWrites(dbPath);
+  await assert.rejects(store.set('omniKey', 'lost'));
+  await assert.rejects(store.close());
+  assert.equal(store.status().open, false);
+  await store.close(); // повторный вызов безопасен
+});
+
+test('файлы базы и ключа создаются с правами 0600, временных файлов не остаётся', async () => {
+  const { dir, dbPath } = tmpDb();
+  const store = await createStore({ dbPath: path.join(dir, 'nested', 'store.db') });
+  await store.set('omniUrl', 'https://perm.example');
+  await store.close();
+  const nested = path.join(dir, 'nested');
+  assert.equal(fs.statSync(path.join(nested, 'store.db')).mode & 0o777, 0o600);
+  assert.equal(fs.statSync(path.join(nested, 'store.db.key')).mode & 0o777, 0o600);
+  assert.deepEqual(fs.readdirSync(nested).sort(), ['store.db', 'store.db.key']);
+  assert.ok(dbPath);
+});
+
+test('файловая база без dbPath — понятная ошибка конфигурации', async () => {
+  await assert.rejects(createStore({}), (err) => err.code === 'bad_config');
 });

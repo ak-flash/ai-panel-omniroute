@@ -27,7 +27,7 @@ function isProbablyFixture(filePath) {
 
 function isProbablyDocumentation(filePath) {
   const rel = path.relative(process.cwd(), filePath);
-  return rel.startsWith('docs/') || rel === 'README.md' || rel === 'IMPROVEMENT_AND_REFACTORING_PLAN.md';
+  return rel.startsWith('docs/') || rel === 'README.md';
 }
 
 function walk(dir, list = []) {
@@ -49,9 +49,28 @@ function walk(dir, list = []) {
   return list;
 }
 
+/** Файлы репозитория (индекс git); без git — обход каталога. Так в проверку
+ * не попадают локальные артефакты, которые не коммитятся. */
+function listFiles(root) {
+  try {
+    const out = require('node:child_process').execFileSync('git', ['ls-files', '-z'], {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return out
+      .split('\0')
+      .filter((rel) => rel && FILE_EXTS.includes(path.extname(rel)))
+      .map((rel) => path.join(root, rel))
+      .filter((file) => fs.existsSync(file));
+  } catch {
+    return walk(root);
+  }
+}
+
 function main() {
   const root = process.cwd();
-  const files = walk(root);
+  const files = listFiles(root);
   const bad = [];
 
   for (const file of files) {

@@ -1,6 +1,6 @@
 'use strict';
 
-const { AppError, sendNoContent } = require('./http');
+const { AppError, parseRequestUrl, sendNoContent } = require('./http');
 
 function compilePath(path) {
   if (path instanceof RegExp) return path;
@@ -17,6 +17,14 @@ function compilePath(path) {
   return { regex: new RegExp('^' + source + '$'), keys };
 }
 
+function decodeParam(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw new AppError(400, 'bad_request', 'Некорректная %-последовательность в пути');
+  }
+}
+
 class Router {
   constructor() {
     this.routes = [];
@@ -30,7 +38,8 @@ class Router {
   }
 
   async dispatch(req, res, context) {
-    const pathname = new URL(req.url, 'http://localhost').pathname;
+    const url = parseRequestUrl(req.url);
+    const pathname = url.pathname;
     const pathMatches = [];
     for (const route of this.routes) {
       const regex = route.compiled instanceof RegExp ? route.compiled : route.compiled.regex;
@@ -41,9 +50,11 @@ class Router {
       if (!route.allowed.includes(req.method)) continue;
       const params = {};
       if (!(route.compiled instanceof RegExp)) {
-        route.compiled.keys.forEach((key, index) => { params[key] = decodeURIComponent(match[index + 1]); });
+        route.compiled.keys.forEach((key, index) => {
+          params[key] = decodeParam(match[index + 1]);
+        });
       }
-      return route.handler({ req, res, context, params, url: new URL(req.url, 'http://localhost') });
+      return route.handler({ req, res, context, params, url });
     }
     if (pathMatches.length) throw new AppError(405, 'method_not_allowed', 'Метод не поддерживается', { headers: { allow: [...new Set(pathMatches.flatMap((route) => route.allowed))].join(', ') } });
     throw new AppError(404, 'not_found', 'Маршрут не найден');

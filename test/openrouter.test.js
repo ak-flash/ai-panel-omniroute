@@ -9,12 +9,8 @@
 // рейтинг» (OpenRouter Benchmarks API) — ключ достаётся из
 // серверного хранилища маршрутом /api/coding-ratings/refresh.
 //
-// Кэш рейтинга в тестах пишется во временную папку
-// (AIPANEL_CODING_CACHE_PATH задаётся ДО require сервера).
+// Кэш рейтинга в тестах пишется во временную папку (testEnv в helpers).
 // ============================================================
-
-process.env.AIPANEL_CODING_CACHE_PATH =
-  require('path').join(require('os').tmpdir(), 'ai-panel-test-coding-ratings.json');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -22,7 +18,7 @@ const http = require('http');
 
 const { createOpenRouterProvider } = require('../providers/openrouter');
 const { json, startPanel } = require('./helpers');
-const { createStore } = require('../src/compat/store');
+const { createStore } = require('../src/store');
 const { normModelName } = require('../src/coding-ratings');
 
 /** Mock upstream, похожий на API OpenRouter (/api/v1).

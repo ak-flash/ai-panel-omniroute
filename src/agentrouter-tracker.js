@@ -3,14 +3,16 @@
 // ============================================================
 // Ежедневный снимок баланса AgentRouter.
 //
-// Раз в сутки (как только наступили новые сутки, ~00:00) берём
-// баланс ключом из хранилища и сохраняем его как стартовый баланс
+// Раз в сутки (как только наступили новые сутки по UTC — той же
+// границей считают «сегодня» OpenRouter и Experiential) берём баланс
+// ключом из хранилища и сохраняем его как стартовый баланс
 // дня. Карточка вычитает из него текущий баланс и показывает
 // «потребление за сутки». Храним только последний снимок — при
-// смене суток он перезаписывается.
+// смене суток он перезаписывается. Перезапуск сервера днём снимок
+// не переснимает.
 //
 // Зависимости приходят параметрами (store через getStore, адаптер
-// провайдера, поля хранилища) — модуль не трогает env и fs.
+// провайдера, поля хранилища, часы now) — модуль не трогает env и fs.
 // ============================================================
 
 /** Ключ снимка в хранилище: JSON { date: 'YYYY-MM-DD', balance_usd }. */
@@ -23,14 +25,11 @@ function createAgentRouterTracker({
   userField,
   balanceKey = AGENTROUTER_DAY_BALANCE_KEY,
   now = () => new Date(),
+  intervalMs = 60000,
 }) {
   let interval = null;
 
-  const todayStr = () => {
-    const d = now();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    return d.getFullYear() + '-' + m + '-' + String(d.getDate()).padStart(2, '0');
-  };
+  const todayStr = () => now().toISOString().slice(0, 10);
 
   /** Разовый снимок: баланс ключом из хранилища → JSON в хранилище. */
   async function snapshotDayBalance() {
@@ -50,28 +49,40 @@ function createAgentRouterTracker({
     } catch {}
   }
 
+  /** Снимок, только если за сегодня его ещё нет. */
+  async function ensureTodaySnapshot() {
+    try {
+      const s = await (await getStore()).snapshot();
+      let savedDate = null;
+      if (s[balanceKey]) {
+        try {
+          savedDate = JSON.parse(s[balanceKey]).date;
+        } catch {}
+      }
+      if (savedDate !== todayStr()) await snapshotDayBalance();
+    } catch {}
+  }
+
   /**
    * Планировщик: раз в минуту проверяет смену суток; снимок за сегодня
-   * делается один раз. Реальный снимок берётся в 00:00; перезапуск
-   * сервера днём не переснимает баланс.
+   * делается один раз — и при старте, и по таймеру. Возвращает промис
+   * первой проверки (тесты). Без адаптера AgentRouter не запускается.
    */
   function start() {
-    if (interval) return;
+    if (interval || !provider) return Promise.resolve();
     let busy = false;
-    interval = setInterval(async () => {
+    const tick = async () => {
       if (busy) return;
       busy = true;
       try {
-        const s = await (await getStore()).snapshot();
-        const saved = s[balanceKey];
-        let savedDate = null;
-        if (saved) { try { savedDate = JSON.parse(saved).date; } catch {} }
-        if (savedDate !== todayStr()) await snapshotDayBalance();
-      } catch {} finally {
+        await ensureTodaySnapshot();
+      } finally {
         busy = false;
       }
-    }, 60000);
-    snapshotDayBalance();
+    };
+    interval = setInterval(tick, intervalMs);
+    if (typeof interval.unref === 'function') interval.unref();
+    return tick();
   }
 
   /** Останавливает планировщик (lifecycle API, идемпотентен). */
@@ -97,7 +108,14 @@ function createAgentRouterTracker({
     }
   }
 
-  return { snapshotDayBalance, start, stop, getDayBalanceUsd };
+  return {
+    snapshotDayBalance,
+    start,
+    stop,
+    getDayBalanceUsd,
+    isRunning: () => interval !== null,
+    enabled: Boolean(provider),
+  };
 }
 
 module.exports = { createAgentRouterTracker, AGENTROUTER_DAY_BALANCE_KEY };

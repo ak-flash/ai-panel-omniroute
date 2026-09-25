@@ -24,6 +24,5 @@ export const session = {
   activeProvider: PROVIDER_FALLBACK, // провайдер блока статистики
   modelsProvider: PROVIDER_FALLBACK, // провайдер каталога моделей
   models: [],                       // каталог моделей выбранного провайдера
-  comboModelKeys: new Set(),        // norm id моделей, которые есть в любом Combo
   comboTargetIds: [],               // сырые id target'ов всех Combo (provider/model)
 };

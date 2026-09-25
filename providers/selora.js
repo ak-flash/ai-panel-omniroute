@@ -19,6 +19,7 @@
 // ============================================================
 
 const { fetchJson } = require('../src/fetch-utils');
+const { normalizeLog } = require('../src/file-logger');
 
 const DEFAULT_NAME = 'Selora';
 const DEFAULT_URL = 'https://api.selora.lol'; // вшит в фабрику — не выносится в настройки
@@ -47,7 +48,7 @@ function createSeloraProvider(config = {}) {
     const name = config.name || DEFAULT_NAME;
     const upstream = String(config.url || DEFAULT_URL).replace(/\/+$/, '');
     const apiKey = config.apiKey || '';
-    const log = typeof config.log === 'function' ? config.log : console.warn;
+    const log = normalizeLog(config.log);
     const debug = config.debug === true;
 
     // Selora авторизует запросы заголовком x-api-key (Bearer тоже принимается)

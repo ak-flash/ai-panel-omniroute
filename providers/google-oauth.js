@@ -9,17 +9,7 @@
 
 const DEFAULT_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DEFAULT_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
-
-// OAuth-клиент Antigravity берётся из переменных окружения, чтобы
-// секреты не попадали в репозиторий. Задайте GOOGLE_CLIENT_ID и
-// GOOGLE_CLIENT_SECRET (например, в .env) перед запуском.
-// Читаем лениво (в момент вызова), т.к. .env загружается позже require.
-function getBuiltinClientId() {
-  return process.env.GOOGLE_CLIENT_ID || '';
-}
-function getBuiltinClientSecret() {
-  return process.env.GOOGLE_CLIENT_SECRET || '';
-}
+const { normalizeLog } = require('../src/file-logger');
 
 const DEFAULT_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 
@@ -40,7 +30,7 @@ const REQUEST_TIMEOUT_MS = 15000;
  * access_type=offline + prompt=consent — чтобы гарантированно
  * получить refresh_token.
  */
-function buildAuthUrl({ redirectUri, state, clientId = getBuiltinClientId(), authUrl = DEFAULT_AUTH_URL }) {
+function buildAuthUrl({ redirectUri, state, clientId = '', authUrl = DEFAULT_AUTH_URL }) {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -58,12 +48,16 @@ function buildAuthUrl({ redirectUri, state, clientId = getBuiltinClientId(), aut
  * Создаёт OAuth-клиент Google.
  *
  * config:
- *   url — адрес токен-эндпоинта (тесты подменяют на mock)
+ *   url          — адрес токен-эндпоинта (тесты подменяют на mock)
+ *   clientId     — OAuth-клиент Antigravity (GOOGLE_CLIENT_ID из src/config.js);
+ *   clientSecret — его секрет (GOOGLE_CLIENT_SECRET); в репозитории их нет
  */
 function createGoogleOauth(config = {}) {
   const url = String(config.url || DEFAULT_TOKEN_URL);
   const userinfoUrl = String(config.userinfoUrl || DEFAULT_USERINFO_URL);
-  const log = typeof config.log === 'function' ? config.log : console.warn;
+  const log = normalizeLog(config.log);
+  const defaultClientId = String(config.clientId || '');
+  const defaultClientSecret = String(config.clientSecret || '');
 
   /**
    * Обновляет access-token.
@@ -118,7 +112,12 @@ function createGoogleOauth(config = {}) {
    *     может отсутствовать (Google отдаёт его не всегда)
    *   { ok:false, error } — invalid_grant / oauth_error / network
    */
-  async function exchangeCode({ code, redirectUri, clientId = getBuiltinClientId(), clientSecret = getBuiltinClientSecret() } = {}) {
+  async function exchangeCode({
+    code,
+    redirectUri,
+    clientId = defaultClientId,
+    clientSecret = defaultClientSecret,
+  } = {}) {
     if (!code || !redirectUri) return { ok: false, error: 'no_credentials' };
     try {
       const response = await fetch(url, {
@@ -180,13 +179,20 @@ function createGoogleOauth(config = {}) {
     }
   }
 
-  return { url, userinfoUrl, refresh, exchangeCode, buildAuthUrl, getUserInfo };
+  return {
+    url,
+    userinfoUrl,
+    clientId: defaultClientId,
+    clientSecret: defaultClientSecret,
+    refresh,
+    exchangeCode,
+    buildAuthUrl: (opts = {}) => buildAuthUrl({ clientId: defaultClientId, ...opts }),
+    getUserInfo,
+  };
 }
 
 module.exports = {
   createGoogleOauth,
   buildAuthUrl,
-  getBuiltinClientId,
-  getBuiltinClientSecret,
   DEFAULT_USERINFO_URL,
 };

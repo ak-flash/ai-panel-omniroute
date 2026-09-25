@@ -4,6 +4,7 @@
 // Базовый адрес API уже содержит /v1.
 
 const { fetchJson } = require('../src/fetch-utils');
+const { normalizeLog } = require('../src/file-logger');
 
 const DEFAULT_NAME = 'Experiential Labs';
 const DEFAULT_URL = 'https://api.experientiallabs.ai/v1';
@@ -14,7 +15,7 @@ function createExperientialProvider(config = {}) {
   const name = config.name || DEFAULT_NAME;
   const upstream = String(config.url || DEFAULT_URL).replace(/\/+$/, '');
   const apiKey = config.apiKey || '';
-  const log = typeof config.log === 'function' ? config.log : console.warn;
+  const log = normalizeLog(config.log);
   const authScheme = 'authorization';
   const buildHeaders = (key) => (key ? { authorization: 'Bearer ' + key } : {});
 

@@ -10,14 +10,6 @@ const SECURITY_HEADERS = Object.freeze({
   'x-frame-options': 'DENY',
 });
 
-function parseAllowedOrigins(value = '') {
-  return String(value)
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean)
-    .map((origin) => new URL(origin).origin);
-}
-
 function firstForwardedValue(value) {
   return String(value || '').split(',')[0].trim();
 }
@@ -128,37 +120,11 @@ async function validateUpstreamUrl(value, { allowPrivate = true } = {}) {
   return parsed.toString().replace(/\/$/, '');
 }
 
-function validateMasterKey(value) {
-  if (value == null || value === '') return;
-  if (!/^[a-f0-9]{64}$/i.test(value)) {
-    throw new Error('AIPANEL_MASTER_KEY must be exactly 64 hexadecimal characters');
-  }
-}
-
-function getServerConfig(env = process.env) {
-  let publicOrigin = '';
-  if (env.PUBLIC_ORIGIN) {
-    try { publicOrigin = new URL(env.PUBLIC_ORIGIN).origin; }
-    catch { throw new Error('PUBLIC_ORIGIN must be a valid http(s) URL'); }
-    if (!/^https?:/.test(publicOrigin)) throw new Error('PUBLIC_ORIGIN must use http or https');
-  }
-  const host = env.HOST || (publicOrigin ? '0.0.0.0' : '127.0.0.1');
-  return {
-    host,
-    port: env.PORT || 8765,
-    publicOrigin,
-    remoteMode: !['127.0.0.1', '::1', 'localhost'].includes(host),
-  };
-}
-
 module.exports = {
   SECURITY_HEADERS,
   applyRequestSecurity,
   getExternalOrigin,
-  getServerConfig,
   isPrivateAddress,
   isSameOrigin,
-  parseAllowedOrigins,
-  validateMasterKey,
   validateUpstreamUrl,
 };

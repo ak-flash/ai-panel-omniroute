@@ -1,7 +1,7 @@
 'use strict';
 
 const { AppError, readJson, sendJson } = require('../http');
-const { getCodingRatings, refreshCodingRatings } = require('../coding-ratings');
+const { createCodingRatings } = require('../coding-ratings');
 
 /**
  * Ключ OpenRouter для обновления рейтинга. Приоритет:
@@ -35,7 +35,9 @@ async function resolveOpenRouterKey({ req, getStore }) {
   return '';
 }
 
-function registerCodingRatingsRoutes(router, { getStore, logger = console } = {}) {
+function registerCodingRatingsRoutes(router, { getStore, logger = console, cachePath } = {}) {
+  const { getCodingRatings, refreshCodingRatings } = createCodingRatings({ cachePath, logger });
+
   router.add(['GET', 'HEAD'], '/api/coding-ratings', async ({ res }) => {
     const data = await getCodingRatings();
     return sendJson(res, 200, data, { 'cache-control': 'no-store' });

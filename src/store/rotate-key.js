@@ -12,17 +12,17 @@
 //   AIPANEL_MASTER_KEY=<старый> node src/store/rotate-key.js --new <hex>
 //   node src/store/rotate-key.js                       # новый сгенерируется
 //
+// Путь к базе и AIPANEL_MASTER_KEY берутся так же, как у сервера:
+// окружение → env-файл (src/config.js); --db перекрывает путь.
 // Если старый ключ был из окружения, новый печатается в stdout —
 // файл <db>.key намеренно не пишется, чтобы не конфликтовать с env.
 // ============================================================
 
 const fs = require('fs');
-const path = require('path');
 const { StoreError, encryptValue, decryptValue, generateMasterKey } = require('./crypto');
 const { assertValidMasterKey } = require('./master-key');
 const { openDatabase, createPersistQueue } = require('./persistence');
-
-const DATA_DIR = path.join(__dirname, '..', '..', 'data');
+const { loadConfig, loadEnvFile, resolveEnvFile } = require('../config');
 
 /**
  * Перешифровывает все записи базы под новым ключом.
@@ -72,10 +72,12 @@ function parseArgs(argv) {
 
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  const dbPath = args.dbPath || path.join(DATA_DIR, 'store.db');
+  loadEnvFile(resolveEnvFile(process.env));
+  const config = loadConfig(process.env);
+  const dbPath = args.dbPath || config.dbPath;
   const keyPath = dbPath + '.key';
 
-  let oldKey = process.env.AIPANEL_MASTER_KEY || '';
+  let oldKey = config.masterKey;
   const fromEnv = Boolean(oldKey);
   if (!oldKey && fs.existsSync(keyPath)) {
     oldKey = fs.readFileSync(keyPath, 'utf8').trim();

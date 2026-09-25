@@ -18,14 +18,14 @@
 
    Нормализация ключей — та же, что в public/model-match.js:
    lower-case, оставить [a-z0-9.:/].
+
+   Путь файлового кэша приходит параметром (config.codingCachePath,
+   по умолчанию data/coding-ratings.json).
    ============================================================ */
 
 const fs = require('fs/promises');
 const path = require('path');
 
-// Путь кэша можно переопределить через env (тесты пишут во временную папку)
-const CACHE_PATH = process.env.AIPANEL_CODING_CACHE_PATH
-  || path.join(__dirname, '..', 'data', 'coding-ratings.json');
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24ч
 
 function normModelName(s) {
@@ -37,25 +37,6 @@ function tierFromScore(score) {
   if (score >= 70) return 'top';
   if (score >= 40) return 'good';
   return 'low';
-}
-
-async function loadCache() {
-  try {
-    const raw = await fs.readFile(CACHE_PATH, 'utf8');
-    const data = JSON.parse(raw);
-    if (data && typeof data.ratings === 'object' && data.source && data.source !== 'curated-fallback') return data;
-  } catch {}
-  return null;
-}
-
-async function saveCache(data) {
-  try {
-    await fs.mkdir(path.dirname(CACHE_PATH), { recursive: true });
-    await fs.writeFile(CACHE_PATH, JSON.stringify(data, null, 2), 'utf8');
-  } catch (e) {
-    // не критично — просто логируем
-    console.warn('[coding-ratings] saveCache failed', e.message);
-  }
 }
 
 async function fetchFromOpenRouter(apiKey) {
@@ -118,54 +99,81 @@ async function fetchFromOpenRouter(apiKey) {
   };
 }
 
-let memoryCache = null;
-let memoryCacheAt = 0;
+/**
+ * Рейтинг с кэшем: в памяти (TTL 24 ч) и в JSON-файле cachePath.
+ * Возвращает { getCodingRatings, refreshCodingRatings }.
+ */
+function createCodingRatings({ cachePath, logger = console } = {}) {
+  let memoryCache = null;
+  let memoryCacheAt = 0;
 
-async function getCodingRatings({ allowStale = true } = {}) {
-  const now = Date.now();
-  if (memoryCache && (now - memoryCacheAt) < DEFAULT_TTL_MS && allowStale) {
-    return memoryCache;
+  async function loadCache() {
+    if (!cachePath) return null;
+    try {
+      const raw = await fs.readFile(cachePath, 'utf8');
+      const data = JSON.parse(raw);
+      if (data && typeof data.ratings === 'object' && data.source && data.source !== 'curated-fallback') return data;
+    } catch {}
+    return null;
   }
-  let data = await loadCache();
-  if (data) {
-    memoryCache = data;
+
+  async function saveCache(data) {
+    if (!cachePath) return;
+    try {
+      await fs.mkdir(path.dirname(cachePath), { recursive: true });
+      await fs.writeFile(cachePath, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
+    } catch (e) {
+      // не критично — рейтинг остаётся в памяти
+      if (logger && typeof logger.warn === 'function') logger.warn('[coding-ratings] saveCache failed', e.message);
+    }
+  }
+
+  async function getCodingRatings({ allowStale = true } = {}) {
+    const now = Date.now();
+    if (memoryCache && (now - memoryCacheAt) < DEFAULT_TTL_MS && allowStale) {
+      return memoryCache;
+    }
+    const data = await loadCache();
+    if (data) {
+      memoryCache = data;
+      memoryCacheAt = now;
+      return data;
+    }
+    // нет кэша — пустой онлайн-рейтинг (эвристика удалена)
+    const empty = {
+      updatedAt: null,
+      source: 'none',
+      sourceUrl: null,
+      citation: 'Нет онлайн-данных. Введите ключ OpenRouter в Настройках → Провайдер → OpenRouter и нажмите «Обновить рейтинг» для загрузки Artificial Analysis Coding Index.',
+      ratings: {},
+    };
+    memoryCache = empty;
     memoryCacheAt = now;
-    return data;
+    return empty;
   }
-  // нет кэша — пустой онлайн-рейтинг (эвристика удалена)
-  const empty = {
-    updatedAt: null,
-    source: 'none',
-    sourceUrl: null,
-    citation: 'Нет онлайн-данных. Введите ключ OpenRouter в Настройках → Провайдер → OpenRouter и нажмите «Обновить рейтинг» для загрузки Artificial Analysis Coding Index.',
-    ratings: {},
-  };
-  memoryCache = empty;
-  memoryCacheAt = now;
-  return empty;
-}
 
-async function refreshCodingRatings({ apiKey } = {}) {
-  const key = apiKey || '';
-  if (!key) {
-    const err = new Error('Ключ OpenRouter не задан. Введите его в Настройках → Провайдер → OpenRouter и нажмите «Обновить рейтинг».');
-    err.code = 'missing_api_key';
-    err.status = 400;
-    throw err;
+  async function refreshCodingRatings({ apiKey } = {}) {
+    const key = apiKey || '';
+    if (!key) {
+      const err = new Error('Ключ OpenRouter не задан. Введите его в Настройках → Провайдер → OpenRouter и нажмите «Обновить рейтинг».');
+      err.code = 'missing_api_key';
+      err.status = 400;
+      throw err;
+    }
+    const fresh = await fetchFromOpenRouter(key);
+    fresh.cachedAt = new Date().toISOString();
+    await saveCache(fresh);
+    memoryCache = fresh;
+    memoryCacheAt = Date.now();
+    return fresh;
   }
-  const fresh = await fetchFromOpenRouter(key);
-  fresh.cachedAt = new Date().toISOString();
-  await saveCache(fresh);
-  memoryCache = fresh;
-  memoryCacheAt = Date.now();
-  return fresh;
+
+  return { getCodingRatings, refreshCodingRatings };
 }
 
 module.exports = {
-  getCodingRatings,
-  refreshCodingRatings,
+  createCodingRatings,
   fetchFromOpenRouter,
   normModelName,
   tierFromScore,
-  CACHE_PATH,
 };

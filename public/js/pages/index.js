@@ -970,7 +970,7 @@ async function loadIndexComboFirst() {
       row.append(name, model);
       $list.appendChild(row);
     }
-  } catch (err) {
+  } catch {
     if ($st) {
       $st.className = 'index-combo-status is-error';
       $st.textContent = 'Не удалось загрузить маршруты. Откройте настройки маршрутов и проверьте подключение.';

@@ -91,6 +91,29 @@ function createRequestContext(req, res, { timeoutMs = DEFAULT_TIMEOUT_MS } = {})
   return { requestId, startedAt, timeoutMs };
 }
 
+/**
+ * Разбирает req.url. Origin-form (/path?q) склеивается с фиктивным
+ * origin строкой, а не через base-URL: иначе «//host/path» превратился
+ * бы в другой хост и другой путь. Некорректный URL — 400, а не исключение.
+ */
+function parseRequestUrl(rawUrl) {
+  const raw = typeof rawUrl === 'string' && rawUrl ? rawUrl : '/';
+  try {
+    return raw.startsWith('/') ? new URL('http://localhost' + raw) : new URL(raw);
+  } catch {
+    throw new AppError(400, 'bad_request', 'Некорректный URL запроса');
+  }
+}
+
+/** Путь запроса для логов; никогда не бросает. */
+function requestPath(req) {
+  try {
+    return parseRequestUrl(req.url).pathname;
+  } catch {
+    return String(req.url || '').slice(0, 200);
+  }
+}
+
 function safeLog(logger, level, event, fields = {}) {
   const output = {};
   for (const [key, value] of Object.entries(fields)) {
@@ -101,16 +124,28 @@ function safeLog(logger, level, event, fields = {}) {
   if (fn) fn(event, output);
 }
 
+/** Последний рубеж обработки запроса: сам не бросает никогда. */
 function handleError(error, req, res, context, logger = console) {
-  if (res.headersSent) return res.destroy();
-  safeLog(logger, 'error', 'request_failed', {
-    requestId: context.requestId,
-    method: req.method,
-    path: new URL(req.url, 'http://localhost').pathname,
-    status: error instanceof AppError ? error.status : 500,
-    error,
-  });
-  sendError(res, error, context.requestId);
+  try {
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    try {
+      safeLog(logger, 'error', 'request_failed', {
+        requestId: context.requestId,
+        method: req.method,
+        path: requestPath(req),
+        status: error instanceof AppError ? error.status : 500,
+        error,
+      });
+    } catch {}
+    sendError(res, error, context.requestId);
+  } catch {
+    try {
+      res.destroy();
+    } catch {}
+  }
 }
 
 module.exports = {
@@ -119,8 +154,10 @@ module.exports = {
   DEFAULT_TIMEOUT_MS,
   createRequestContext,
   handleError,
+  parseRequestUrl,
   readBody,
   readJson,
+  requestPath,
   safeLog,
   sendError,
   sendJson,

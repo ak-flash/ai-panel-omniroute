@@ -12,18 +12,17 @@
 const http = require('http');
 const path = require('path');
 
+const { loadConfig } = require('./config');
 const { loadProviders } = require('../providers');
-const { parsePoolReleaseHours, AGENTROUTER_POOL_RELEASE_TIMEZONE } = require('../providers/agentrouter');
+const { AGENTROUTER_POOL_RELEASE_TIMEZONE } = require('../providers/agentrouter');
 const { createAntigravityProvider } = require('../providers/antigravity');
-const { createGoogleOauth, getBuiltinClientId, getBuiltinClientSecret } = require('../providers/google-oauth');
+const { createGoogleOauth } = require('../providers/google-oauth');
 const { createStore } = require('./store');
-const { createRequestContext, handleError, sendJson } = require('./http');
+const { createRequestContext, handleError, requestPath, sendJson } = require('./http');
+const { getMetrics } = require('./metrics');
+const { normalizeLog } = require('./file-logger');
 const { Router } = require('./router');
-const {
-  applyRequestSecurity,
-  parseAllowedOrigins,
-  validateUpstreamUrl,
-} = require('./security');
+const { applyRequestSecurity, validateUpstreamUrl } = require('./security');
 
 const { createStaticHandler } = require('./static');
 const { createAgentRouterTracker, AGENTROUTER_DAY_BALANCE_KEY } = require('./agentrouter-tracker');
@@ -39,69 +38,56 @@ const { registerCodingRatingsRoutes } = require('./routes/coding-ratings');
 
 /**
  * Собирает HTTP-сервер панели. Провайдеры/адаптеры передаются
- * снаружи (CLI — вшитые, тесты — mock-upstream); окружение читается
- * только здесь, на композиционном уровне, для значений по умолчанию.
+ * снаружи (CLI — вшитые, тесты — mock-upstream). Значения по умолчанию
+ * берутся из config (src/config.js); отдельные параметры его перекрывают.
  */
 function createApp({
+  config = loadConfig(),
   providers = loadProviders(),
   antigravity,
   googleOauth,
   store,
-  allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
-  publicOrigin = process.env.PUBLIC_ORIGIN || '',
+  allowedOrigins = config.allowedOrigins,
+  publicOrigin = config.publicOrigin,
   logger = console,
   providerLogger = logger,
   requestTimeoutMs = 30000,
-  authLoopbackPort = process.env.PORT || '8765',
-  providerDebug = false,
-  agentrouterReleaseHoursUtc = parsePoolReleaseHours(process.env.AGENTROUTER_RELEASE_HOURS_UTC),
+  authLoopbackPort = String(config.port),
+  providerDebug = config.providerDebug,
+  agentrouterReleaseHoursUtc = config.agentrouterReleaseHoursUtc,
+  codingCachePath = config.codingCachePath,
 } = {}) {
   const activeProvider = providers[0] || null;
-  // Логгер провайдеров (функция warn-уровня): включает файл при запуске CLI.
   // Не перетираем явно переданный antigravity/googleOauth (тесты передают mock).
-  const providerLog = typeof providerLogger.log === 'function'
-    ? providerLogger.log.bind(providerLogger)
-    : (typeof providerLogger === 'function' ? providerLogger : console.warn);
+  const providerLog = normalizeLog(providerLogger);
+  const appLog = normalizeLog(logger);
   if (!antigravity) antigravity = createAntigravityProvider({ log: providerLog, debug: providerDebug });
-  if (!googleOauth) googleOauth = createGoogleOauth({ log: providerLog, debug: providerDebug });
+  if (!googleOauth) {
+    googleOauth = createGoogleOauth({
+      log: providerLog,
+      clientId: config.googleClientId,
+      clientSecret: config.googleClientSecret,
+    });
+  }
 
   // Хранилище ключей/настроек: SQLite на сервере (зашифровано AES-256-GCM).
   // createStore — async, поэтому store может прийти Promise; нормализуем
   // лениво в обработчиках запросов (они async).
-  if (!store) store = createStore({});
+  if (!store) {
+    store = createStore({ dbPath: config.dbPath, masterKey: config.masterKey || undefined, logger: appLog });
+  }
   async function getStore() {
     if (store && typeof store.then === 'function') store = await store;
     return store;
   }
-
-  const router = new Router();
-  router.add(['GET', 'HEAD'], '/api/health', ({ res }) =>
-    sendJson(res, 200, { ok: true }, { 'cache-control': 'no-store' }));
-
-  router.add(['GET', 'HEAD'], '/api/ready', async ({ res }) => {
-    const store = await getStore();
-    const storeOk = store && typeof store.exec === 'function';
-    const trackerOk = tracker && typeof tracker.isRunning === 'function' ? tracker.isRunning() : true;
-    const antigravityOk = antigravityService && typeof antigravityService.checkHealth === 'function'
-      ? await antigravityService.checkHealth().catch(() => false)
-      : true;
-    const ready = storeOk && trackerOk && antigravityOk;
-    const status = ready ? 200 : 503;
-    sendJson(res, status, { ready, store: storeOk, tracker: trackerOk, antigravity: antigravityOk }, { 'cache-control': 'no-store' });
-  });
-
-  router.add(['GET', 'HEAD'], '/api/metrics', ({ res }) => {
-    const { getMetrics } = require('./metrics');
-    sendJson(res, 200, getMetrics(), { 'cache-control': 'no-store' });
-  });
 
   // ---------- Сервисы ----------
   const antigravityService = createAntigravityService({
     googleOauth,
     antigravity,
     getStore,
-    getBuiltinClientId,
-    getBuiltinClientSecret,
+    getBuiltinClientId: () => config.googleClientId,
+    getBuiltinClientSecret: () => config.googleClientSecret,
   });
   const tracker = createAgentRouterTracker({
     getStore,
@@ -111,6 +97,31 @@ function createApp({
     balanceKey: AGENTROUTER_DAY_BALANCE_KEY,
   });
 
+  const router = new Router();
+  router.add(['GET', 'HEAD'], '/api/health', ({ res }) =>
+    sendJson(res, 200, { ok: true }, { 'cache-control': 'no-store' }));
+
+  // Готовность: хранилище открыто, последние изменения легли на диск,
+  // трекер AgentRouter запущен (если этот провайдер подключён).
+  // Наружу — только булевы флаги, подробности сбоя — в логе сервера.
+  router.add(['GET', 'HEAD'], '/api/ready', async ({ res }) => {
+    let storeStatus = { open: false, persisted: false };
+    try {
+      storeStatus = (await getStore()).status();
+    } catch {}
+    const trackerOk = !tracker.enabled || tracker.isRunning();
+    const ready = Boolean(storeStatus.open && storeStatus.persisted && trackerOk);
+    sendJson(
+      res,
+      ready ? 200 : 503,
+      { ready, store: Boolean(storeStatus.open), persisted: Boolean(storeStatus.persisted), tracker: trackerOk },
+      { 'cache-control': 'no-store' }
+    );
+  });
+
+  router.add(['GET', 'HEAD'], '/api/metrics', ({ res }) =>
+    sendJson(res, 200, getMetrics(), { 'cache-control': 'no-store' }));
+
   // ---------- Маршруты (порядок важен: статика — catch-all в конце) ----------
   registerProviderRoutes(router, {
     providers,
@@ -118,10 +129,10 @@ function createApp({
     storeKeys: PROVIDER_STORE_KEYS,
     userFields: PROVIDER_STORE_USER_FIELDS,
     getDayBalanceUsd: tracker.getDayBalanceUsd,
-    logger,
+    logger: appLog,
   });
-  registerProxyRoutes(router, { providers, activeProvider, logger: providerLogger, debug: providerDebug });
-  registerOmnirouteRoutes(router, { getStore, validateUpstreamUrl, logger });
+  registerProxyRoutes(router, { providers, activeProvider, logger: providerLog, debug: providerDebug });
+  registerOmnirouteRoutes(router, { getStore, validateUpstreamUrl, logger: appLog });
   registerAntigravityRoutes(router, {
     service: antigravityService,
     googleOauth,
@@ -140,7 +151,7 @@ function createApp({
     },
   });
   registerAccountRoutes(router, { getStore });
-  registerCodingRatingsRoutes(router, { getStore, logger });
+  registerCodingRatingsRoutes(router, { getStore, logger: appLog, cachePath: codingCachePath });
   const serveStatic = createStaticHandler({ publicDir: path.join(__dirname, '..', 'public') });
   router.add(['GET', 'HEAD'], '*', ({ req, res, url }) => serveStatic(req, res, url.pathname));
 
@@ -159,7 +170,7 @@ function createApp({
       // Используем метод *File, чтобы писать только в файл, не дублируя в консоль
       const fn = typeof logger[level + 'File'] === 'function' ? logger[level + 'File'].bind(logger) : null;
       const method = req.method || '?';
-      if (fn) fn(`[access] ${method} ${new URL(req.url, 'http://localhost').pathname} → ${res.statusCode} (${Date.now() - startedAt} ms)`);
+      if (fn) fn(`[access] ${method} ${requestPath(req)} → ${res.statusCode} (${Date.now() - startedAt} ms)`);
     });
     handleRequest(req, res).catch((err) => handleError(err, req, res, context, logger));
   });
@@ -168,16 +179,38 @@ function createApp({
   server.startDailyAgentRouterTracker = () => tracker.start();
   server.snapshotAgentRouterDayBalance = () => tracker.snapshotDayBalance();
 
+  let storeClosing = null;
+  function closeStore() {
+    if (!storeClosing) {
+      storeClosing = getStore().then((s) => {
+        if (s && typeof s.close === 'function') return s.close();
+      });
+    }
+    return storeClosing;
+  }
+
+  // close(cb): перестать принимать соединения, дождаться их закрытия и
+  // сброса хранилища на диск; ошибка сохранения уходит в callback.
   const originalClose = server.close.bind(server);
   server.close = (callback) => {
     tracker.stop();
-    // store.close(): сброс очереди записи на диск и освобождение базы
-    // (идемпотентно; ошибки закрытия не мешают остановке сервера)
-    Promise.resolve(store)
-      .then((s) => { if (s && typeof s.close === 'function') return s.close(); })
-      .catch(() => {});
-    return originalClose(callback);
+    originalClose((closeErr) => {
+      const serverErr = closeErr && closeErr.code !== 'ERR_SERVER_NOT_RUNNING' ? closeErr : null;
+      closeStore().then(
+        () => callback && callback(serverErr || undefined),
+        (storeErr) => callback && callback(storeErr)
+      );
+    });
+    return server;
   };
+
+  /** Graceful shutdown для CLI: промис завершается после закрытия
+   * соединений и хранилища; отклоняется, если данные не сохранились. */
+  server.shutdown = () =>
+    new Promise((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+      server.closeIdleConnections();
+    });
 
   return server;
 }
