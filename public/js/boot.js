@@ -59,6 +59,8 @@ export async function start() {
 
   let page;
   try {
+    // PAGE сверен с KNOWN_PAGES выше, путь собирается из белого списка
+    // eslint-disable-next-line no-unsanitized/method -- имя модуля из KNOWN_PAGES
     page = await import('./pages/' + PAGE + '.js');
   } catch (err) {
     console.error('Не удалось загрузить модуль страницы «' + PAGE + '»:', err);

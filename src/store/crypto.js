@@ -16,6 +16,9 @@
 const crypto = require('crypto');
 
 const FORMAT_VERSION = 'v1';
+// Тег AES-GCM всегда 16 байт: без явной длины Node принимает укороченный
+// тег (от 4 байт), что ослабляет аутентификацию (DEP0182).
+const AUTH_TAG_LENGTH = 16;
 
 /** Ошибка хранилища: code позволяет обработчику различать случаи
  * (wrong_key, corrupted, unknown_key, store_closed, bad_master_key). */
@@ -39,6 +42,7 @@ function encryptValue(masterKeyHex, plaintext) {
     'aes-256-gcm',
     Buffer.from(masterKeyHex, 'hex'),
     iv,
+    { authTagLength: AUTH_TAG_LENGTH },
   );
   const enc = Buffer.concat([cipher.update(String(plaintext), 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
@@ -62,13 +66,18 @@ function decryptValue(masterKeyHex, payload) {
     return { ok: false, reason: 'format' };
   }
   const [, ivB64, tagB64, dataB64] = parts;
+  const tag = Buffer.from(tagB64, 'base64');
+  if (tag.length !== AUTH_TAG_LENGTH) {
+    return { ok: false, reason: 'auth' };
+  }
   try {
     const decipher = crypto.createDecipheriv(
       'aes-256-gcm',
       Buffer.from(masterKeyHex, 'hex'),
       Buffer.from(ivB64, 'base64'),
+      { authTagLength: AUTH_TAG_LENGTH },
     );
-    decipher.setAuthTag(Buffer.from(tagB64, 'base64'));
+    decipher.setAuthTag(tag);
     const dec = Buffer.concat([
       decipher.update(Buffer.from(dataB64, 'base64')),
       decipher.final(),
