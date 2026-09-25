@@ -733,7 +733,7 @@
 
 /* Группы моделей Antigravity со сворачиваемой шапкой */
 .ag-group {
-  margin-top: 0;
+  margin-top: 4px;
   width: 100%;
 }
 
@@ -783,6 +783,16 @@
   font-size: 15px;
 }
 
+.ag-group-remaining {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.ag-group-remaining.full {
+  color: var(--ok);
+}
+
 .ag-chevron {
   margin-inline-start: auto;
   color: var(--text-muted);
@@ -798,6 +808,8 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px 12px;
   margin-top: 0;
+  padding-top: 2px;
+  padding-bottom: 8px;
 }
 
 .ag-group.collapsed .ag-group-body {

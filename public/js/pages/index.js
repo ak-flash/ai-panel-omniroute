@@ -805,7 +805,7 @@ function agCard(model) {
 
 // Порядок и состояние свёрнутости групп моделей Antigravity
 const AG_GROUPS = [
-  { key: 'claude', label: 'Claude', collapsed: false },
+  { key: 'claude', label: 'Claude', collapsed: true },
   { key: 'gemini', label: 'Gemini', collapsed: true },
   { key: 'other', label: 'Прочие', collapsed: true },
 ];
@@ -846,6 +846,17 @@ function agGroupContainer(group, models) {
     resetVal.textContent = dur(remainSec);
     reset.appendChild(resetVal);
     head.appendChild(reset);
+  }
+  if (group.key === 'claude') {
+    const remaining = models.map((m) => m.remainingFraction).filter(Number.isFinite);
+    if (remaining.length) {
+      const min = Math.min(...remaining);
+      const percent = document.createElement('span');
+      percent.className = 'ag-group-remaining' + (min >= 1 ? ' full' : '');
+      percent.textContent = Math.round(min * 100) + '%';
+      percent.title = 'Минимальный остаток квоты среди моделей Claude';
+      head.appendChild(percent);
+    }
   }
   const chev = document.createElement('span');
   chev.className = 'ag-chevron';
