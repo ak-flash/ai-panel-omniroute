@@ -311,3 +311,14 @@ test('файлы базы и ключа создаются с правами 060
 test('файловая база без dbPath — понятная ошибка конфигурации', async () => {
   await assert.rejects(createStore({}), (err) => err.code === 'bad_config');
 });
+
+test('AES-GCM тег всегда 16 байт (authTagLength)', async () => {
+  const { dbPath } = tmpDb();
+  const store = await createStore({ dbPath, masterKey: KEY_A });
+  await store.set('omniUrl', 'https://tag.example');
+  await store.close();
+  const raw = fs.readFileSync(dbPath, 'utf8');
+  const match = raw.match(/v1:[A-Za-z0-9+/=]+:([A-Za-z0-9+/=]+):/);
+  assert.ok(match, 'в базе есть зашифрованная запись v1');
+  assert.equal(Buffer.from(match[1], 'base64').length, 16);
+});

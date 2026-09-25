@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Вход · AI Панель</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <script src="js/theme-init.js"></script>
+    <link rel="stylesheet" href="css/themes.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/pages.css">
+    <link rel="stylesheet" href="css/responsive.css">
+    <script type="module" src="js/login.js"></script>
+  </head>
+  <body data-page="login" class="is-booting">
+    <main id="main" class="login-wrap">
+      <form id="login-form" class="login-card" novalidate>
+        <h1>AI Панель</h1>
+        <p class="hint hint-flush">Введите токен доступа, заданный в <code>AIPANEL_AUTH_TOKEN</code> сервера.</p>
+        <label class="login-label" for="auth-token">Токен доступа</label>
+        <input type="password" id="auth-token" name="token" class="login-input"
+          autocomplete="current-password" autofocus required>
+        <button type="submit" id="login-submit" class="btn btn-primary login-submit">Войти</button>
+        <p id="login-error" class="hint login-error" role="alert" hidden></p>
+      </form>
+    </main>
+  </body>
+</html>

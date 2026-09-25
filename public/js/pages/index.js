@@ -5,8 +5,7 @@
    ============================================================ */
 
 import { session, PROVIDER_FALLBACK } from '../session.js';
-import { $id } from '../dom.js';
-import { icon } from '../../icons.js';
+import { $id, setIcon, span, GAP } from '../dom.js';
 import { setStatus, touchUpdated } from '../topbar.js';
 import { showBanner, hideBanner } from '../banner.js';
 import { providerRequest, fetchAntigravityQuota, AG_ERROR_MESSAGES, omniFetch, COMBO_LIST_PATH, COMBO_PATH } from '../api.js';
@@ -158,10 +157,13 @@ function setWindow(kind, card) {
     w.cap_usd ? Math.round(p) + '%' : '';
 
   card.querySelector('.stat-meta').textContent = dur(w.window_sec);
-  card.querySelector('.stat-value').innerHTML =
-    `<span class="val-used">${fmtUsd(w.spent_usd)}</span>` +
-    ` <span class="val-sep">/</span> ` +
-    `<span class="val-limit">${fmtUsd(w.cap_usd)}</span>`;
+  card.querySelector('.stat-value').replaceChildren(
+    span('val-used', fmtUsd(w.spent_usd)),
+    GAP(),
+    span('val-sep', '/'),
+    GAP(),
+    span('val-limit', fmtUsd(w.cap_usd))
+  );
 
   const bar = card.querySelector('.bar-fill');
   const progress = card.querySelector('[role="progressbar"]');
@@ -212,12 +214,10 @@ function renderFreeTokens(free) {
   const usedPct = limit ? pct(used, limit) : 0;
   document.getElementById('free-pct').textContent =
     limit != null ? Math.round(usedPct) + '%' : '';
-  document.getElementById('free-value').innerHTML =
-    limit == null
-      ? `<span class="val-used">${compact(used)}</span>`
-      : `<span class="val-used">${compact(used)}</span>` +
-      ` <span class="val-sep">/</span> ` +
-      `<span class="val-limit">${compact(limit)}</span>`;
+  document.getElementById('free-value').replaceChildren(
+    span('val-used', compact(used)),
+    ...(limit == null ? [] : [GAP(), span('val-sep', '/'), GAP(), span('val-limit', compact(limit))])
+  );
 
   const bar = $freeCard.querySelector('.bar-fill');
   const progress = $freeCard.querySelector('[role="progressbar"]');
@@ -631,10 +631,13 @@ function renderSeloraWindow(w, prefix) {
   const meta = $id(prefix + '-dur');
   if (meta) meta.textContent = dur(w.window_sec);
 
-  $value.innerHTML =
-    `<span class="val-used">${fmtUsd(w.spent_usd)}</span>` +
-    ` <span class="val-sep">/</span> ` +
-    `<span class="val-limit">${w.cap_usd ? fmtUsd(w.cap_usd) : '∞'}</span>`;
+  $value.replaceChildren(
+    span('val-used', fmtUsd(w.spent_usd)),
+    GAP(),
+    span('val-sep', '/'),
+    GAP(),
+    span('val-limit', w.cap_usd ? fmtUsd(w.cap_usd) : '∞')
+  );
 
   const p = w.cap_usd ? pct(w.spent_usd, w.cap_usd) : 0;
 
@@ -727,7 +730,7 @@ function agCard(model) {
     meta.setAttribute('role', 'img');
     meta.setAttribute('aria-label', 'режим размышлений');
     meta.title = 'Режим размышлений (thinking)';
-    meta.innerHTML = icon('star', { class: 'ag-thinking-icon' });
+    setIcon(meta, 'star', { class: 'ag-thinking-icon' });
     head.appendChild(meta);
   }
   main.appendChild(head);
@@ -861,7 +864,7 @@ function agGroupContainer(group, models) {
   const chev = document.createElement('span');
   chev.className = 'ag-chevron';
   chev.setAttribute('aria-hidden', 'true');
-  chev.innerHTML = icon('chevron-down');
+  setIcon(chev, 'chevron-down');
   head.append(chev);
   head.addEventListener('click', () => {
     const collapsed = wrap.classList.toggle('collapsed');

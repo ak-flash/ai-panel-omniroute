@@ -14,7 +14,9 @@ const { DEFAULT_MAX_BYTES: LOG_MAX_BYTES } = require('./file-logger');
 
 const ROOT_DIR = path.join(__dirname, '..');
 const DEFAULT_PORT = 8765;
+const MIN_AUTH_TOKEN_LENGTH = 16;
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
+const WILDCARD_HOSTS = new Set(['0.0.0.0', '::', '[::]']);
 
 /** Все переменные окружения панели (порядок — как в таблице README). */
 const ENV_VARS = Object.freeze([
@@ -22,6 +24,9 @@ const ENV_VARS = Object.freeze([
   'HOST',
   'PORT',
   'PUBLIC_ORIGIN',
+  'AIPANEL_AUTH_TOKEN',
+  'ALLOWED_HOSTS',
+  'TRUST_PROXY',
   'ALLOWED_ORIGINS',
   'AIPANEL_MASTER_KEY',
   'AIPANEL_DATA_DIR',
@@ -83,6 +88,34 @@ function parseOriginList(name, raw) {
     .map((item) => item.trim())
     .filter(Boolean)
     .map((item) => parseOrigin(name, item));
+}
+
+/** Hostname в форме URL.hostname (нижний регистр, IPv6 в скобках); порт отбрасывается. */
+function parseHostname(name, raw) {
+  const value = text(raw);
+  try {
+    const { hostname } = new URL('http://' + value);
+    if (hostname && !value.includes('/')) return hostname;
+  } catch {}
+  throw new ConfigError(`${name}: некорректное имя хоста «${value}»`);
+}
+
+function parseHostList(name, raw) {
+  return text(raw)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => parseHostname(name, item));
+}
+
+function parseAuthToken(raw) {
+  const value = text(raw);
+  if (value && value.length < MIN_AUTH_TOKEN_LENGTH) {
+    throw new ConfigError(
+      `AIPANEL_AUTH_TOKEN: не короче ${MIN_AUTH_TOKEN_LENGTH} символов (например, openssl rand -hex 24)`
+    );
+  }
+  return value;
 }
 
 /** Относительные пути считаются от корня проекта, а не от cwd процесса. */
@@ -154,6 +187,25 @@ function describeEnvSource(name, env, fileKeys = []) {
 function loadConfig(env = process.env) {
   const publicOrigin = parseOrigin('PUBLIC_ORIGIN', env.PUBLIC_ORIGIN);
   const host = text(env.HOST) || (publicOrigin ? '0.0.0.0' : '127.0.0.1');
+  // Remote-режим: панель доступна не только с этой машины — через reverse
+  // proxy (PUBLIC_ORIGIN) или прямым bind не на loopback. Тогда вход обязателен.
+  const remoteMode = Boolean(publicOrigin) || !LOOPBACK_HOSTS.has(host);
+  const authToken = parseAuthToken(env.AIPANEL_AUTH_TOKEN);
+  if (remoteMode && !authToken) {
+    throw new ConfigError(
+      'Remote-режим (задан PUBLIC_ORIGIN или HOST не loopback) требует AIPANEL_AUTH_TOKEN — ' +
+        'иначе ключи провайдеров доступны любому, кто достучится до порта'
+    );
+  }
+  // Допустимые значения Host (защита от DNS rebinding): loopback всегда,
+  // хост PUBLIC_ORIGIN, конкретный адрес из HOST и явный ALLOWED_HOSTS
+  const allowedHosts = new Set(parseHostList('ALLOWED_HOSTS', env.ALLOWED_HOSTS));
+  if (publicOrigin) allowedHosts.add(new URL(publicOrigin).hostname);
+  // Адрес HOST логичен в allowlist только если он публичный и не loopback
+  if (!WILDCARD_HOSTS.has(host) && !LOOPBACK_HOSTS.has(host)) {
+    const bracketed = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+    allowedHosts.add(parseHostname('HOST', bracketed));
+  }
   const dataDir = parsePath(env.AIPANEL_DATA_DIR, path.join(ROOT_DIR, 'data'));
   const logDir = resolveLogDir(env);
   return Object.freeze({
@@ -161,7 +213,10 @@ function loadConfig(env = process.env) {
     host,
     port: parsePort(env.PORT),
     publicOrigin,
-    remoteMode: !LOOPBACK_HOSTS.has(host),
+    remoteMode,
+    authToken,
+    allowedHosts: Object.freeze([...allowedHosts]),
+    trustProxy: parseBoolean('TRUST_PROXY', env.TRUST_PROXY),
     allowedOrigins: parseOriginList('ALLOWED_ORIGINS', env.ALLOWED_ORIGINS),
     masterKey: parseMasterKey(env.AIPANEL_MASTER_KEY),
     dataDir,

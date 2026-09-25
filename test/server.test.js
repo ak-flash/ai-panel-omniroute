@@ -10,6 +10,9 @@ const net = require('net');
 const path = require('path');
 const { startMockUpstream, startAgentRouterUpstream, startPanel, startServerProcess, makeTmpDir } = require('./helpers');
 const { createAgentRouterProvider } = require('../providers/agentrouter');
+const { readCookie } = require('../src/auth');
+
+const AUTH_TOKEN = 'test-auth-token-0123456789';
 const { createStore } = require('../src/store');
 const { WRITABLE_KEYS } = require('../src/routes/config');
 const { STORE_KEYS } = require('../src/store');
@@ -574,6 +577,127 @@ test('/api/ready без AgentRouter не ждёт трекер; /api/metrics с�
     assert.ok(metrics.requests >= 2);
     assert.equal(typeof metrics.errors, 'number');
     assert.equal(typeof metrics.avgDurationMs, 'number');
+  } finally {
+    await panel.stop();
+  }
+});
+
+/* ---------- Вход в remote-режиме (P0-6), allowlist Host (P0-7) ---------- */
+
+test('auth: без сессии API — 401, страницы — на /login.html', async () => {
+  const panel = await startPanel({ env: { AIPANEL_AUTH_TOKEN: AUTH_TOKEN } });
+  try {
+    const api = await fetch(panel.base + '/api/config');
+    assert.equal(api.status, 401);
+    assert.equal((await api.json()).error, 'auth_required');
+
+    const page = await fetch(panel.base + '/', { redirect: 'manual' });
+    assert.equal(page.status, 302);
+    assert.match(page.headers.get('location'), /^\/login\.html\?next=%2F$/);
+
+    // Страница входа и её ресурсы доступны без сессии
+    const login = await fetch(panel.base + '/login.html');
+    assert.equal(login.status, 200);
+    const loginJs = await fetch(panel.base + '/js/login.js');
+    assert.equal(loginJs.status, 200);
+    const css = await fetch(panel.base + '/css/base.css');
+    assert.equal(css.status, 200);
+
+    const status = await (await fetch(panel.base + '/api/auth/status')).json();
+    assert.deepEqual(status, { authEnabled: true, authenticated: false });
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('auth: неверный токен → 401, верный → cookie открывает API', async () => {
+  const panel = await startPanel({ env: { AIPANEL_AUTH_TOKEN: AUTH_TOKEN } });
+  try {
+    const bad = await fetch(panel.base + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'nope' }),
+    });
+    assert.equal(bad.status, 401);
+    assert.equal((await bad.json()).error, 'invalid_token');
+
+    const good = await fetch(panel.base + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: AUTH_TOKEN }),
+    });
+    assert.equal(good.status, 200);
+    const cookie = good.headers.get('set-cookie');
+    assert.match(cookie, /HttpOnly/);
+    assert.match(cookie, /SameSite=Strict/);
+    // Локальный http — без Secure, иначе cookie бы не отправилась
+    assert.ok(!/; Secure/.test(cookie));
+
+    const sessionCookie = readCookie({ headers: { cookie } });
+    const withSession = await fetch(panel.base + '/api/config', { headers: { cookie: `aipanel_session=${sessionCookie}` } });
+    assert.equal(withSession.status, 200);
+    const status = await (await fetch(panel.base + '/api/auth/status', {
+      headers: { cookie: `aipanel_session=${sessionCookie}` },
+    })).json();
+    assert.equal(status.authenticated, true);
+
+    // Выход очищает cookie
+    const out = await fetch(panel.base + '/api/auth/logout', { method: 'POST' });
+    assert.match(out.headers.get('set-cookie'), /Max-Age=0/);
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('auth: подделанная подпись cookie не пускает', async () => {
+  const panel = await startPanel({ env: { AIPANEL_AUTH_TOKEN: AUTH_TOKEN } });
+  try {
+    const forged = 'aipanel_session=v1.9999999999999.abc.forged';
+    const res = await fetch(panel.base + '/api/config', { headers: { cookie: forged } });
+    assert.equal(res.status, 401);
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('без AIPANEL_AUTH_TOKEN вход не требуется (локальный режим)', async () => {
+  const panel = await startPanel();
+  try {
+    assert.equal((await fetch(panel.base + '/api/config')).status, 200);
+    const status = await (await fetch(panel.base + '/api/auth/status')).json();
+    assert.deepEqual(status, { authEnabled: false, authenticated: true });
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('чужой Host → 421 (DNS rebinding), SECURITY_HEADERS без unsafe-inline', async () => {
+  const panel = await startPanel({ env: { ALLOWED_HOSTS: 'panel.example' } });
+  try {
+    const response = await rawRequest(
+      panel.base,
+      'GET /api/config HTTP/1.1\r\nHost: evil.example\r\nConnection: close\r\n\r\n'
+    );
+    assert.match(response, /^HTTP\/1\.1 421 /);
+
+    const own = await fetch(panel.base + '/api/config');
+    assert.equal(own.status, 200);
+    const csp = own.headers.get('content-security-policy');
+    assert.ok(!csp.includes('unsafe-inline'), csp);
+    assert.match(csp, /style-src 'self'/);
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('X-Forwarded-Host не доверяется без TRUST_PROXY', async () => {
+  const panel = await startPanel({ env: { ALLOWED_HOSTS: 'panel.example' } });
+  try {
+    const response = await rawRequest(
+      panel.base,
+      'GET /api/config HTTP/1.1\r\nHost: evil.example\r\nX-Forwarded-Host: panel.example\r\nConnection: close\r\n\r\n'
+    );
+    assert.match(response, /^HTTP\/1\.1 421 /);
   } finally {
     await panel.stop();
   }

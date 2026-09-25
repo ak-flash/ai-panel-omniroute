@@ -11,6 +11,7 @@ import { vaultSet, keyForProvider, setProviderKey } from '../settings.js';
 import { rebootPage, start } from '../boot.js';
 import { compact } from '../formatters.js';
 import { matchModel } from '../../model-match.js';
+import { setIcon } from '../dom.js';
 import {
   codingRatingResolved,
   codingScoreResolved,
@@ -19,7 +20,6 @@ import {
 } from '../../coding-rating.js';
 import { extractComboTargets, combosFromResponse } from '../combos.js';
 import { showToast } from '../toast.js';
-import { icon } from '../../icons.js';
 
 // Статичные элементы страницы — доступны на момент eval модуля
 const $setup = $id('setup');
@@ -168,17 +168,17 @@ function copyModelBtn(model) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'btn btn-ghost copy-model-btn';
-  btn.innerHTML = icon('clipboard', { size: 16 });
+  setIcon(btn, 'clipboard', { size: 16 });
   btn.title = 'Скопировать название модели';
   btn.setAttribute('aria-label', 'Скопировать название модели ' + model.id);
   btn.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(model.id);
-      btn.innerHTML = icon('check', { size: 16 });
+      setIcon(btn, 'check', { size: 16 });
       btn.classList.add('copied');
       showToast('Название модели скопировано');
       setTimeout(() => {
-        btn.innerHTML = icon('clipboard', { size: 16 });
+        setIcon(btn, 'clipboard', { size: 16 });
         btn.classList.remove('copied');
       }, 1500);
     } catch {

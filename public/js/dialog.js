@@ -10,8 +10,7 @@
    в DOM.
    ============================================================ */
 
-import { $id, on, ICO_CHECK, ICO_X } from './dom.js';
-import { icon } from '../icons.js';
+import { $id, on, renderMessage, setIcon, MARK_OK, MARK_X, MARK_BR } from './dom.js';
 import { vaultGet, vaultSet, removeKey, getAgentRouterUserId, getAgRefreshToken, getOmniUrls, normalizeOmniUrls, saveSettings } from './settings.js';
 import { providerRequest, omniFetch, COMBO_LIST_PATH, fetchGoogleTokenStatus, startGoogleAuth, pasteGoogleAuth, AG_ERROR_MESSAGES } from './api.js';
 import { fmtUsd, dur } from './formatters.js';
@@ -63,12 +62,14 @@ function onDlgTabsKeydown(e) {
   selectDlgTab(DLG_TABS[next].tab, { focus: true });
 }
 
-// Статусная строка раздела (роль status, цвет ok/err)
-function showResult($el, isErr, html) {
+// Статусная строка раздела (роль status, цвет ok/err).
+// message — текст с маркерами [[ok]]/[[x]]/[[br]]; данные провайдера
+// выводятся текстовыми узлами (см. renderMessage).
+function showResult($el, isErr, message) {
   if (!$el) return;
   $el.hidden = false;
   $el.className = 'dlg-result ' + (isErr ? 'err' : 'ok');
-  $el.innerHTML = html;
+  renderMessage($el, message);
 }
 
 // Показ/скрытие полей выбранного в настройках провайдера
@@ -105,7 +106,7 @@ async function refreshAgStatus(prefix) {
   try {
     const s = await fetchGoogleTokenStatus();
     const parts = [];
-    if (s.hasToken) parts.push(ICO_CHECK + ' Токен задан на сервере');
+    if (s.hasToken) parts.push(MARK_OK + ' Токен задан на сервере');
     else if (getAgRefreshToken()) parts.push('Связка в браузере — сервер обновит токен сам');
     else parts.push('Токен не задан');
     if (s.hasToken && s.tokenExpiresAt) {
@@ -115,9 +116,7 @@ async function refreshAgStatus(prefix) {
         : (s.hasRefresh ? 'истёк — обновится автоматически' : 'истёк — войдите заново'));
     }
     if (s.hasRefresh) parts.push('автообновление включено');
-    // innerHTML: parts содержат SVG-иконку ICO_CHECK, textContent показал бы её как текст.
-    // Содержимое — только статические строки и числа, пользовательский ввод не интерполируется.
-    $exp.innerHTML = (prefix ? prefix + ' ' : '') + parts.join(', ') + '.';
+    renderMessage($exp, (prefix ? prefix + ' ' : '') + parts.join(', ') + '.');
     $exp.hidden = false;
   } catch { /* нет API — статусную строку не трогаем */ }
 }
@@ -278,7 +277,7 @@ function addAliasRow() {
   const del = document.createElement('button');
   del.type = 'button';
   del.className = 'btn btn-ghost';
-  del.innerHTML = icon('x-mark');
+  setIcon(del, 'x-mark');
   del.setAttribute('aria-label', 'Удалить');
   del.addEventListener('click', () => row.remove());
   row.append(inId, inName, del);
@@ -326,10 +325,13 @@ async function agPaste() {
     const results = await emit('antigravity:authorized');
     const q = results.find((r) => r != null) || null;
     if ($st) {
-      $st.innerHTML = q && !q.error
-        ? ICO_CHECK + ' Авторизация выполнена — квоты загружены'
-        : 'Авторизация выполнена, но квоты не получены: ' +
-        ((q && AG_ERROR_MESSAGES[q.error]) || (q && q.error) || 'неизвестная ошибка');
+      renderMessage(
+        $st,
+        q && !q.error
+          ? MARK_OK + ' Авторизация выполнена — квоты загружены'
+          : 'Авторизация выполнена, но квоты не получены: ' +
+            ((q && AG_ERROR_MESSAGES[q.error]) || (q && q.error) || 'неизвестная ошибка')
+      );
     }
     refreshAgStatus();
   } catch (err) {
@@ -415,7 +417,7 @@ async function saveProviderSettings() {
   emit('settings:changed');
 
   showResult($res, false, 'Сохранено.');
-  const setLine = (line, isErr) => showResult($res, isErr, 'Сохранено.<br>' + line);
+  const setLine = (line, isErr) => showResult($res, isErr, 'Сохранено.' + MARK_BR + line);
   const candidate = dlgProvider === 'agentrouter' ? arCandidate
     : dlgProvider === 'openrouter' ? orCandidate
       : dlgProvider === 'selora' ? seloraCandidate
@@ -430,11 +432,11 @@ async function saveProviderSettings() {
           const wallet = (data && data.wallet) || {};
           const bal = wallet.balance_usd ?? wallet.balance ?? 0;
           console.info('[AgentRouter] токен OK', data);
-          setLine('AgentRouter ' + ICO_CHECK + ' токен работает — баланс: ' + fmtUsd(bal), false);
+          setLine('AgentRouter ' + MARK_OK + ' токен работает — баланс: ' + fmtUsd(bal), false);
         })
         .catch((err) => {
           console.warn('[AgentRouter] проверка не прошла', err);
-          setLine('AgentRouter ' + ICO_X + ' токен не прошёл проверку: ' + (err && err.message ? err.message : String(err)), true);
+          setLine('AgentRouter ' + MARK_X + ' токен не прошёл проверку: ' + (err && err.message ? err.message : String(err)), true);
         });
     } else {
       // Пустое поле секрета = «не изменять»: ключ остаётся в хранилище.
@@ -443,7 +445,7 @@ async function saveProviderSettings() {
       console.info('[AgentRouter] токен в поле пустой' + (hasStored ? ' — оставляю сохранённый' : ''));
       setLine(
         hasStored
-          ? 'AgentRouter ' + ICO_CHECK + ' токен сохранён ранее — пустое поле его не меняет'
+          ? 'AgentRouter ' + MARK_OK + ' токен сохранён ранее — пустое поле его не меняет'
           : 'AgentRouter: токен не задан',
         false
       );
@@ -457,11 +459,11 @@ async function saveProviderSettings() {
           const wallet = (data && data.wallet) || {};
           const bal = wallet.balance_usd ?? wallet.balance ?? 0;
           console.info('[xKiro] ключ OK', data);
-          setLine('xKiro ' + ICO_CHECK + ' ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · план: ' + data.plan : ''), false);
+          setLine('xKiro ' + MARK_OK + ' ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · план: ' + data.plan : ''), false);
         })
         .catch((err) => {
           console.warn('[xKiro] проверка не прошла', err);
-          let msg = 'xKiro ' + ICO_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err));
+          let msg = 'xKiro ' + MARK_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err));
           if (err && err.status === 401) msg += ' — проверьте ключ';
           setLine(msg, true);
         });
@@ -470,7 +472,7 @@ async function saveProviderSettings() {
       console.info('[xKiro] ключ в поле пустой' + (hasStored ? ' — оставляю сохранённый' : ''));
       setLine(
         hasStored
-          ? 'xKiro ' + ICO_CHECK + ' ключ сохранён ранее — пустое поле его не меняет'
+          ? 'xKiro ' + MARK_OK + ' ключ сохранён ранее — пустое поле его не меняет'
           : 'xKiro: ключ не задан',
         false
       );
@@ -484,18 +486,18 @@ async function saveProviderSettings() {
           const wallet = (data && data.wallet) || {};
           const bal = wallet.balance_usd ?? wallet.balance ?? 0;
           console.info('[OpenRouter] ключ OK', data);
-          setLine('OpenRouter ' + ICO_CHECK + ' ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · ' + data.plan : ''), false);
+          setLine('OpenRouter ' + MARK_OK + ' ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · ' + data.plan : ''), false);
         })
         .catch((err) => {
           console.warn('[OpenRouter] проверка не прошла', err);
-          setLine('OpenRouter ' + ICO_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err)), true);
+          setLine('OpenRouter ' + MARK_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err)), true);
         });
     } else {
       const hasStored = vaultGet('hasOpenrouterKey');
       console.info('[OpenRouter] ключ в поле пустой' + (hasStored ? ' — оставляю сохранённый' : ''));
       setLine(
         hasStored
-          ? 'OpenRouter ' + ICO_CHECK + ' ключ сохранён ранее — пустое поле его не меняет'
+          ? 'OpenRouter ' + MARK_OK + ' ключ сохранён ранее — пустое поле его не меняет'
           : 'OpenRouter: ключ не задан',
         false
       );
@@ -505,11 +507,11 @@ async function saveProviderSettings() {
       console.info('[Experiential Labs] проверка ключа…');
       setLine('Experiential Labs: проверяю ключ…', false);
       providerRequest('usage', { provider: { id: 'experiential', name: 'Experiential Labs' }, key: candidate })
-        .then(() => setLine('Experiential Labs ' + ICO_CHECK + ' ключ работает', false))
-        .catch((err) => setLine('Experiential Labs ' + ICO_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err)), true));
+        .then(() => setLine('Experiential Labs ' + MARK_OK + ' ключ работает', false))
+        .catch((err) => setLine('Experiential Labs ' + MARK_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err)), true));
     } else {
       const hasStored = vaultGet('hasExperientialKey');
-      setLine(hasStored ? 'Experiential Labs ' + ICO_CHECK + ' ключ сохранён ранее — пустое поле его не меняет' : 'Experiential Labs: ключ не задан', false);
+      setLine(hasStored ? 'Experiential Labs ' + MARK_OK + ' ключ сохранён ранее — пустое поле его не меняет' : 'Experiential Labs: ключ не задан', false);
     }
   } else if (dlgProvider === 'selora') {
     if (candidate) {
@@ -520,11 +522,11 @@ async function saveProviderSettings() {
           const wallet = (data && data.wallet) || {};
           const bal = wallet.balance_usd ?? wallet.balance ?? 0;
           console.info('[Selora] ключ OK', data);
-          setLine('Selora ' + ICO_CHECK + ' ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · план: ' + data.plan : ''), false);
+          setLine('Selora ' + MARK_OK + ' ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · план: ' + data.plan : ''), false);
         })
         .catch((err) => {
           console.warn('[Selora] проверка не прошла', err);
-          let msg = 'Selora ' + ICO_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err));
+          let msg = 'Selora ' + MARK_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err));
           if (err && err.status === 401) msg += ' — проверьте ключ';
           setLine(msg, true);
         });
@@ -533,7 +535,7 @@ async function saveProviderSettings() {
       console.info('[Selora] ключ в поле пустой' + (hasStored ? ' — оставляю сохранённый' : ''));
       setLine(
         hasStored
-          ? 'Selora ' + ICO_CHECK + ' ключ сохранён ранее — пустое поле его не меняет'
+          ? 'Selora ' + MARK_OK + ' ключ сохранён ранее — пустое поле его не меняет'
           : 'Selora: ключ не задан',
         false
       );
@@ -576,9 +578,9 @@ async function saveOmniSettings() {
 
   // Пустое поле ключа = «не изменять»: сообщаем, если ключ сохранён ранее
   const keyNote = !omniKeyValue && vaultGet('hasOmniKey')
-    ? '<br>Ключ сохранён ранее — пустое поле его не меняет'
+    ? MARK_BR + 'Ключ сохранён ранее — пустое поле его не меняет'
     : '';
-  const renderLine = (line, isErr) => showResult($res, isErr, 'Сохранено.<br>' + line + keyNote);
+  const renderLine = (line, isErr) => showResult($res, isErr, 'Сохранено.' + MARK_BR + line + keyNote);
   const summary = !list.length
     ? 'OmniRoute: не задан'
     : list.length === 1
@@ -592,11 +594,11 @@ async function saveOmniSettings() {
     omniFetch(COMBO_LIST_PATH).then((data) => {
       const n = Array.isArray(data) ? data.length : Array.isArray(data.combos) ? data.combos.length : Array.isArray(data.data) ? data.data.length : 0;
       console.info('[OmniRoute] OK', data);
-      renderLine('OmniRoute ' + ICO_CHECK + ' — доступно combo: ' + n + ' (адресов: ' + list.length + ')', false);
+      renderLine('OmniRoute ' + MARK_OK + ' — доступно combo: ' + n + ' (адресов: ' + list.length + ')', false);
     }).catch((err) => {
       console.warn('[OmniRoute] проверка не прошла', err);
       const isErr = !(err && err.status === 400); // 400 без URL не считаем критичным
-      renderLine('OmniRoute ' + ICO_X + ' — ' + (err && err.message ? err.message : String(err)), isErr);
+      renderLine('OmniRoute ' + MARK_X + ' — ' + (err && err.message ? err.message : String(err)), isErr);
     });
   }
 }
