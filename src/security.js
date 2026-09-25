@@ -4,7 +4,7 @@ const dns = require('dns').promises;
 const net = require('net');
 
 const SECURITY_HEADERS = Object.freeze({
-  'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+  'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
   'referrer-policy': 'no-referrer',
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'DENY',
@@ -14,13 +14,20 @@ function firstForwardedValue(value) {
   return String(value || '').split(',')[0].trim();
 }
 
-function getExternalOrigin(req, publicOrigin = '') {
+/**
+ * Внешний origin панели: PUBLIC_ORIGIN, иначе Host запроса. Заголовки
+ * X-Forwarded-Host/Proto учитываются только при TRUST_PROXY: без reverse
+ * proxy их может подставить любой клиент.
+ */
+function getExternalOrigin(req, publicOrigin = '', trustProxy = false) {
   if (publicOrigin) {
     try { return new URL(publicOrigin).origin; } catch { return ''; }
   }
-  const host = firstForwardedValue(req.headers['x-forwarded-host']) || req.headers.host;
+  const forwardedHost = trustProxy ? firstForwardedValue(req.headers['x-forwarded-host']) : '';
+  const host = forwardedHost || req.headers.host;
   if (!host) return '';
-  const protocol = firstForwardedValue(req.headers['x-forwarded-proto']) || 'http';
+  const forwardedProto = trustProxy ? firstForwardedValue(req.headers['x-forwarded-proto']) : '';
+  const protocol = forwardedProto || 'http';
   if (protocol !== 'http' && protocol !== 'https') return '';
   try { return new URL(protocol + '://' + host).origin; } catch { return ''; }
 }
@@ -37,7 +44,23 @@ function isLoopbackHostname(hostname) {
   return net.isIPv4(hostname) && hostname.startsWith('127.');
 }
 
-function isSameOrigin(req, origin, publicOrigin = '') {
+/**
+ * Host входит в allowlist: loopback всегда, остальное — только явно
+ * разрешённые имена (PUBLIC_ORIGIN, HOST, ALLOWED_HOSTS). Чужой домен,
+ * перепривязанный на 127.0.0.1 (DNS rebinding), сюда не попадёт.
+ */
+function isAllowedHost(hostHeader, allowedHosts = []) {
+  if (typeof hostHeader !== 'string' || !hostHeader) return false;
+  let hostname;
+  try {
+    hostname = new URL('http://' + hostHeader).hostname;
+  } catch {
+    return false;
+  }
+  return isLoopbackHostname(hostname) || allowedHosts.includes(hostname);
+}
+
+function isSameOrigin(req, origin, publicOrigin = '', trustProxy = false) {
   try {
     const parsed = new URL(origin);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
@@ -46,16 +69,30 @@ function isSameOrigin(req, origin, publicOrigin = '') {
     if (req.headers.host && parsed.host === req.headers.host && isLoopbackHostname(parsed.hostname)) {
       return true;
     }
-    // Доступ через reverse proxy (x-forwarded-*) или PUBLIC_ORIGIN.
-    return parsed.origin === getExternalOrigin(req, publicOrigin);
+    // Доступ через reverse proxy (x-forwarded-* при TRUST_PROXY) или PUBLIC_ORIGIN.
+    return parsed.origin === getExternalOrigin(req, publicOrigin, trustProxy);
   } catch {
     return false;
   }
 }
 
-function applyRequestSecurity(req, res, allowedOrigins = [], publicOrigin = '') {
+function rejectRequest(res, status, error, message) {
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify({ error, message }));
+  return false;
+}
+
+/**
+ * Периметр запроса: security-заголовки на каждый ответ, allowlist Host
+ * (421 для остальных) и Origin (403 для чужих). true — запрос можно
+ * обрабатывать дальше.
+ */
+function applyRequestSecurity(
+  req,
+  res,
+  { allowedOrigins = [], publicOrigin = '', allowedHosts = [], trustProxy = false } = {}
+) {
   const origin = req.headers.origin;
-  const allowed = !origin || isSameOrigin(req, origin, publicOrigin) || allowedOrigins.includes(origin);
   const corsOrigin = origin && allowedOrigins.includes(origin) ? origin : null;
   const originalWriteHead = res.writeHead.bind(res);
 
@@ -70,10 +107,14 @@ function applyRequestSecurity(req, res, allowedOrigins = [], publicOrigin = '') 
     return originalWriteHead(statusCode, merged);
   };
 
-  if (allowed) return true;
-  res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' });
-  res.end(JSON.stringify({ error: 'origin_forbidden', message: 'Origin is not allowed' }));
-  return false;
+  const forwardedHost = trustProxy ? firstForwardedValue(req.headers['x-forwarded-host']) : '';
+  if (!isAllowedHost(req.headers.host, allowedHosts) || (forwardedHost && !isAllowedHost(forwardedHost, allowedHosts))) {
+    return rejectRequest(res, 421, 'host_not_allowed', 'Host is not allowed');
+  }
+  const allowed =
+    !origin || isSameOrigin(req, origin, publicOrigin, trustProxy) || allowedOrigins.includes(origin);
+  if (!allowed) return rejectRequest(res, 403, 'origin_forbidden', 'Origin is not allowed');
+  return true;
 }
 
 function isPrivateAddress(address) {
@@ -124,6 +165,8 @@ module.exports = {
   SECURITY_HEADERS,
   applyRequestSecurity,
   getExternalOrigin,
+  isAllowedHost,
+  isLoopbackHostname,
   isPrivateAddress,
   isSameOrigin,
   validateUpstreamUrl,

@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  isAllowedHost,
   isPrivateAddress,
   isSameOrigin,
   validateUpstreamUrl,
@@ -16,7 +17,9 @@ test('same-origin учитывает reverse proxy headers и PUBLIC_ORIGIN', ()
       'x-forwarded-proto': 'https',
     },
   };
-  assert.equal(isSameOrigin(request, 'https://ai-panel.home.ak-vps.ru'), true);
+  // X-Forwarded-* учитываются только при TRUST_PROXY (иначе их может подставить клиент)
+  assert.equal(isSameOrigin(request, 'https://ai-panel.home.ak-vps.ru', '', true), true);
+  assert.equal(isSameOrigin(request, 'https://ai-panel.home.ak-vps.ru'), false);
   assert.equal(isSameOrigin(request, 'https://evil.example'), false);
   assert.equal(isSameOrigin({ headers: { host: 'ai-panel:8765' } }, 'https://ai-panel.home.ak-vps.ru', 'https://ai-panel.home.ak-vps.ru'), true);
 });
@@ -66,4 +69,21 @@ test('remote upstream validation блокирует SSRF aliases и credentials'
     await assert.rejects(validateUpstreamUrl(url, { allowPrivate: false }), undefined, url);
   }
   assert.equal(await validateUpstreamUrl('https://8.8.8.8/api/'), 'https://8.8.8.8/api');
+});
+
+test('allowlist Host: loopback всегда, остальное — только из списка', () => {
+  for (const host of ['127.0.0.1:8765', 'localhost:8765', '[::1]:8765']) {
+    assert.equal(isAllowedHost(host, []), true, host);
+  }
+  assert.equal(isAllowedHost('evil.example:8765', []), false);
+  assert.equal(isAllowedHost('ai-panel.home.ak-vps.ru', ['ai-panel.home.ak-vps.ru']), true);
+  assert.equal(isAllowedHost('evil.example', ['panel.example']), false);
+  assert.equal(isAllowedHost('', ['panel.example']), false);
+  assert.equal(isAllowedHost('not a host', []), false);
+});
+
+test('X-Forwarded-Host учитывается только при TRUST_PROXY', () => {
+  const request = { headers: { host: 'evil.example', 'x-forwarded-host': 'panel.example', 'x-forwarded-proto': 'https' } };
+  assert.equal(isSameOrigin(request, 'https://panel.example', ''), false);
+  assert.equal(isSameOrigin(request, 'https://panel.example', '', true), true);
 });

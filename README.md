@@ -39,15 +39,21 @@ npm start
 
 Панель работает и без OmniRoute, но странице **Combo** нужен отдельно установленный OmniRoute — см. раздел [«Combo (OmniRoute)»](#combo-omniroute).
 
-### Вариант Б — за reverse proxy
+### Вариант Б — за reverse proxy (удалённый доступ)
 
-Если reverse proxy работает в другом контейнере или сетевом namespace, задайте публичный origin:
+Если reverse proxy работает в другом контейнере или сетевом namespace, задайте публичный origin и токен входа:
 
 ```env
 PUBLIC_ORIGIN=https://ai-panel.home.ak-vps.ru
+AIPANEL_AUTH_TOKEN=<openssl rand -hex 24>
+TRUST_PROXY=true
 ```
 
-`PUBLIC_ORIGIN` автоматически включает bind на `0.0.0.0`; `HOST` можно задать отдельно. Reverse proxy должен передавать `Host`, `X-Forwarded-Host` и `X-Forwarded-Proto`. Для одного origin `ALLOWED_ORIGINS` не требуется — он считается same-origin.
+**Вход обязателен.** В remote-режиме (задан `PUBLIC_ORIGIN` или `HOST` вне loopback) сервер не стартует без `AIPANEL_AUTH_TOKEN`: без него любой, кто достучится до порта, получил бы доступ к ключам провайдеров. Первый запрос страницы уводит на `/login.html`, где вводится токен; сессия — подписанная cookie `HttpOnly; SameSite=Strict; Secure` (при https) на 7 дней, пароля и логинов нет. Выход — кнопка **Выйти** в шапке. Неудачные попытки входа ограничены (10 на IP и 100 глобально за 15 минут), сравнение токена — за постоянное время. Смена `AIPANEL_AUTH_TOKEN` завершает все сессии.
+
+**Проверка `Host`.** Сервер принимает запросы только с loopback-адресов, хоста из `PUBLIC_ORIGIN` и имён из `ALLOWED_HOSTS`; остальные получают `421` — это защита от DNS rebinding. Заголовки `X-Forwarded-Host` и `X-Forwarded-Proto` учитываются только при `TRUST_PROXY=true`, иначе их может подставить любой клиент. Для одного origin `ALLOWED_ORIGINS` не требуется — он считается same-origin.
+
+По возможности слушайте панель на `127.0.0.1` за proxy и закрывайте порт firewall'ом: `PUBLIC_ORIGIN` включает bind на `0.0.0.0`, и тогда порт `PORT` (по умолчанию 8765) доступен напрямую, минуя proxy и его TLS.
 
 Пример Nginx/OpenResty:
 
@@ -57,6 +63,8 @@ proxy_set_header X-Forwarded-Host $host;
 proxy_set_header X-Forwarded-Proto $scheme;
 proxy_pass http://ai-panel:8765;
 ```
+
+Проверьте, что порт панели закрыт снаружи: `ss -ltnp | grep 8765` и правила firewall. Если панель опубликована в интернет без TLS, токен и cookie уходят открытым текстом — используйте только `https`.
 
 ### Вариант В — через PM2 (фоновый демон)
 
@@ -141,6 +149,9 @@ pm2 restart ai-panel --update-env
 | `PORT` | `8765` | Порт сервера (0–65535) |
 | `PUBLIC_ORIGIN` | _(пусто)_ | Внешний `https://` origin reverse proxy; явно включает remote deployment |
 | `ALLOWED_ORIGINS` | _(пусто)_ | Явный CORS allowlist браузерных origins через запятую |
+| `AIPANEL_AUTH_TOKEN` | _(пусто)_ | Токен входа в панель; **обязателен в remote-режиме** (задан `PUBLIC_ORIGIN` или `HOST` вне loopback), минимум 16 символов (`openssl rand -hex 24`) |
+| `ALLOWED_HOSTS` | _(пусто)_ | Доп. hostname'ы «своего» сервера через запятую (проверка `Host` против DNS rebinding). Loopback и хост `PUBLIC_ORIGIN` разрешены всегда |
+| `TRUST_PROXY` | `false` | `true`, если панель за reverse proxy и `X-Forwarded-Host`/`X-Forwarded-Proto` можно доверять |
 | `AIPANEL_MASTER_KEY` | генерируется локально | Необязательный переносимый master key: ровно 64 hex-символа (`openssl rand -hex 32`); пусто — ключ создаётся в `<AIPANEL_DATA_DIR>/store.db.key` |
 | `AIPANEL_DATA_DIR` | `data/` | Каталог хранилища (`store.db`, `store.db.key`) и кэша рейтинга; относительный путь считается от корня проекта |
 | `AIPANEL_LOG_DIR` | `logs/` | Каталог лога `ai-panel.log` |
@@ -240,6 +251,9 @@ flowchart TD
 | `GET /api/health` | Liveness: процесс отвечает |
 | `GET /api/ready` | Readiness: хранилище открыто и последние изменения записаны на диск, трекер AgentRouter запущен; иначе 503 |
 | `GET /api/metrics` | Число запросов, ошибок 5xx и среднее время ответа с момента старта |
+| `GET /api/auth/status` | Вход включён? Есть ли активная сессия (только булевы флаги) |
+| `POST /api/auth/login` | Вход по `AIPANEL_AUTH_TOKEN`, выдаёт сессионную cookie |
+| `POST /api/auth/logout` | Отменяет сессию (очищает cookie) |
 
 Ключ провайдера берётся из encrypted store; временный `x-api-key` поддерживается для совместимости. Ответ upstream нормализуется адаптером провайдера.
 

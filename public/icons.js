@@ -44,6 +44,8 @@ export const ICONS = {
 
   // Thinking (star)
   'star':         '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"/></svg>',
+  // Ручка перетаскивания моделей в combo (точечная сетка)
+  'grip-vertical': '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 16 16"><circle cx="5" cy="3" r="1.25" fill="currentColor"/><circle cx="11" cy="3" r="1.25" fill="currentColor"/><circle cx="5" cy="8" r="1.25" fill="currentColor"/><circle cx="11" cy="8" r="1.25" fill="currentColor"/><circle cx="5" cy="13" r="1.25" fill="currentColor"/><circle cx="11" cy="13" r="1.25" fill="currentColor"/></svg>',
 };
 
 /**
@@ -57,6 +59,7 @@ export function icon(name, opts) {
   if (!svg) return '';
   const cls = opts && opts.class ? opts.class : 'icon';
   const size = opts && opts.size ? opts.size : null;
-  const styleAttr = size ? ` style="width:${size}px;height:${size}px"` : '';
-  return svg.replace('<svg ', `<svg class="${cls}"${styleAttr} `);
+  // Размер задаётся атрибутами, а не inline-стилем: CSP запрещает inline-стили
+  const sizeAttrs = size ? ` width="${size}" height="${size}"` : '';
+  return svg.replace('<svg ', `<svg class="${cls}"${sizeAttrs} `);
 }

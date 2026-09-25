@@ -14,7 +14,7 @@ import { extractComboTargets, combosFromResponse } from '../combos.js';
 import { recentComboRows, requestedOf, realModelOf, formatCallLogTime, modelUsageSummary, formatTokensOf, tokensTitle } from '../call-logs.js';
 import { matchModel } from '../../model-match.js';
 import { showToast } from '../toast.js';
-import { icon } from '../../icons.js';
+import { setIcon } from '../dom.js';
 
 const COMBO_DISABLED_CONFIG_KEY = 'comboDisabled';
 
@@ -373,7 +373,7 @@ function renderComboList() {
     dragHandle.className = 'combo-drag-handle';
     dragHandle.title = 'Перетащить модель';
     dragHandle.setAttribute('aria-hidden', 'true');
-    dragHandle.innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" focusable="false"><circle cx="5" cy="3" r="1.25"/><circle cx="11" cy="3" r="1.25"/><circle cx="5" cy="8" r="1.25"/><circle cx="11" cy="8" r="1.25"/><circle cx="5" cy="13" r="1.25"/><circle cx="11" cy="13" r="1.25"/></svg>';
+    setIcon(dragHandle, 'grip-vertical');
 
     const rank = document.createElement('span');
     rank.className = 'combo-rank num';
@@ -416,12 +416,12 @@ function renderComboList() {
       testBtn.tabIndex = -1;
       testBtn.disabled = true;
     } else if (testState && testState.state === 'err') {
-      testBtn.innerHTML = icon('x-circle');
+      setIcon(testBtn, 'x-circle');
       testBtn.classList.add('combo-test-err');
       testBtn.title = (testState.detail || 'Модель не ответила') + ' — проверить снова';
       testBtn.addEventListener('click', () => checkComboModel(t, key));
     } else {
-      testBtn.innerHTML = icon('check-circle');
+      setIcon(testBtn, 'check-circle');
       if (testState && testState.state === 'ok') {
         testBtn.title = 'Модель ответила за ' + testState.ms + ' мс — проверить снова';
       }

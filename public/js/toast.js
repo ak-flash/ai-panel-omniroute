@@ -10,7 +10,7 @@
    общий aria-live не нужен.
    ============================================================ */
 
-import { icon } from '../icons.js';
+import { setIcon } from './dom.js';
 
 const DEFAULT_TIMEOUT_MS = 3000;
 const MAX_TOASTS = 4;
@@ -35,7 +35,7 @@ function buildToast(message, type) {
   const ico = document.createElement('span');
   ico.className = 'toast-icon';
   ico.setAttribute('aria-hidden', 'true');
-  ico.innerHTML = icon(type === 'error' ? 'x-mark' : 'check-circle', { class: 'icon' });
+  setIcon(ico, type === 'error' ? 'x-mark' : 'check-circle', { class: 'icon' });
 
   const text = document.createElement('span');
   text.className = 'toast-text';

@@ -7,6 +7,28 @@ import { $id } from './dom.js';
 
 let $statusDot, $statusText, $updated, $collapse, $toggle;
 
+/** Кнопка «Выйти» видна только когда сервер требует вход (AIPANEL_AUTH_TOKEN). */
+async function initAuthControls() {
+  const $logout = $id('btn-logout');
+  if (!$logout) return;
+  try {
+    const r = await fetch('/api/auth/status');
+    const s = await r.json();
+    if (!s || !s.authEnabled) return;
+    $logout.hidden = false;
+    $logout.addEventListener('click', async () => {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+      } catch {
+        /* сессию всё равно сбрасываем локально */
+      }
+      location.replace('/login.html');
+    });
+  } catch {
+    /* нет доступа к статусу — кнопку не показываем */
+  }
+}
+
 function isMobile() {
   return window.innerWidth <= 600;
 }
@@ -30,6 +52,8 @@ export function initTopbar() {
   $collapse = $id('topbar-collapse');
   $toggle = $id('btn-topbar-toggle');
   if (!$collapse || !$toggle) return;
+
+  initAuthControls();
 
   $toggle.addEventListener('click', () => {
     const expanded = $toggle.getAttribute('aria-expanded') === 'true';

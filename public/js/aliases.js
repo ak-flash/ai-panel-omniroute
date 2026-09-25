@@ -5,8 +5,7 @@
    диалога настроек.
    ============================================================ */
 
-import { $id } from './dom.js';
-import { icon } from '../icons.js';
+import { $id, setIcon } from './dom.js';
 import { vaultGet, vaultSet } from './settings.js';
 
 export function loadAliases() {
@@ -57,7 +56,7 @@ export function renderAliasRows() {
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'btn btn-ghost';
-    del.innerHTML = icon('x-mark');
+    setIcon(del, 'x-mark');
     del.setAttribute('aria-label', 'Удалить');
     del.addEventListener('click', () => {
       const m = loadAliases();
