@@ -28,7 +28,7 @@
   "devEngines": {
     "runtime": {
       "name": "node",
-      "version": "22.x"
+      "version": ">=22"
     }
   },
   "dependencies": {
