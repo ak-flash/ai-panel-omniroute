@@ -36,12 +36,12 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.62.1",
-    "eslint": "^10.9.1",
+    "@playwright/test": "^1.63.0",
+    "eslint": "^10.11.0",
     "eslint-plugin-no-unsanitized": "^4.1.5",
     "globals": "^17.12.0",
-    "prettier": "^3.9.6",
-    "stylelint": "^17.14.1",
+    "prettier": "^3.9.8",
+    "stylelint": "^17.15.0",
     "stylelint-config-recommended": "^18.0.0"
   }
 }
