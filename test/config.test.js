@@ -47,9 +47,9 @@ test('PUBLIC_ORIGIN включает bind на 0.0.0.0 и remote-режим', ()
   assert.equal(loadConfig({ HOST: 'localhost' }).remoteMode, false);
 });
 
-test('remote-режим требует AIPANEL_AUTH_TOKEN, а токен — минимум 16 символов', () => {
-  assert.throws(() => loadConfig({ PUBLIC_ORIGIN: 'https://panel.example' }), /AIPANEL_AUTH_TOKEN/);
-  assert.throws(() => loadConfig({ HOST: '0.0.0.0' }), /AIPANEL_AUTH_TOKEN/);
+test('пустой AIPANEL_AUTH_TOKEN отключает вход даже в remote-режиме, короткий — ошибка', () => {
+  assert.equal(loadConfig({ PUBLIC_ORIGIN: 'https://panel.example' }).authToken, '');
+  assert.equal(loadConfig({ HOST: '0.0.0.0' }).authToken, '');
   assert.throws(() => loadConfig({ AIPANEL_AUTH_TOKEN: 'short' }), /AIPANEL_AUTH_TOKEN/);
   const config = loadConfig({ PUBLIC_ORIGIN: 'https://panel.example', AIPANEL_AUTH_TOKEN: 'x'.repeat(16) });
   assert.equal(config.authToken, 'x'.repeat(16));

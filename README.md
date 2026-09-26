@@ -49,7 +49,9 @@ AIPANEL_AUTH_TOKEN=<openssl rand -hex 24>
 TRUST_PROXY=true
 ```
 
-**Вход обязателен.** В remote-режиме (задан `PUBLIC_ORIGIN` или `HOST` вне loopback) сервер не стартует без `AIPANEL_AUTH_TOKEN`: без него любой, кто достучится до порта, получил бы доступ к ключам провайдеров. Первый запрос страницы уводит на `/login.html`, где вводится токен; сессия — подписанная cookie `HttpOnly; SameSite=Strict; Secure` (при https) на 7 дней, пароля и логинов нет. Выход — кнопка **Выйти** в шапке. Неудачные попытки входа ограничены (10 на IP и 100 глобально за 15 минут), сравнение токена — за постоянное время. Смена `AIPANEL_AUTH_TOKEN` завершает все сессии.
+**Вход включается `AIPANEL_AUTH_TOKEN`.** Если переменная пуста, входа нет вовсе: страница `/login.html` не показывается, маршруты `/api/auth/*` возвращают 401. Заданный токен (минимум 16 символов) включает вход: первый запрос страницы уводит на `/login.html`, где вводится токен; сессия — подписанная cookie `HttpOnly; SameSite=Strict; Secure` (при https) на 7 дней, пароля и логинов нет. Выход — кнопка **Выйти** в шапке. Неудачные попытки входа ограничены (10 на IP и 100 глобально за 15 минут), сравнение токена — за постоянное время. Смена `AIPANEL_AUTH_TOKEN` завершает все сессии.
+
+**Без токена вход не включается даже в remote-режиме** (задан `PUBLIC_ORIGIN` или `HOST` вне loopback). Панель не может проверить, что порт слушает только reverse proxy, поэтому в этом случае при старте пишет предупреждение в лог: любой, кто достучится до порта напрямую, получит доступ к ключам провайдеров. Закрывайте порт firewall'ом либо задавайте токен.
 
 **Проверка `Host`.** Сервер принимает запросы только с loopback-адресов, хоста из `PUBLIC_ORIGIN` и имён из `ALLOWED_HOSTS`; остальные получают `421` — это защита от DNS rebinding. Заголовки `X-Forwarded-Host` и `X-Forwarded-Proto` учитываются только при `TRUST_PROXY=true`, иначе их может подставить любой клиент. Для одного origin `ALLOWED_ORIGINS` не требуется — он считается same-origin.
 
@@ -149,7 +151,7 @@ pm2 restart ai-panel --update-env
 | `PORT` | `8765` | Порт сервера (0–65535) |
 | `PUBLIC_ORIGIN` | _(пусто)_ | Внешний `https://` origin reverse proxy; явно включает remote deployment |
 | `ALLOWED_ORIGINS` | _(пусто)_ | Явный CORS allowlist браузерных origins через запятую |
-| `AIPANEL_AUTH_TOKEN` | _(пусто)_ | Токен входа в панель; **обязателен в remote-режиме** (задан `PUBLIC_ORIGIN` или `HOST` вне loopback), минимум 16 символов (`openssl rand -hex 24`) |
+| `AIPANEL_AUTH_TOKEN` | _(пусто)_ | Токен входа в панель; пусто — вход выключен (в том числе в remote-режиме), не короче 16 символов (`openssl rand -hex 24`) |
 | `ALLOWED_HOSTS` | _(пусто)_ | Доп. hostname'ы «своего» сервера через запятую (проверка `Host` против DNS rebinding). Loopback и хост `PUBLIC_ORIGIN` разрешены всегда |
 | `TRUST_PROXY` | `false` | `true`, если панель за reverse proxy и `X-Forwarded-Host`/`X-Forwarded-Proto` можно доверять |
 | `AIPANEL_MASTER_KEY` | генерируется локально | Необязательный переносимый master key: ровно 64 hex-символа (`openssl rand -hex 32`); пусто — ключ создаётся в `<AIPANEL_DATA_DIR>/store.db.key` |

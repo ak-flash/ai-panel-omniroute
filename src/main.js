@@ -63,6 +63,16 @@ async function main() {
   const portSource = describeEnvSource('PORT', process.env, fileKeys);
   bootLog.warnFile(`[boot] конфигурация: HOST=${config.host} (${hostSource}), PORT=${config.port} (${portSource})`);
 
+  // Панель не в состоянии проверить, что порт закрыт снаружи, поэтому
+  // без токена входа в remote-режиме предупреждаем явно.
+  if (config.remoteMode && !config.authToken) {
+    bootLog.warn(
+      '[boot] AIPANEL_AUTH_TOKEN пуст: вход отключён, любой, кто достучится до порта, ' +
+        'получит доступ к ключам провайдеров. Закройте порт firewall/reverse proxy ' +
+        'или задайте AIPANEL_AUTH_TOKEN.'
+    );
+  }
+
   const providers = loadProviders({ log: providerLogger, debug: config.providerDebug });
 
   // Хранилище открываем до старта сервера: неверный master key или

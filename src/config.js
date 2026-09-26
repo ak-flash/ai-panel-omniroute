@@ -188,15 +188,12 @@ function loadConfig(env = process.env) {
   const publicOrigin = parseOrigin('PUBLIC_ORIGIN', env.PUBLIC_ORIGIN);
   const host = text(env.HOST) || (publicOrigin ? '0.0.0.0' : '127.0.0.1');
   // Remote-режим: панель доступна не только с этой машины — через reverse
-  // proxy (PUBLIC_ORIGIN) или прямым bind не на loopback. Тогда вход обязателен.
+  // proxy (PUBLIC_ORIGIN) или прямым bind не на loopback.
   const remoteMode = Boolean(publicOrigin) || !LOOPBACK_HOSTS.has(host);
+  // AIPANEL_AUTH_TOKEN пуст — вход не включается вовсе, даже в remote-режиме:
+  // порт тогда должен быть закрыт firewall'ом/reverse proxy. Панель не
+  // может проверить, что слушает только proxy, поэтому предупреждает в лог.
   const authToken = parseAuthToken(env.AIPANEL_AUTH_TOKEN);
-  if (remoteMode && !authToken) {
-    throw new ConfigError(
-      'Remote-режим (задан PUBLIC_ORIGIN или HOST не loopback) требует AIPANEL_AUTH_TOKEN — ' +
-        'иначе ключи провайдеров доступны любому, кто достучится до порта'
-    );
-  }
   // Допустимые значения Host (защита от DNS rebinding): loopback всегда,
   // хост PUBLIC_ORIGIN, конкретный адрес из HOST и явный ALLOWED_HOSTS
   const allowedHosts = new Set(parseHostList('ALLOWED_HOSTS', env.ALLOWED_HOSTS));
