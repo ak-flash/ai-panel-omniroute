@@ -1202,6 +1202,13 @@ td.coding-col {
   border-bottom: none;
 }
 
+/* Бейджи в ряду модели — по вертикали по центру, а не по базовой линии текста */
+.combo-list li > .badge,
+.combo-drag-ghost > .badge {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
 .combo-list li.top {
   background: var(--surface-2);
 }

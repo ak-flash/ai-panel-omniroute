@@ -10,7 +10,8 @@ import { setStatus, touchUpdated } from '../topbar.js';
 import { providerRequest, omniFetch, COMBO_LIST_PATH, COMBO_PATH, CALL_LOGS_URL } from '../api.js';
 import { vaultSet, vaultGet } from '../settings.js';
 import { start } from '../boot.js';
-import { extractComboTargets, combosFromResponse } from '../combos.js';
+import { extractComboTargets, combosFromResponse, applyAliases } from '../combos.js';
+import { loadAliases } from '../aliases.js';
 import { recentComboRows, requestedOf, realModelOf, formatCallLogTime, modelUsageSummary, formatTokensOf, tokensTitle } from '../call-logs.js';
 import { matchModel } from '../../model-match.js';
 import { showToast } from '../toast.js';
@@ -130,6 +131,54 @@ function renderComboControls() {
 // matchModel — из model-match.js
 function findModel(id) {
   return matchModel(session.models, id);
+}
+
+/* --- Бейдж тарифа: каталог того провайдера, который отдаёт модель ------
+   Маршрут может состоять из моделей разных провайдеров, а session.models
+   — каталог провайдера, выбранного на странице «Модели». Поэтому ищем
+   модель в каталоге её собственного провайдера, а session.models берём
+   запасным вариантом. Каталоги кэшируем на время страницы. */
+const catalogCache = new Map();  // id провайдера панели -> массив моделей
+const catalogLoads = new Map();  // id провайдера панели -> промис загрузки
+
+/** Провайдер панели, отдающий модель маршрута ('' — определить нельзя) */
+function targetProviderId(target) {
+  if (!target) return '';
+  const full = String(target.modelId || '');
+  const raw = String((target._raw && (target._raw.providerId || target._raw.provider)) || '');
+  // Префикс берём из алиасированного полного id — так же, как строится display
+  const candidates = [full ? applyAliases(full, loadAliases()) : '', full, raw];
+  const withPrefix = candidates.find((s) => s && s.includes('/')) || raw;
+  const prefix = withPrefix.includes('/') ? withPrefix.slice(0, withPrefix.indexOf('/')) : withPrefix;
+  const key = String(prefix).toLowerCase();
+  if (!key) return '';
+  const p = session.providers.find(
+    (x) => x.id.toLowerCase() === key || String(x.name || '').toLowerCase() === key
+  );
+  return p ? p.id : '';
+}
+
+/** Модель маршрута для бейджа тарифа; при необходимости догружает каталог */
+function findTargetModel(target) {
+  const pid = targetProviderId(target);
+  const own = pid ? catalogCache.get(pid) : null;
+  const found = (own && matchModel(own, target.modelId)) || findModel(target.modelId);
+  if (found) return found;
+  // session.models — каталог modelsProvider, повторно его не грузим
+  if (pid && (!session.modelsProvider || session.modelsProvider.id !== pid)) loadCatalog(pid);
+  return null;
+}
+
+/** Догружает каталог провайдера (один раз) и перерисовывает список */
+function loadCatalog(pid) {
+  if (!pid || catalogCache.has(pid) || catalogLoads.has(pid)) return;
+  const provider = session.providers.find((p) => p.id === pid);
+  if (!provider) return;
+  const task = providerRequest('models', { provider })
+    .then((d) => { catalogCache.set(pid, Array.isArray(d.data) ? d.data : []); })
+    .catch(() => { catalogCache.set(pid, []); })
+    .then(() => { catalogLoads.delete(pid); renderComboList(); });
+  catalogLoads.set(pid, task);
 }
 
 let dragSrcIdx = null;
@@ -379,7 +428,7 @@ function renderComboList() {
     rank.className = 'combo-rank num';
     rank.textContent = String(i + 1);
 
-    const m = findModel(t.modelId);
+    const m = findTargetModel(t);
     const name = document.createElement('code');
     name.className = 'combo-model-id';
     name.textContent = t.display;
@@ -783,7 +832,8 @@ export async function init() {
   setStatus('loading', 'Обновляю…');
   await loadCombos();
   loadComboRecent();
-  // Тихо подгружаем каталог моделей — для бейджей тарифа (free/paid/premium)
+  // Каталог моделей провайдера «Модели» — запасной источник для бейджей
+  // тарифа; каталоги остальных провайдеров догружает findTargetModel
   try {
     const data = await providerRequest('models', { provider: session.modelsProvider });
     session.models = data.data || [];
