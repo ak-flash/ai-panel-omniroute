@@ -65,7 +65,7 @@ const COMBO = {
 };
 
 test.describe('Страница «Combo»: клавиатура', () => {
-  test('кнопки «выше/ниже» меняют порядок и объявляют позицию (P3-5)', async ({ page }) => {
+  test('стрелки на drag-handle меняют порядок и объявляют позицию (P3-5)', async ({ page }) => {
     const puts = [];
     await mockCombos(page, [COMBO]);
     // Регистрируем этот route последним: PUT записывается в puts,
@@ -84,11 +84,9 @@ test.describe('Страница «Combo»: клавиатура', () => {
     await expect(list).toHaveCount(3);
     await expect(list.nth(0)).toContainText('gpt-4o');
 
-    // вторая строка: «выше»
-    await list
-      .nth(1)
-      .getByRole('button', { name: /Поднять выше/ })
-      .click();
+    // Вторая строка: ArrowUp на drag-handle
+    await list.nth(1).locator('.combo-drag-handle').focus();
+    await list.nth(1).locator('.combo-drag-handle').press('ArrowUp');
     await expect(list.nth(0)).toContainText('claude-sonnet');
     await expect(page.locator('.visually-hidden[role="status"]').last()).toContainText('позиция 1');
     await expect.poll(() => puts.length).toBeGreaterThan(0);
@@ -102,13 +100,17 @@ test.describe('Страница «Combo»: клавиатура', () => {
     expect(focused).toBe(true);
   });
 
-  test('кнопка «ниже» у последней модели выключена (P3-5)', async ({ page }) => {
+  test('drag-handle доступен с клавиатуры (P3-5)', async ({ page }) => {
     await mockProviders(page);
     await mockCombos(page, [COMBO]);
     await page.goto('/combo.html');
     const list = page.locator('#combo-models-list > li');
     await expect(list).toHaveCount(3);
-    await expect(list.nth(0).getByRole('button', { name: /Поднять выше/ })).toBeDisabled();
-    await expect(list.nth(2).getByRole('button', { name: /Опустить ниже/ })).toBeDisabled();
+    await expect(list.nth(0).locator('.combo-drag-handle')).toHaveAttribute('role', 'button');
+    await expect(list.nth(0).locator('.combo-drag-handle')).toHaveAttribute('tabindex', '0');
+    await expect(list.nth(0).locator('.combo-drag-handle')).toHaveAttribute(
+      'aria-label',
+      /Переместить модель/
+    );
   });
 });

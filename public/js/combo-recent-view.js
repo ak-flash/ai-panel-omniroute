@@ -2,8 +2,8 @@
    AI Panel — рендер таблицы «последние combo-запросы».
 
    Раньше эта разметка жила прямо в pages/combo.js (P2-2): там
-   остаётся только загрузка данных, а построение строк и сводки
-   вынесено сюда. Форматирование значений — в combo-recent-format.js
+   остаётся только загрузка данных, а построение строк вынесено
+   сюда. Форматирование значений — в combo-recent-format.js
    и call-logs.js, модуль отвечает лишь за DOM.
    ============================================================ */
 
@@ -11,7 +11,6 @@ import {
   requestedOf,
   realModelOf,
   formatCallLogTime,
-  modelUsageSummary,
   formatTokensOf,
   tokensTitle,
 } from './call-logs.js';
@@ -28,18 +27,17 @@ import {
  * @property {Element|null} status   #combo-recent-status
  * @property {Element|null} meta     #combo-recent-meta
  * @property {Element|null} body     #combo-recent-body (tbody)
- * @property {Element|null} summary  #combo-recent-summary
  */
 
 /**
- * Рисует таблицу последних combo-запросов и сводку «какая модель
- * сколько раз обслуживала combo». Пустой список показывает подсказку.
+ * Рисует таблицу последних combo-запросов. Пустой список показывает
+ * подсказку.
  *
  * @param {Array<object>} rows строки логов (уже отобранные recentComboRows)
  * @param {ComboRecentEls} els
  */
 export function renderComboRecentTable(rows, els) {
-  const { recent, status, meta, body, summary } = els;
+  const { recent, status, meta, body } = els;
   if (!recent || !body) return;
 
   if (!rows.length) {
@@ -49,7 +47,6 @@ export function renderComboRecentTable(rows, els) {
         'Нет combo-запросов в логах OmniRoute — отправьте запрос через combo и обновите страницу.';
     }
     if (meta) meta.textContent = '';
-    if (summary) summary.textContent = '';
     return;
   }
 
@@ -102,13 +99,5 @@ export function renderComboRecentTable(rows, els) {
 
     tr.append(tdTime, tdCombo, tdModel, tdProvider, tdTokens, tdStatus);
     body.appendChild(tr);
-  }
-
-  // Сводка: какая реальная модель сколько раз обслуживала combo
-  if (summary) {
-    const top = modelUsageSummary(rows).slice(0, 3);
-    summary.textContent = top.length
-      ? 'Модели: ' + top.map(s => s.model + ' ×' + s.count).join(', ')
-      : '';
   }
 }

@@ -3,8 +3,7 @@
 
    Раньше разметка строки жила внутри renderComboList (P2-2).
    Обработчики перетаскивания остаются на странице: здесь только
-   содержимое строки — ранг, бейджи, кнопка проверки, «выше/ниже»
-   и переключатель включения.
+   содержимое строки — ранг, бейджи, кнопка проверки и переключатель включения.
    ============================================================ */
 
 import { setIcon } from './dom.js';
@@ -12,7 +11,7 @@ import { setIcon } from './dom.js';
 /**
  * @typedef {object} ComboRowHandlers
  * @property {() => void} onCheck  запустить проверку модели
- * @property {(from: number, to: number) => void} onMove  переставить модель
+
  * @property {() => void} onToggle  включить/выключить модель
  */
 
@@ -24,7 +23,6 @@ import { setIcon } from './dom.js';
  * @param {object} opts.target       target combo (display, weight, …)
  * @param {string} opts.key          ключ строки (comboTargetKey)
  * @param {number} opts.index        позиция в общем списке (вкл. + выкл.)
- * @param {number} opts.enabledCount число включённых targets
  * @param {boolean} opts.disabled    target выключен
  * @param {object} [opts.model]      каталог провайдера для бейджа тарифа
  * @param {object} [opts.testState]  состояние проверки ({ state, ms, detail })
@@ -32,16 +30,7 @@ import { setIcon } from './dom.js';
  * @returns {{el: HTMLLIElement, dragHandle: HTMLSpanElement}}
  */
 export function buildComboRow(opts) {
-  const {
-    target: t,
-    key,
-    index: i,
-    enabledCount,
-    disabled: isDisabled,
-    model: m,
-    testState,
-    handlers,
-  } = opts;
+  const { target: t, key, index: i, disabled: isDisabled, model: m, testState, handlers } = opts;
 
   const li = document.createElement('li');
   if (i === 0 && !isDisabled) li.classList.add('top');
@@ -53,7 +42,9 @@ export function buildComboRow(opts) {
   const dragHandle = document.createElement('span');
   dragHandle.className = 'combo-drag-handle';
   dragHandle.title = 'Перетащить модель';
-  dragHandle.setAttribute('aria-hidden', 'true');
+  dragHandle.setAttribute('role', 'button');
+  dragHandle.setAttribute('tabindex', isDisabled ? '-1' : '0');
+  dragHandle.setAttribute('aria-label', 'Переместить модель ' + t.display);
   setIcon(dragHandle, 'grip-vertical');
 
   const rank = document.createElement('span');
@@ -120,29 +111,6 @@ export function buildComboRow(opts) {
     msSpan.textContent = testState.ms + ' мс';
     msSpan.title = 'Модель ответила за ' + testState.ms + ' мс';
     li.appendChild(msSpan);
-  }
-
-  // Клавиатурная перестановка: кнопки «выше/ниже» дублируют
-  // перетаскивание для тех, кто не пользуется мышью (P3-5)
-  if (!isDisabled) {
-    const moveBtns = document.createElement('span');
-    moveBtns.className = 'combo-move';
-    const mkMoveBtn = (dir, label, icon) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'btn-icon combo-move-btn';
-      b.title = label + ' «' + t.display + '»';
-      b.setAttribute('aria-label', label + ' модель ' + t.display);
-      setIcon(b, icon);
-      b.disabled = dir < 0 ? i === 0 : i === enabledCount - 1;
-      b.addEventListener('click', () => handlers.onMove(i, i + dir));
-      return b;
-    };
-    moveBtns.append(
-      mkMoveBtn(-1, 'Поднять выше', 'chevron-up'),
-      mkMoveBtn(1, 'Опустить ниже', 'chevron-down')
-    );
-    li.appendChild(moveBtns);
   }
 
   // У первой включённой модели переключателя нет — она всегда активна

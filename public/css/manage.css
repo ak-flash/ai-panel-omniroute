@@ -1,0 +1,126 @@
+/* Общие стили карточек управления и командных подсказок. */
+
+.manage-card {
+  display: grid;
+  gap: 16px;
+}
+
+.info-card {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  padding: 22px 24px;
+  box-shadow:
+    0 1px 2px oklch(0% 0 0 / 0.08),
+    0 12px 32px oklch(0% 0 0 / 0.05);
+}
+
+.info-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--accent);
+  opacity: 0.8;
+}
+
+.info-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.info-card-icon {
+  display: inline-flex;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 12%, var(--surface));
+  border: 1px solid color-mix(in oklch, var(--accent) 24%, var(--border));
+  border-radius: var(--radius-m);
+}
+
+.info-card-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.info-card-title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.info-card-sub {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.manage-cmd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 10px 8px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+}
+
+.manage-cmd:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 18%, transparent);
+}
+
+.manage-cmd code {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+  font-size: var(--fs-md);
+}
+
+#btn-copy-cmd {
+  flex: 0 0 auto;
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+#copy-status {
+  min-height: 1.4em;
+  margin: 10px 0 0;
+  color: var(--ok);
+}
+
+@media (max-width: 600px) {
+  .info-card {
+    padding: 20px 16px;
+  }
+
+  .manage-cmd {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 12px;
+  }
+
+  .manage-cmd code {
+    padding: 4px;
+  }
+
+  .info-card-head {
+    align-items: flex-start;
+  }
+
+  #btn-copy-cmd {
+    width: 100%;
+  }
+}

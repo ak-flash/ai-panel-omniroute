@@ -275,20 +275,8 @@
   }
 }
 
-/* Секция «Последние combo-запросы» на странице Combo */
-#combo-recent td.num-col {
-  max-width: 180px;
-}
-
-#combo-recent .badge {
-  display: inline-block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
+/* Ширины колонок таблицы combo-запросов заданы в css/combo.css
+   через colgroup: «Статус» — самая широкая колонка. */
 #combo-recent {
   margin-top: 16px;
 }

@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="css/layout.css" />
     <link rel="stylesheet" href="css/components.css" />
     <link rel="stylesheet" href="css/combo.css" />
+    <link rel="stylesheet" href="css/manage.css" />
     <link rel="stylesheet" href="css/table.css" />
     <link rel="stylesheet" href="css/combo-list.css" />
     <link rel="stylesheet" href="css/dialogs.css" />
@@ -27,7 +28,9 @@
       <!-- Combos panel (OmniRoute) -->
       <section id="combos-panel" class="combos-panel">
         <div class="models-header">
-          <h2>Combo OmniRoute</h2>
+          <div class="combo-heading">
+            <h2>Combo OmniRoute</h2>
+          </div>
           <div class="combo-controls">
             <select id="combo-select" class="select" aria-label="Combo"></select>
             <button id="combo-refresh" class="btn" title="Обновить список combo">
@@ -62,8 +65,7 @@
               <span class="combo-meta" id="combo-targets-count"></span>
             </div>
             <span id="combo-reorder-hint" class="combo-reorder-hint">
-              Перетащите модель за значок слева или используйте кнопки «выше/ниже», чтобы изменить
-              порядок. Изменения сохраняются автоматически.
+              Перетащите модели, чтобы изменить порядок. Сохранение — автоматически.
             </span>
           </div>
           <div class="table-wrap">
@@ -85,6 +87,14 @@
         <p id="combo-recent-status" class="hint"></p>
         <div class="table-wrap">
           <table>
+            <colgroup>
+              <col class="col-time" />
+              <col class="col-combo" />
+              <col class="col-model" />
+              <col class="col-provider" />
+              <col class="col-tokens" />
+              <col class="col-status" />
+            </colgroup>
             <thead>
               <tr>
                 <th scope="col">Время</th>
@@ -98,7 +108,7 @@
             <tbody id="combo-recent-body"></tbody>
           </table>
         </div>
-        <p id="combo-recent-summary" class="hint"></p>
+
       </section>
     </main>
 

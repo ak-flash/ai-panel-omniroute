@@ -60,13 +60,9 @@
   padding-top: 4px;
 }
 
-/* Строки статуса и сводки над таблицей combo-запросов */
+/* Строка статуса над таблицей combo-запросов */
 #combo-recent-status {
   margin: 0 0 8px;
-}
-
-#combo-recent-summary {
-  margin: 8px 0 0;
 }
 
 /* Кнопка входа Antigravity и пояснение — на одной строке */

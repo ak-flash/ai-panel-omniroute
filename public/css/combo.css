@@ -1,20 +1,101 @@
 /* Стили страницы Combo. */
 
+.combos-panel {
+  margin-top: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  padding: 20px 24px;
+  box-shadow:
+    0 1px 2px oklch(0% 0 0 / 0.08),
+    0 12px 32px oklch(0% 0 0 / 0.05);
+}
+
+#combos-panel {
+  margin-top: 0;
+}
+
+#combo-details {
+  overflow: hidden;
+  transition: opacity 150ms ease-out;
+}
+
+#combo-details.is-switching {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.models-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.combo-heading {
+  min-width: 0;
+}
+
+.models-header h2 {
+  margin: 0;
+  font-size: var(--fs-xl);
+  line-height: 1.2;
+}
+
+.stats-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.stats-provider {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.models-status {
+  min-height: 1.5em;
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+/* Не оставляем пустое место после загрузки combo */
+.models-status:empty {
+  display: none;
+}
+
 /* --------------------------------------------------------------------------
    Combos panel
    -------------------------------------------------------------------------- */
 .combo-controls {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(190px, 260px) 40px;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+}
+
+.combo-controls .select {
+  width: 100%;
+  min-width: 0;
 }
 
 .combo-info {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 8px 20px;
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
@@ -31,8 +112,10 @@
 }
 
 .combo-reorder-hint {
+  max-width: 46ch;
   color: var(--text-muted);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-2xs);
+  line-height: 1.4;
 }
 
 .combo-empty {
@@ -52,15 +135,21 @@
 
 .combo-list li {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
+  min-height: 48px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   font-size: var(--fs-md);
+  transition: background-color 140ms ease-out;
 }
 
 .combo-list li:last-child {
   border-bottom: none;
+}
+
+.combo-list li:hover {
+  background: color-mix(in oklch, var(--surface-2) 70%, transparent);
 }
 
 /* Бейджи в ряду модели — по вертикали по центру, а не по базовой линии текста */
@@ -91,9 +180,11 @@
 }
 
 .combo-model-id {
+  min-width: 0;
   overflow-wrap: anywhere;
   font-family: ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
   font-size: var(--fs-sm);
+  line-height: 1.25;
 }
 
 li.top .combo-model-id {
@@ -122,70 +213,69 @@ li.top .combo-model-id {
   border-color: currentColor;
 }
 
-/* --------------------------------------------------------------------------
-   Manage panel
-   -------------------------------------------------------------------------- */
-.manage-card {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+#combo-recent {
+  margin-top: 16px;
 }
 
-.info-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-m);
-  padding: 16px 20px;
-  flex: 1 1 260px;
-  min-width: 0;
+#combo-recent-status {
+  margin: 0 0 8px;
 }
 
-.info-card-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
+/* Фиксированные ширины колонок: «Статус» — самая широкая */
+#combo-recent table {
+  table-layout: fixed;
 }
 
-.info-card-icon {
-  width: 20px;
-  height: 20px;
-  line-height: 1;
-  display: inline-flex;
-  flex-shrink: 0;
-  color: var(--accent);
+#combo-recent col.col-time {
+  width: 92px;
 }
 
-.info-card-icon svg {
-  width: 100%;
-  height: 100%;
+#combo-recent col.col-combo {
+  width: 15%;
 }
 
-.info-card-title {
-  margin: 0;
-  font-size: var(--fs-base);
-  font-weight: 700;
+#combo-recent col.col-model {
+  width: 23%;
 }
 
-.info-card-sub {
-  margin: 2px 0 0;
-  font-size: var(--fs-xs);
-  color: var(--text-faint);
+#combo-recent col.col-provider {
+  width: 13%;
 }
 
-.manage-cmd {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-m);
-  padding: 10px 14px;
+#combo-recent col.col-tokens {
+  width: 128px;
 }
 
-.manage-cmd code {
-  font-family: ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
-  font-size: var(--fs-md);
-  color: var(--text);
-  flex: 1;
+#combo-recent col.col-status {
+  width: 30%;
 }
+
+#combo-recent td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#combo-recent td > code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Токены показываем полностью, без многоточия */
+#combo-recent td:nth-child(5) {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+#combo-recent .badge {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Стили карточек управления вынесены в manage.css и используются также Cheatsheet. */

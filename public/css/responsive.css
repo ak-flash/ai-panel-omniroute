@@ -2,6 +2,12 @@
 /* --------------------------------------------------------------------------
    Responsive
    -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  #combo-details {
+    transition: none;
+  }
+}
+
 @media (max-width: 600px) {
   .topbar {
     flex-wrap: nowrap;
@@ -223,5 +229,50 @@
 
   .setup-card {
     margin: 40px auto;
+  }
+
+  .combos-panel {
+    margin-top: 16px;
+    padding: 16px;
+  }
+
+  #combos-panel {
+    margin-top: 0;
+  }
+
+  .models-header {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .combo-controls {
+    grid-template-columns: minmax(0, 1fr) 40px;
+  }
+
+  .combo-controls .select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .combo-controls .btn {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+  }
+
+  .combo-info-meta,
+  .combo-reorder-hint {
+    width: 100%;
+  }
+
+  .combo-list li {
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  #combo-recent {
+    padding: 16px;
   }
 }

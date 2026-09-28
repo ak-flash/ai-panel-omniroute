@@ -36,7 +36,6 @@ const $comboRecent = $id('combo-recent');
 const $comboRecentMeta = $id('combo-recent-meta');
 const $comboRecentStatus = $id('combo-recent-status');
 const $comboRecentBody = $id('combo-recent-body');
-const $comboRecentSummary = $id('combo-recent-summary');
 
 // Сколько последних combo-запросов показывать
 const RECENT_LIMIT = 10;
@@ -452,7 +451,6 @@ function renderComboList() {
       testState: comboModelCheck.get(key),
       handlers: {
         onCheck: () => comboModelCheck.run(t, key),
-        onMove: (from, to) => moveModel(from, to),
         onToggle: () => toggleComboModel(t),
       },
     });
@@ -494,6 +492,13 @@ function renderComboList() {
 
     /* Тач/перо: HTML5 DnD не срабатывает — эмулируем через Pointer Events.
        Старт — только за ручку, чтобы свайпы по строке листали страницу. */
+    dragHandle.addEventListener('keydown', e => {
+      if (isDisabled || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+      e.preventDefault();
+      const delta = e.key === 'ArrowUp' ? -1 : 1;
+      moveModel(toComboIndex(i), toComboIndex(i + delta));
+    });
+
     dragHandle.addEventListener('pointerdown', e => {
       if (e.pointerType === 'mouse') return; // мышь идёт через HTML5 DnD
       if (e.pointerType === 'pen' && e.button !== 0) return;
@@ -537,15 +542,30 @@ function renderComboDetails() {
   renderComboList();
 }
 
+let comboHeightAnimation = null;
+
 async function loadComboModels() {
   const version = ++comboLoadVersion;
   const combo = activeCombo();
   if (!combo) return;
 
-  $comboDetails.hidden = true;
-  $comboStatus.textContent = 'Загружаю combo «' + (combo.name || combo.id) + '»…';
+  const switching = !$comboDetails.hidden;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  comboHeightAnimation?.cancel();
+  comboHeightAnimation = null;
+  $comboDetails.classList.toggle('is-switching', switching);
+  $comboDetails.inert = switching;
+  $comboDetails.setAttribute('aria-busy', 'true');
+  // Во время переключения сохраняем старый блок и не вставляем строку,
+  // которая сдвинула бы badge и список вниз.
+  $comboStatus.textContent = switching
+    ? ''
+    : 'Загружаю combo «' + (combo.name || combo.id) + '»…';
+  const fadeOut = switching && !reducedMotion
+    ? new Promise(resolve => setTimeout(resolve, 150))
+    : Promise.resolve();
   try {
-    const data = await omniFetch(COMBO_PATH(combo.id));
+    const [data] = await Promise.all([omniFetch(COMBO_PATH(combo.id)), fadeOut]);
     if (version !== comboLoadVersion || combo.id !== activeComboId) return;
     activeComboData = data;
     loadDisabledComboTargets();
@@ -569,17 +589,40 @@ async function loadComboModels() {
           !disabledComboModels.some(item => comboTargetKey(item) === comboTargetKey(target))
       ),
     ];
-    // Стратегия и число targets из шапки панели
+    const previousHeight = $comboDetails.getBoundingClientRect().height;
+    // Стратегия и число targets обновляются вместе, пока блок скрыт opacity.
     if ($comboStrategyBadge) {
       $comboStrategyBadge.textContent = data.strategy || '?';
       $comboStrategyBadge.hidden = !data.strategy;
     }
     renderComboDetails();
-    $comboStatus.textContent = '';
+    if (!$comboDetails.hidden) $comboStatus.textContent = '';
+    $comboDetails.inert = false;
+    $comboDetails.setAttribute('aria-busy', 'false');
+    if (switching && !$comboDetails.hidden && !reducedMotion) {
+      const nextHeight = $comboDetails.getBoundingClientRect().height;
+      if (previousHeight !== nextHeight) {
+        comboHeightAnimation = $comboDetails.animate(
+          [{ height: previousHeight + 'px' }, { height: nextHeight + 'px' }],
+          { duration: 180, easing: 'ease-out' }
+        );
+      }
+    }
+    // Фиксируем opacity: 0 перед сменой класса даже при быстром ответе API.
+    void $comboDetails.offsetHeight;
+    requestAnimationFrame(() => {
+      if (version === comboLoadVersion && combo.id === activeComboId) {
+        $comboDetails.classList.remove('is-switching');
+      }
+    });
   } catch (err) {
     if (version !== comboLoadVersion || combo.id !== activeComboId) return;
     console.error('[Combo] loadComboModels failed:', err);
     $comboStatus.textContent = 'Ошибка загрузки combo: ' + (err && err.message ? err.message : err);
+    $comboDetails.classList.remove('is-switching');
+    $comboDetails.inert = false;
+    $comboDetails.setAttribute('aria-busy', 'false');
+    $comboDetails.hidden = true;
   }
 }
 
@@ -638,7 +681,6 @@ async function loadComboRecent() {
       status: $comboRecentStatus,
       meta: $comboRecentMeta,
       body: $comboRecentBody,
-      summary: $comboRecentSummary,
     });
   } catch (err) {
     console.error('[Combo] loadComboRecent failed:', err);
@@ -648,7 +690,6 @@ async function loadComboRecent() {
     }
     if ($comboRecentBody) $comboRecentBody.replaceChildren();
     if ($comboRecentMeta) $comboRecentMeta.textContent = '';
-    if ($comboRecentSummary) $comboRecentSummary.textContent = '';
   }
 }
 

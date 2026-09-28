@@ -183,6 +183,37 @@ test.describe('Страница «Combo»', () => {
     await expect(items.nth(0)).toContainText('gpt-4o');
   });
 
+  test('переключение сохраняет место списка и badge во время загрузки', async ({ page }) => {
+    await mockOmni(page);
+    await page.goto('/combo.html');
+    await waitForBoot(page);
+    const details = page.locator('#combo-details');
+    await expect(page.locator('#combo-models-list li')).toHaveCount(3);
+    const before = await details.boundingBox();
+    let release;
+    const responseReady = new Promise(resolve => { release = resolve; });
+    await page.route('**/omniroute/api/combos/combo-b', async route => {
+      await responseReady;
+      await route.fulfill({ json: { ...COMBO_B, strategy: 'round-robin' } });
+    });
+    await page.locator('#combo-select').selectOption('combo-b');
+    try {
+      await expect(details).toHaveAttribute('aria-busy', 'true');
+      await expect(details).not.toHaveAttribute('hidden');
+      await expect(page.locator('#combo-models-list li')).toHaveCount(3);
+      await expect(page.locator('#combo-status')).toBeEmpty();
+      const during = await details.boundingBox();
+      expect(during.y).toBeCloseTo(before.y, 1);
+      expect(during.height).toBeCloseTo(before.height, 1);
+    } finally {
+      release();
+    }
+    await expect(details).toHaveAttribute('aria-busy', 'false');
+    await expect(details).not.toHaveClass(/is-switching/);
+    await expect(page.locator('#combo-models-list li')).toHaveCount(1);
+    await expect(page.locator('#combo-strategy-badge')).toHaveText('round-robin');
+  });
+
   test('выключение модели сохраняет её состояние в comboDisabled и PUT', async ({ page }) => {
     const configPuts = [];
     const omniPuts = [];
