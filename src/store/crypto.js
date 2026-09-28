@@ -38,18 +38,18 @@ function generateMasterKey() {
 /** Шифрует строку под данным master-ключом. */
 function encryptValue(masterKeyHex, plaintext) {
   const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv(
-    'aes-256-gcm',
-    Buffer.from(masterKeyHex, 'hex'),
-    iv,
-    { authTagLength: AUTH_TAG_LENGTH },
-  );
+  const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(masterKeyHex, 'hex'), iv, {
+    authTagLength: AUTH_TAG_LENGTH,
+  });
   const enc = Buffer.concat([cipher.update(String(plaintext), 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
   return (
-    FORMAT_VERSION + ':' +
-    iv.toString('base64') + ':' +
-    tag.toString('base64') + ':' +
+    FORMAT_VERSION +
+    ':' +
+    iv.toString('base64') +
+    ':' +
+    tag.toString('base64') +
+    ':' +
     enc.toString('base64')
   );
 }
@@ -75,13 +75,10 @@ function decryptValue(masterKeyHex, payload) {
       'aes-256-gcm',
       Buffer.from(masterKeyHex, 'hex'),
       Buffer.from(ivB64, 'base64'),
-      { authTagLength: AUTH_TAG_LENGTH },
+      { authTagLength: AUTH_TAG_LENGTH }
     );
     decipher.setAuthTag(tag);
-    const dec = Buffer.concat([
-      decipher.update(Buffer.from(dataB64, 'base64')),
-      decipher.final(),
-    ]);
+    const dec = Buffer.concat([decipher.update(Buffer.from(dataB64, 'base64')), decipher.final()]);
     return { ok: true, value: dec.toString('utf8') };
   } catch {
     return { ok: false, reason: 'auth' };

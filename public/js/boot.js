@@ -12,7 +12,7 @@
    ============================================================ */
 
 import { PAGE, session, PROVIDER_FALLBACK } from './session.js';
-import { injectPartials } from '../partials.js';
+import { injectPartials } from './partials.js';
 import { initTopbar } from './topbar.js';
 import { initBanner, showBanner } from './banner.js';
 import { initSettingsDialog } from './dialog.js';
@@ -49,7 +49,9 @@ export async function start() {
   initSettingsDialog();
 
   // Сохранение настроек в диалоге → перерисовать страницу
-  onEvent('settings:changed', () => { rebootPage(); });
+  onEvent('settings:changed', () => {
+    rebootPage();
+  });
 
   if (!KNOWN_PAGES.includes(PAGE)) {
     console.error('Неизвестная страница «' + PAGE + '» — модуль не загружен');
@@ -79,10 +81,14 @@ async function boot() {
       session.providers = Array.isArray(cfg.providers) ? cfg.providers : [];
       // Провайдер статистики: сохранённый выбор → активный от сервера → первый
       let savedStatsProviderId = '';
-      try { savedStatsProviderId = vaultGet('statsProvider') || ''; } catch { /* нет хранилища */ }
+      try {
+        savedStatsProviderId = vaultGet('statsProvider') || '';
+      } catch {
+        /* нет хранилища */
+      }
       session.activeProvider =
-        session.providers.find((p) => p.id === savedStatsProviderId) ||
-        session.providers.find((p) => p.id === cfg.activeProvider) ||
+        session.providers.find(p => p.id === savedStatsProviderId) ||
+        session.providers.find(p => p.id === cfg.activeProvider) ||
         session.providers[0] ||
         PROVIDER_FALLBACK;
     } else {
@@ -92,10 +98,13 @@ async function boot() {
   }
   // Провайдер каталога на странице «Модели»: сохранённый или активный
   let savedModelsProviderId = '';
-  try { savedModelsProviderId = vaultGet('modelsProvider') || ''; } catch { /* нет хранилища */ }
+  try {
+    savedModelsProviderId = vaultGet('modelsProvider') || '';
+  } catch {
+    /* нет хранилища */
+  }
   session.modelsProvider =
-    session.providers.find((p) => p.id === savedModelsProviderId) ||
-    session.activeProvider;
+    session.providers.find(p => p.id === savedModelsProviderId) || session.activeProvider;
   try {
     await currentInit();
   } finally {

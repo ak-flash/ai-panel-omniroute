@@ -13,14 +13,21 @@ const { AppError, readBody, sendNoContent } = require('./http');
 
 const PROXY_TIMEOUT_MS = 30000;
 
-async function handleProxy(req, res, url, { prefix, upstream, logger, debug = false, body: preReadBody } = {}) {
+async function handleProxy(
+  req,
+  res,
+  url,
+  { prefix, upstream, logger, debug = false, body: preReadBody } = {}
+) {
   if (req.method === 'OPTIONS') return sendNoContent(res);
   // Логгер — объект с error/warn/info (файловый логгер) либо console
   const log = logger || console;
   // Тело может быть прочитано вызывающим заранее (повторная попытка
   // на другом upstream после обрыва) — иначе читаем из запроса
   const body = preReadBody !== undefined ? preReadBody : await readBody(req);
-  const suffix = url.pathname.replace(new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '') + url.search;
+  const suffix =
+    url.pathname.replace(new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '') +
+    url.search;
   const target = upstream + suffix;
   const fwdHeaders = {};
   for (const name of ['authorization', 'x-api-key', 'content-type', 'accept']) {
@@ -35,7 +42,10 @@ async function handleProxy(req, res, url, { prefix, upstream, logger, debug = fa
     if (safeHeaders.authorization) safeHeaders.authorization = '***';
     if (safeHeaders['x-api-key']) safeHeaders['x-api-key'] = '***';
     const bodyPreview = body.length > 0 ? body.slice(0, 500).toString() : '(empty)';
-    log.info(`[proxy] ${req.method} ${target}`, { headers: safeHeaders, body: bodyPreview + (body.length > 500 ? '...' : '') });
+    log.info(`[proxy] ${req.method} ${target}`, {
+      headers: safeHeaders,
+      body: bodyPreview + (body.length > 500 ? '...' : ''),
+    });
   }
   try {
     const upstreamRes = await fetch(target, {
@@ -57,7 +67,9 @@ async function handleProxy(req, res, url, { prefix, upstream, logger, debug = fa
     }
     res.end();
     if (debug) {
-      log.info(`[proxy] ${req.method} ${target} → ${upstreamRes.status} (${Date.now() - startedAt} ms)`);
+      log.info(
+        `[proxy] ${req.method} ${target} → ${upstreamRes.status} (${Date.now() - startedAt} ms)`
+      );
     }
   } catch (error) {
     if (res.headersSent) return res.destroy();

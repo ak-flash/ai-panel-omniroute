@@ -1,0 +1,191 @@
+/* Стили страницы Combo. */
+
+/* --------------------------------------------------------------------------
+   Combos panel
+   -------------------------------------------------------------------------- */
+.combo-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.combo-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.combo-info-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.combo-meta {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.combo-reorder-hint {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.combo-empty {
+  padding: 28px 24px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-l);
+  color: var(--text-faint);
+  font-size: var(--fs-md);
+  text-align: center;
+}
+
+.combo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.combo-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-md);
+}
+
+.combo-list li:last-child {
+  border-bottom: none;
+}
+
+/* Бейджи в ряду модели — по вертикали по центру, а не по базовой линии текста */
+.combo-list li > .badge,
+.combo-drag-ghost > .badge {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.combo-list li.top {
+  background: var(--surface-2);
+}
+
+.combo-list li.is-disabled {
+  color: var(--text-faint);
+  opacity: 0.65;
+}
+
+.combo-list li.is-disabled .combo-model-id {
+  text-decoration: line-through;
+}
+
+.combo-rank {
+  min-width: 2ch;
+  text-align: right;
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+}
+
+.combo-model-id {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+  font-size: var(--fs-sm);
+}
+
+li.top .combo-model-id {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Последние combo-запросы → реальная модель */
+.combo-recent-meta {
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+
+.badge.status-ok {
+  color: var(--ok);
+  border-color: currentColor;
+}
+
+.badge.status-err {
+  color: var(--danger);
+  border-color: currentColor;
+}
+
+.badge.status-other {
+  color: var(--text-muted);
+  border-color: currentColor;
+}
+
+/* --------------------------------------------------------------------------
+   Manage panel
+   -------------------------------------------------------------------------- */
+.manage-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.info-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  padding: 16px 20px;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.info-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.info-card-icon {
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.info-card-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.info-card-title {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: 700;
+}
+
+.info-card-sub {
+  margin: 2px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+
+.manage-cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  padding: 10px 14px;
+}
+
+.manage-cmd code {
+  font-family: ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+  font-size: var(--fs-md);
+  color: var(--text);
+  flex: 1;
+}

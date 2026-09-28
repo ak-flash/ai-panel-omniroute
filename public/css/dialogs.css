@@ -35,7 +35,7 @@ dialog::backdrop {
 
 .dlg-form h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--fs-2xl);
 }
 
 .dlg-close {
@@ -100,19 +100,19 @@ dialog::backdrop {
 
 .dlg-card-title {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--fs-base);
   font-weight: 700;
 }
 
 .dlg-card-sub {
   margin: 2px 0 0;
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--text-faint);
 }
 
 .dlg-card .input-group input,
-.dlg-card input[type="text"],
-.dlg-card input[type="password"],
+.dlg-card input[type='text'],
+.dlg-card input[type='password'],
 .dlg-card textarea {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -120,7 +120,7 @@ dialog::backdrop {
   padding: 9px 12px;
   border-radius: var(--radius-s);
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--fs-md);
   width: 100%;
   box-sizing: border-box;
 }
@@ -143,11 +143,11 @@ dialog::backdrop {
 }
 
 .dlg-form label {
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
   font-weight: 600;
 }
-#dlg-ag-fields label[for="dlg-ag-paste"] {
+#dlg-ag-fields label[for='dlg-ag-paste'] {
   display: block;
   margin-bottom: 8px;
 }
@@ -209,7 +209,7 @@ dialog::backdrop {
 }
 
 .dlg-th-group-title {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   color: var(--text-faint);
 }
@@ -242,7 +242,7 @@ dialog::backdrop {
   color: var(--text);
   padding: 8px 4px 8px 10px;
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--fs-md);
   text-align: right;
   font-variant-numeric: tabular-nums;
   outline: none;
@@ -258,7 +258,7 @@ dialog::backdrop {
 
 .dlg-th-unit {
   padding: 0 10px 0 4px;
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--text-faint);
   user-select: none;
 }
@@ -271,7 +271,7 @@ dialog::backdrop {
 .dlg-th-field--check:focus-within {
   border-color: transparent;
 }
-.dlg-th-field--check input[type="checkbox"] {
+.dlg-th-field--check input[type='checkbox'] {
   width: 18px;
   height: 18px;
   accent-color: var(--accent);
@@ -281,11 +281,32 @@ dialog::backdrop {
   justify-content: space-between;
 }
 
-.alias-row{display:flex;gap:8px;margin-bottom:6px}
-.alias-row input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:var(--radius-s);font-size:13px}
-.alias-row input:focus{border-color:var(--accent);outline:none}
-.alias-row .btn-ghost{padding:6px 10px}
-.alias-row .btn-ghost svg{width:14px;height:14px}
+.alias-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.alias-row input {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: var(--radius-s);
+  font-size: var(--fs-sm);
+}
+.alias-row input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.alias-row .btn-ghost {
+  padding: 6px 10px;
+}
+.alias-row .btn-ghost svg {
+  width: 14px;
+  height: 14px;
+}
 
 .input-group {
   display: flex;
@@ -300,7 +321,7 @@ dialog::backdrop {
   padding: 10px 14px;
   border-radius: var(--radius-m);
   font-family: inherit;
-  font-size: 15px;
+  font-size: var(--fs-base);
 }
 
 .input-group input:focus {
@@ -308,7 +329,7 @@ dialog::backdrop {
 }
 
 .dlg-result {
-  font-size: 13px;
+  font-size: var(--fs-sm);
   min-height: 20px;
   color: var(--text-muted);
   white-space: pre-line;
@@ -339,7 +360,7 @@ dialog::backdrop {
   color: var(--text-muted);
   padding: 8px 12px;
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;

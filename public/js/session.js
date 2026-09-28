@@ -20,9 +20,9 @@ export const PROVIDER_FALLBACK = {
 };
 
 export const session = {
-  providers: [],                    // список с сервера (/api/config)
+  providers: [], // список с сервера (/api/config)
   activeProvider: PROVIDER_FALLBACK, // провайдер блока статистики
   modelsProvider: PROVIDER_FALLBACK, // провайдер каталога моделей
-  models: [],                       // каталог моделей выбранного провайдера
-  comboTargetIds: [],               // сырые id target'ов всех Combo (provider/model)
+  models: [], // каталог моделей выбранного провайдера
+  comboTargetIds: [], // сырые id target'ов всех Combo (provider/model)
 };

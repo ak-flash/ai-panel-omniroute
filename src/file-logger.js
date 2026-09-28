@@ -14,7 +14,6 @@
 // (старый .old перезаписывается). Файл создаётся с правами 0600,
 // каталог — 0700: в логе бывают адреса upstream и диагностика.
 
-
 // ============================================================
 
 const fs = require('fs');
@@ -35,6 +34,8 @@ const DEFAULT_MAX_BYTES = 50 * 1024 * 1024;
  *   file     — путь к лог-файлу (пустой/undefined — только консоль)
  *   maxBytes — порог ротации (по умолчанию 50 МБ)
  *   mirror   — куда дублировать строки (по умолчанию console)
+ *
+ * @param {{file?: string, maxBytes?: number, mirror?: *}} [opts]
  */
 function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console } = {}) {
   let broken = false;
@@ -46,13 +47,17 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
     } catch {}
   }
 
-  // Форматирование аргументов в одну строку (общее для всех методов)
+  // Форматирование аргументов в одну строку — только для mirror (console)
   function fmtArgs(args) {
     return args
-      .map((a) => {
+      .map(a => {
         if (a instanceof Error) return a.message;
         if (typeof a === 'object' && a !== null) {
-          try { return JSON.stringify(a); } catch { return String(a); }
+          try {
+            return JSON.stringify(a);
+          } catch {
+            return String(a);
+          }
         }
         return String(a);
       })
@@ -60,14 +65,60 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
       .replace(/\r?\n/g, ' ');
   }
 
-  // Запись строки в файл (без вывода в консоль). levelTag — '[INFO]'/'[WARN]'/''.
-  function writeToFile(levelTag, body) {
+  // Сериализация Error для JSON-записи (рекурсивная по cause)
+  function serializeError(err) {
+    if (!(err instanceof Error)) return err;
+    return {
+      message: err.message,
+      stack: err.stack,
+      ...(err.cause ? { cause: serializeError(err.cause) } : {}),
+    };
+  }
+
+  const SECRET_KEY_RE = /token|secret|key|authorization|cookie/i;
+
+  // Строит JSON-запись из level-строки и массива аргументов.
+  // Первый строковый аргумент — message; остальное мержится как поля.
+  function buildRecord(level, args) {
+    const record = { time: new Date().toISOString(), level };
+    let messageSet = false;
+    for (const a of args) {
+      if (!messageSet && typeof a === 'string') {
+        record.message = a.replace(/\r?\n/g, ' ');
+        messageSet = true;
+      } else if (a instanceof Error) {
+        // Если нет message — использовать err.message как message
+        if (!messageSet) {
+          record.message = a.message;
+          messageSet = true;
+        }
+        record.error = serializeError(a);
+      } else if (typeof a === 'object' && a !== null) {
+        for (const [k, v] of Object.entries(a)) {
+          if (SECRET_KEY_RE.test(k)) continue;
+          record[k] = typeof v === 'number' || typeof v === 'boolean' ? v : v;
+        }
+      } else if (typeof a === 'number' || typeof a === 'boolean') {
+        if (!messageSet) {
+          record.message = String(a);
+          messageSet = true;
+        }
+      }
+    }
+    return record;
+  }
+
+  // Запись JSON Lines в файл (без вывода в консоль). levelTag — '[INFO]'/'[WARN]'/''.
+  function writeToFile(levelTag, body, record) {
     if (broken || !file) return;
-    const line = (levelTag ? levelTag + ' ' : '') + body;
     try {
       fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
       rotateIfNeeded();
-      fs.appendFileSync(file, new Date().toISOString() + ' ' + line + '\n', { mode: 0o600 });
+      // record присутствует при вызове из structured-уровней
+      const line = record
+        ? JSON.stringify(record)
+        : JSON.stringify({ time: new Date().toISOString(), level: 'log', message: body });
+      fs.appendFileSync(file, line + '\n', { mode: 0o600 });
     } catch {
       broken = true;
     }
@@ -81,7 +132,7 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
       const fn = typeof mirror.warn === 'function' ? mirror.warn : null;
       if (fn) fn.call(mirror, line);
     }
-    writeToFile(levelTag, body);
+    writeToFile(levelTag, body, null);
   }
 
   function log(...args) {
@@ -99,9 +150,9 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
         const fn = typeof mirror[level] === 'function' ? mirror[level] : mirror.warn;
         if (typeof fn === 'function') fn.call(mirror, tag + ' ' + body);
       }
-      writeToFile(tag, body);
+      writeToFile(tag, body, buildRecord(level, args));
     };
-    log[level + 'File'] = (...args) => writeToFile(tag, fmtArgs(args));
+    log[level + 'File'] = (...args) => writeToFile(tag, fmtArgs(args), buildRecord(level, args));
   }
   // Alias: log.log — сама функция (для случаев, когда ожидают свойство)
   log.log = log;
@@ -117,7 +168,7 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
  */
 function normalizeLog(logger) {
   const target = logger || console;
-  const method = (level) =>
+  const method = level =>
     typeof target[level] === 'function' ? (...args) => target[level](...args) : null;
   const base =
     typeof target === 'function'

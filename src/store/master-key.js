@@ -23,12 +23,16 @@ function assertValidMasterKey(key) {
     throw new StoreError(
       'bad_master_key',
       'Master key хранилища должен быть 32 байта в hex (64 символа). ' +
-      'Проверьте AIPANEL_MASTER_KEY или файл <db>.key',
+        'Проверьте AIPANEL_MASTER_KEY или файл <db>.key'
     );
   }
 }
 
-/** Возвращает master-ключ по приоритету выше; формат валидируется. */
+/**
+ * Возвращает master-ключ по приоритету выше; формат валидируется.
+ * @param {{keyPath?: string, inMemory?: boolean, masterKey?: string}} [opts]
+ * @returns {string}
+ */
 function resolveMasterKey({ keyPath, inMemory, masterKey } = {}) {
   if (masterKey) {
     assertValidMasterKey(masterKey);

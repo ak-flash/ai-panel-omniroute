@@ -18,8 +18,8 @@ function registerProxyRoutes(router, { providers, activeProvider, logger, debug 
     let provider = activeProvider;
     let prefix = '/proxy';
     const m = url.pathname.match(/^\/proxy\/([a-z0-9-]+)(?:\/|$)/);
-    if (m && providers.some((p) => p.id === m[1])) {
-      provider = providers.find((p) => p.id === m[1]);
+    if (m && providers.some(p => p.id === m[1])) {
+      provider = providers.find(p => p.id === m[1]);
       prefix = '/proxy/' + m[1];
     }
     return handleProxy(req, res, url, { prefix, upstream: provider.upstream, logger, debug });

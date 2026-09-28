@@ -49,13 +49,13 @@ function createAntigravityProvider(config = {}) {
         {
           method: 'POST',
           headers: {
-            'authorization': 'Bearer ' + token,
+            authorization: 'Bearer ' + token,
             'content-type': 'application/json',
             'user-agent': USER_AGENT,
           },
           body: JSON.stringify(project ? { project } : {}),
         },
-        REQUEST_TIMEOUT_MS,
+        REQUEST_TIMEOUT_MS
       );
       if (debug) {
         log.info(`[Antigravity] ${method} → ${response.status} (${Date.now() - startedAt} ms)`);
@@ -70,8 +70,7 @@ function createAntigravityProvider(config = {}) {
     }
   }
 
-  const requestOnce = (token, project) =>
-    callInternal('fetchAvailableModels', token, project);
+  const requestOnce = (token, project) => callInternal('fetchAvailableModels', token, project);
 
   /**
    * Внутренние/служебные id Google — не модели для пользователя
@@ -102,10 +101,7 @@ function createAntigravityProvider(config = {}) {
           m && m.quotaInfo && Number.isFinite(m.quotaInfo.remainingFraction)
             ? m.quotaInfo.remainingFraction
             : null,
-        resetTime:
-          m && m.quotaInfo && m.quotaInfo.resetTime
-            ? m.quotaInfo.resetTime
-            : null,
+        resetTime: m && m.quotaInfo && m.quotaInfo.resetTime ? m.quotaInfo.resetTime : null,
         supportsThinking: Boolean(m && m.supportsThinking),
       });
     }
@@ -120,6 +116,8 @@ function createAntigravityProvider(config = {}) {
    * { error } по таблице ошибок из плана (п.4.1):
    *   401 → token_expired, 403 → project_required, 429 → rate_limited,
    *   сеть/таймаут → 502 provider_error.
+   *
+   * @param {{token?: string, project?: string}} [opts]
    */
   async function getQuota({ token, project } = {}) {
     let r = await requestOnce(token, project);
@@ -154,6 +152,8 @@ function createAntigravityProvider(config = {}) {
    * Возвращает { status, data }: data.windows — по одной записи на окно
    * (минимальный remainingFraction среди моделей): { windowSize ('5h'|'weekly'),
    * remainingFraction, resetTime }.
+   *
+   * @param {{token?: string, project?: string}} [opts]
    */
   async function getQuotaSummary({ token, project } = {}) {
     const r = await callInternal('retrieveUserQuotaSummary', token, project);
@@ -166,9 +166,12 @@ function createAntigravityProvider(config = {}) {
     for (const group of r.body.groups) {
       for (const bucket of Array.isArray(group.buckets) ? group.buckets : []) {
         if (!bucket || !Number.isFinite(bucket.remainingFraction)) continue;
-        const size = bucket.windowSize === 'WEEKLY' ? 'weekly'
-          : bucket.windowSize === '5h' ? '5h'
-          : String(bucket.windowSize || '').toLowerCase();
+        const size =
+          bucket.windowSize === 'WEEKLY'
+            ? 'weekly'
+            : bucket.windowSize === '5h'
+              ? '5h'
+              : String(bucket.windowSize || '').toLowerCase();
         const prev = byWindow.get(size);
         if (!prev || bucket.remainingFraction < prev.remainingFraction) {
           byWindow.set(size, {

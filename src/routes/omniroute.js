@@ -42,7 +42,7 @@ function logProbeState(log, raw, url, state) {
 function parseOmniUrls(raw) {
   const urls = String(raw || '')
     .split(/[\n,]+/)
-    .map((u) => u.trim())
+    .map(u => u.trim())
     .filter(Boolean);
   // Дедупликация с сохранением порядка
   return [...new Set(urls)];
@@ -114,7 +114,7 @@ async function resolveUpstream(candidates, validateUpstreamUrl, log) {
   throw new AppError(
     502,
     'omniroute_unreachable',
-    'Ни один из адресов OmniRoute не отвечает (' + candidates.join(', ') + ')',
+    'Ни один из адресов OmniRoute не отвечает (' + candidates.join(', ') + ')'
   );
 }
 
@@ -136,7 +136,7 @@ function registerOmnirouteRoutes(router, { getStore, validateUpstreamUrl, logger
     req.headers = headers;
 
     const log = logger || console;
-    const attempt = (upstream) =>
+    const attempt = upstream =>
       handleProxy(req, res, url, { prefix: '/omniroute', upstream, logger, body });
 
     const chosen = await resolveUpstream(candidates, validateUpstreamUrl, log);
@@ -144,11 +144,14 @@ function registerOmnirouteRoutes(router, { getStore, validateUpstreamUrl, logger
     try {
       return await attempt(chosen.url);
     } catch (err) {
+      // Повтор возможен только для идемпотентных методов: тело POST могло
+      // быть принято upstream до обрыва соединения.
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) throw err;
       // Повтор возможен только до отправки заголовков клиенту:
       // handleProxy при headersSent уничтожает соединение без AppError
       if (!(err instanceof AppError) || err.code !== 'proxy_error') throw err;
       if (lastGood && lastGood.raw === chosen.raw) lastGood = null;
-      const rest = candidates.filter((c) => c !== chosen.raw);
+      const rest = candidates.filter(c => c !== chosen.raw);
       const fallback = await resolveUpstream(rest, validateUpstreamUrl, log);
       if (!fallback) throw err;
       log.warn('[omniroute] ' + chosen.url + ' не ответил — повтор на ' + fallback.url);

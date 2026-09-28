@@ -67,13 +67,13 @@ export function initTopbar() {
   });
 
   // Клик мимо открытого меню закрывает его
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', e => {
     if ($toggle.getAttribute('aria-expanded') !== 'true') return;
     const bar = $toggle.closest('.topbar');
     if (bar && !bar.contains(e.target)) closeTopbar();
   });
 
-  $collapse.querySelectorAll('.topnav a').forEach((a) => {
+  $collapse.querySelectorAll('.topnav a').forEach(a => {
     a.addEventListener('click', closeTopbar);
   });
 

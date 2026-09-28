@@ -17,12 +17,7 @@ const rules = {
 
 module.exports = [
   {
-    ignores: [
-      'node_modules/**',
-      'coverage/**',
-      'playwright-report/**',
-      'test-results/**',
-    ],
+    ignores: ['node_modules/**', 'coverage/**', 'playwright-report/**', 'test-results/**'],
   },
   {
     // Код на сервере и в тестах — CommonJS

@@ -11,27 +11,86 @@
    ============================================================ */
 
 import { $id, on, renderMessage, setIcon, MARK_OK, MARK_X, MARK_BR } from './dom.js';
-import { vaultGet, vaultSet, removeKey, getAgentRouterUserId, getAgRefreshToken, getOmniUrls, normalizeOmniUrls, saveSettings } from './settings.js';
-import { providerRequest, omniFetch, COMBO_LIST_PATH, fetchGoogleTokenStatus, startGoogleAuth, pasteGoogleAuth, AG_ERROR_MESSAGES } from './api.js';
-import { fmtUsd, dur } from './formatters.js';
+import {
+  vaultGet,
+  vaultSet,
+  reloadAppConfig,
+  getAgentRouterUserId,
+  getAgRefreshToken,
+  getOmniUrls,
+  normalizeOmniUrls,
+  saveSettings,
+} from './settings.js';
+import {
+  providerRequest,
+  omniFetch,
+  COMBO_LIST_PATH,
+  fetchGoogleTokenStatus,
+  startGoogleAuth,
+  pasteGoogleAuth,
+  AG_ERROR_MESSAGES,
+} from './api.js';
+import { dur } from './formatters.js';
+import { runProviderKeyCheck } from './provider-key-check.js';
 import { renderAliasRows, collectAliasesFromUI } from './aliases.js';
+import {
+  readNotificationThresholds,
+  fillNotificationFields,
+  updateArNotifyPermissionHint,
+  enableArBrowserNotify,
+  collectNotificationFields,
+} from './dialog-notifications.js';
 import { closeTopbar } from './topbar.js';
+import { session } from './session.js';
 import { emit } from './events.js';
 
-let $dlg, $dlgKey, $dlgArKey, $dlgOrKey, $dlgSeloraKey, $dlgExperientialKey, $dlgArUser, $dlgArReleases, $dlgToggle, $dlgArToggle, $dlgOrToggle, $dlgSeloraToggle, $dlgExperientialToggle, $dlgRemove;
+let $dlg,
+  $dlgKey,
+  $dlgArKey,
+  $dlgOrKey,
+  $dlgSeloraKey,
+  $dlgExperientialKey,
+  $dlgArUser,
+  $dlgArReleases,
+  $dlgToggle,
+  $dlgArToggle,
+  $dlgOrToggle,
+  $dlgSeloraToggle,
+  $dlgExperientialToggle,
+  $dlgRemove;
 
 // Табы диалога: каждый раздел — своя панель и своя кнопка сохранения
 const DLG_TABS = [
-  { tab: 'dlg-tab-provider', panel: 'dlg-panel-provider', result: 'dlg-result-provider', save: 'dlg-save-provider' },
-  { tab: 'dlg-tab-omni', panel: 'dlg-panel-omni', result: 'dlg-result-omni', save: 'dlg-save-omni' },
-  { tab: 'dlg-tab-notifications', panel: 'dlg-panel-notifications', result: 'dlg-result-notifications', save: 'dlg-save-notifications' },
-  { tab: 'dlg-tab-aliases', panel: 'dlg-panel-aliases', result: 'dlg-result-aliases', save: 'dlg-save-aliases' },
+  {
+    tab: 'dlg-tab-provider',
+    panel: 'dlg-panel-provider',
+    result: 'dlg-result-provider',
+    save: 'dlg-save-provider',
+  },
+  {
+    tab: 'dlg-tab-omni',
+    panel: 'dlg-panel-omni',
+    result: 'dlg-result-omni',
+    save: 'dlg-save-omni',
+  },
+  {
+    tab: 'dlg-tab-notifications',
+    panel: 'dlg-panel-notifications',
+    result: 'dlg-result-notifications',
+    save: 'dlg-save-notifications',
+  },
+  {
+    tab: 'dlg-tab-aliases',
+    panel: 'dlg-panel-aliases',
+    result: 'dlg-result-aliases',
+    save: 'dlg-save-aliases',
+  },
 ];
 
 // Переключение таба по паттерну ARIA tabs: aria-selected, hidden-панели,
 // roving tabindex; выбор запоминается в хранилище как dlgTab
 function selectDlgTab(tabId, { focus = false } = {}) {
-  const idx = DLG_TABS.findIndex((t) => t.tab === tabId);
+  const idx = DLG_TABS.findIndex(t => t.tab === tabId);
   if (idx < 0) return;
   for (let i = 0; i < DLG_TABS.length; i++) {
     const $tab = $id(DLG_TABS[i].tab);
@@ -53,12 +112,17 @@ function selectDlgTab(tabId, { focus = false } = {}) {
 function onDlgTabsKeydown(e) {
   const step = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
   if (step === undefined && e.key !== 'Home' && e.key !== 'End') return;
-  const idx = DLG_TABS.findIndex((t) => document.activeElement && t.tab === document.activeElement.id);
+  const idx = DLG_TABS.findIndex(
+    t => document.activeElement && t.tab === document.activeElement.id
+  );
   if (idx < 0) return;
   e.preventDefault();
-  const next = e.key === 'Home' ? 0
-    : e.key === 'End' ? DLG_TABS.length - 1
-      : (idx + step + DLG_TABS.length) % DLG_TABS.length;
+  const next =
+    e.key === 'Home'
+      ? 0
+      : e.key === 'End'
+        ? DLG_TABS.length - 1
+        : (idx + step + DLG_TABS.length) % DLG_TABS.length;
   selectDlgTab(DLG_TABS[next].tab, { focus: true });
 }
 
@@ -111,111 +175,20 @@ async function refreshAgStatus(prefix) {
     else parts.push('Токен не задан');
     if (s.hasToken && s.tokenExpiresAt) {
       const remainSec = Math.floor((s.tokenExpiresAt - Date.now()) / 1000);
-      parts.push(remainSec > 0
-        ? 'истекает через ' + dur(remainSec)
-        : (s.hasRefresh ? 'истёк — обновится автоматически' : 'истёк — войдите заново'));
+      parts.push(
+        remainSec > 0
+          ? 'истекает через ' + dur(remainSec)
+          : s.hasRefresh
+            ? 'истёк — обновится автоматически'
+            : 'истёк — войдите заново'
+      );
     }
     if (s.hasRefresh) parts.push('автообновление включено');
     renderMessage($exp, (prefix ? prefix + ' ' : '') + parts.join(', ') + '.');
     $exp.hidden = false;
-  } catch { /* нет API — статусную строку не трогаем */ }
-}
-
-function readNotificationThresholds() {
-  try {
-    const raw = vaultGet('notificationThresholds', '');
-    if (!raw) return {};
-    const obj = JSON.parse(raw);
-    return obj && typeof obj === 'object' ? obj : {};
-  } catch { return {}; }
-}
-
-function fillNotificationFields(t) {
-  const x = (t && t.xkiro) || {};
-  const ar = (t && t.agentrouter) || {};
-  const ag = (t && t.antigravity) || {};
-  const set = (id, v) => { const el = $id(id); if (el) el.value = v == null ? '' : String(v); };
-  set('dlg-th-xkiro-short', x.short_window_pct);
-  set('dlg-th-xkiro-long', x.long_window_pct);
-  set('dlg-th-ar-balance', ar.balance_below_usd);
-  set('dlg-th-ag-remaining', ag.remaining_below_pct);
-  const chk = $id('dlg-th-ar-release');
-  if (chk) chk.checked = Boolean(ar.notify_on_release);
-  updateArNotifyPermissionHint();
-}
-
-function updateArNotifyPermissionHint() {
-  const $hint = $id('dlg-th-ar-notify-hint');
-  const $btn = $id('dlg-th-ar-notify-enable');
-  const chk = $id('dlg-th-ar-release');
-  if (!$hint) return;
-  const wants = chk ? chk.checked : false;
-  if (!wants) {
-    $hint.textContent = 'Тост при сбросе покажется внутри панели';
-    if ($btn) $btn.hidden = true;
-    return;
+  } catch {
+    /* нет API — статусную строку не трогаем */
   }
-  if (!('Notification' in window)) {
-    $hint.textContent = 'Браузер не поддерживает уведомления';
-    if ($btn) $btn.hidden = true;
-    return;
-  }
-  const perm = Notification.permission;
-  if (perm === 'granted') {
-    $hint.textContent = 'Браузерные уведомления разрешены — придёт и вне вкладки';
-    if ($btn) $btn.hidden = true;
-  } else if (perm === 'denied') {
-    $hint.textContent = 'Уведомления заблокированы в браузере — разрешите в настройках сайта';
-    if ($btn) $btn.hidden = true;
-  } else {
-    $hint.textContent = 'Нажмите «Включить», чтобы разрешить уведомления браузера';
-    if ($btn) $btn.hidden = false;
-  }
-}
-
-async function enableArBrowserNotify() {
-  if (!('Notification' in window)) return;
-  try {
-    const perm = await Notification.requestPermission();
-    updateArNotifyPermissionHint();
-    const $res = $id('dlg-result-notifications');
-    if (perm === 'granted') showResult($res, false, 'Уведомления браузера разрешены');
-    else if (perm === 'denied') showResult($res, true, 'Уведомления заблокированы');
-  } catch { }
-}
-
-function collectNotificationFields() {
-  const num = (id) => {
-    const el = $id(id);
-    if (!el) return undefined;
-    const v = el.value.trim();
-    if (v === '') return undefined;
-    const n = Number(v.replace(',', '.'));
-    return Number.isFinite(n) ? n : undefined;
-  };
-  const chk = $id('dlg-th-ar-release');
-  const notifyOnRelease = chk ? chk.checked : false;
-  const t = {
-    xkiro: {
-      short_window_pct: num('dlg-th-xkiro-short'),
-      long_window_pct: num('dlg-th-xkiro-long'),
-    },
-    agentrouter: {
-      balance_below_usd: num('dlg-th-ar-balance'),
-      ...(notifyOnRelease ? { notify_on_release: true } : {}),
-    },
-    antigravity: {
-      remaining_below_pct: num('dlg-th-ag-remaining'),
-    },
-  };
-  // Дропаем пустые блоки: не указан ни один порог — порог-объект не
-  // сохраняем (evaluateXKiro/Agent/Antigravity возвращают [] для undefined)
-  for (const k of Object.keys(t)) {
-    const block = t[k];
-    if (!Object.values(block).some((v) => v != null)) delete t[k];
-    else for (const f of Object.keys(block)) if (block[f] == null) delete block[f];
-  }
-  return t;
 }
 
 function openDialog() {
@@ -223,6 +196,7 @@ function openDialog() {
   if ($dlgArKey) $dlgArKey.value = '';
   if ($dlgOrKey) $dlgOrKey.value = '';
   if ($dlgSeloraKey) $dlgSeloraKey.value = '';
+  if ($dlgExperientialKey) $dlgExperientialKey.value = '';
   if ($dlgArUser) $dlgArUser.value = getAgentRouterUserId();
   if ($dlgArReleases) {
     // Легаси-значение 'hide' (от промежуточной версии) показываем как пустое
@@ -240,15 +214,28 @@ function openDialog() {
   // Статусные строки всех разделов — чистые
   for (const t of DLG_TABS) {
     const $res = $id(t.result);
-    if ($res) { $res.hidden = true; $res.textContent = ''; }
+    if ($res) {
+      $res.hidden = true;
+      $res.textContent = '';
+    }
   }
   // Восстанавливаем последнего выбранного в диалоге провайдера
   const $dlgProvider = $id('dlg-provider');
   if ($dlgProvider) {
     let savedDlgProvider = 'xkiro';
-    try { savedDlgProvider = (vaultGet('dlgProvider') || '') || 'xkiro'; } catch { /* нет хранилища */ }
+    try {
+      savedDlgProvider = vaultGet('dlgProvider') || '' || 'xkiro';
+    } catch {
+      /* нет хранилища */
+    }
+    // Список провайдеров — с сервера (/api/config): хардкод здесь
+    // расходился с реестром, и новый провайдер не восстанавливался
+    // при открытии диалога.
+    const known = (session.providers.length ? session.providers : []).map(p => p.id);
     $dlgProvider.value =
-      savedDlgProvider === 'antigravity' || savedDlgProvider === 'agentrouter' || savedDlgProvider === 'openrouter' || savedDlgProvider === 'selora'
+      known.includes(savedDlgProvider) ||
+      // фолбэк, пока /api/config ещё не загружен (режим file://)
+      $dlgProvider.querySelector(`option[value="${savedDlgProvider}"]`)
         ? savedDlgProvider
         : 'xkiro';
     renderDlgProviderFields();
@@ -294,7 +281,9 @@ function addAliasRow() {
 // вкладки — никогда, поэтому адрес остаётся доступен для копирования.
 async function agLogin() {
   const $st = $id('dlg-ag-login-status');
-  const setStatusLocal = (t) => { if ($st) $st.textContent = t; };
+  const setStatusLocal = t => {
+    if ($st) $st.textContent = t;
+  };
   // Вкладку открываем синхронно по клику (до await), иначе сработает
   // блокировщик всплывающих окон; адрес подставляем после ответа сервера.
   const tab = window.open('', '_blank');
@@ -302,7 +291,9 @@ async function agLogin() {
     const url = await startGoogleAuth();
     if (tab) tab.location.href = url;
     else window.open(url, '_blank');
-    setStatusLocal('Открыта вкладка Google. После входа скопируйте адрес из адресной строки (http://127.0.0.1:…) и вставьте в поле ниже.');
+    setStatusLocal(
+      'Открыта вкладка Google. После входа скопируйте адрес из адресной строки (http://127.0.0.1:…) и вставьте в поле ниже.'
+    );
     const $paste = $id('dlg-ag-paste');
     if ($paste) $paste.focus();
   } catch (err) {
@@ -323,14 +314,14 @@ async function agPaste() {
     // Страницы, у которых есть блок квот (главная), перезагружают их
     // по событию и возвращают результат — он идёт в статусную строку.
     const results = await emit('antigravity:authorized');
-    const q = results.find((r) => r != null) || null;
+    const q = results.find(r => r != null) || null;
     if ($st) {
       renderMessage(
         $st,
         q && !q.error
           ? MARK_OK + ' Авторизация выполнена — квоты загружены'
           : 'Авторизация выполнена, но квоты не получены: ' +
-            ((q && AG_ERROR_MESSAGES[q.error]) || (q && q.error) || 'неизвестная ошибка')
+              ((q && AG_ERROR_MESSAGES[q.error]) || (q && q.error) || 'неизвестная ошибка')
       );
     }
     refreshAgStatus();
@@ -359,10 +350,17 @@ async function saveProviderSettings() {
       const t = p.trim();
       if (!t) continue;
       const h = Number(t);
-      if (!Number.isInteger(h) || h < 0 || h > 23) { bad = t; break; }
+      if (!Number.isInteger(h) || h < 0 || h > 23) {
+        bad = t;
+        break;
+      }
     }
     if (bad !== null) {
-      showResult($id('dlg-result-provider'), true, 'Некорректные часы: «' + bad + '» — допустимы целые 0..23 через запятую');
+      showResult(
+        $id('dlg-result-provider'),
+        true,
+        'Некорректные часы: «' + bad + '» — допустимы целые 0..23 через запятую'
+      );
       return;
     }
   }
@@ -414,134 +412,32 @@ async function saveProviderSettings() {
   if ($dlgOrKey) $dlgOrKey.value = '';
   if ($dlgSeloraKey) $dlgSeloraKey.value = '';
   if ($dlgExperientialKey) $dlgExperientialKey.value = '';
+  // Перечитываем /api/config: флаги has*Key у провайдеров обновились,
+  // иначе страница до перезагрузки считала, что ключа нет (P3-7)
+  await refreshProviderFlags();
   emit('settings:changed');
 
   showResult($res, false, 'Сохранено.');
   const setLine = (line, isErr) => showResult($res, isErr, 'Сохранено.' + MARK_BR + line);
-  const candidate = dlgProvider === 'agentrouter' ? arCandidate
-    : dlgProvider === 'openrouter' ? orCandidate
-      : dlgProvider === 'selora' ? seloraCandidate
-        : dlgProvider === 'experiential' ? experientialCandidate
-          : xkiroCandidate;
-  if (dlgProvider === 'agentrouter') {
-    if (candidate) {
-      console.info('[AgentRouter] проверка токена…');
-      setLine('AgentRouter: проверяю токен…', false);
-      providerRequest('usage', { provider: { id: 'agentrouter', name: 'AgentRouter' }, key: candidate, userId: arUserCandidate })
-        .then((data) => {
-          const wallet = (data && data.wallet) || {};
-          const bal = wallet.balance_usd ?? wallet.balance ?? 0;
-          console.info('[AgentRouter] токен OK', data);
-          setLine('AgentRouter ' + MARK_OK + ' токен работает — баланс: ' + fmtUsd(bal), false);
-        })
-        .catch((err) => {
-          console.warn('[AgentRouter] проверка не прошла', err);
-          setLine('AgentRouter ' + MARK_X + ' токен не прошёл проверку: ' + (err && err.message ? err.message : String(err)), true);
-        });
-    } else {
-      // Пустое поле секрета = «не изменять»: ключ остаётся в хранилище.
-      // Явно сообщаем об этом, чтобы пустое поле не выглядело как удаление
-      const hasStored = vaultGet('hasAgentrouterKey');
-      console.info('[AgentRouter] токен в поле пустой' + (hasStored ? ' — оставляю сохранённый' : ''));
-      setLine(
-        hasStored
-          ? 'AgentRouter ' + MARK_OK + ' токен сохранён ранее — пустое поле его не меняет'
-          : 'AgentRouter: токен не задан',
-        false
-      );
-    }
-  } else if (dlgProvider === 'xkiro') {
-    if (candidate) {
-      console.info('[xKiro] проверка ключа…');
-      setLine('xKiro: проверяю ключ…', false);
-      providerRequest('usage', { key: candidate })
-        .then((data) => {
-          const wallet = (data && data.wallet) || {};
-          const bal = wallet.balance_usd ?? wallet.balance ?? 0;
-          console.info('[xKiro] ключ OK', data);
-          setLine('xKiro ' + MARK_OK + ' ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · план: ' + data.plan : ''), false);
-        })
-        .catch((err) => {
-          console.warn('[xKiro] проверка не прошла', err);
-          let msg = 'xKiro ' + MARK_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err));
-          if (err && err.status === 401) msg += ' — проверьте ключ';
-          setLine(msg, true);
-        });
-    } else {
-      const hasStored = vaultGet('hasXkiroKey');
-      console.info('[xKiro] ключ в поле пустой' + (hasStored ? ' — оставляю сохранённый' : ''));
-      setLine(
-        hasStored
-          ? 'xKiro ' + MARK_OK + ' ключ сохранён ранее — пустое поле его не меняет'
-          : 'xKiro: ключ не задан',
-        false
-      );
-    }
-  } else if (dlgProvider === 'openrouter') {
-    if (candidate) {
-      console.info('[OpenRouter] проверка ключа…');
-      setLine('OpenRouter: проверяю ключ…', false);
-      providerRequest('usage', { provider: { id: 'openrouter', name: 'OpenRouter' }, key: candidate })
-        .then((data) => {
-          const wallet = (data && data.wallet) || {};
-          const bal = wallet.balance_usd ?? wallet.balance ?? 0;
-          console.info('[OpenRouter] ключ OK', data);
-          setLine('OpenRouter ' + MARK_OK + ' ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · ' + data.plan : ''), false);
-        })
-        .catch((err) => {
-          console.warn('[OpenRouter] проверка не прошла', err);
-          setLine('OpenRouter ' + MARK_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err)), true);
-        });
-    } else {
-      const hasStored = vaultGet('hasOpenrouterKey');
-      console.info('[OpenRouter] ключ в поле пустой' + (hasStored ? ' — оставляю сохранённый' : ''));
-      setLine(
-        hasStored
-          ? 'OpenRouter ' + MARK_OK + ' ключ сохранён ранее — пустое поле его не меняет'
-          : 'OpenRouter: ключ не задан',
-        false
-      );
-    }
-  } else if (dlgProvider === 'experiential') {
-    if (candidate) {
-      console.info('[Experiential Labs] проверка ключа…');
-      setLine('Experiential Labs: проверяю ключ…', false);
-      providerRequest('usage', { provider: { id: 'experiential', name: 'Experiential Labs' }, key: candidate })
-        .then(() => setLine('Experiential Labs ' + MARK_OK + ' ключ работает', false))
-        .catch((err) => setLine('Experiential Labs ' + MARK_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err)), true));
-    } else {
-      const hasStored = vaultGet('hasExperientialKey');
-      setLine(hasStored ? 'Experiential Labs ' + MARK_OK + ' ключ сохранён ранее — пустое поле его не меняет' : 'Experiential Labs: ключ не задан', false);
-    }
-  } else if (dlgProvider === 'selora') {
-    if (candidate) {
-      console.info('[Selora] проверка ключа…');
-      setLine('Selora: проверяю ключ…', false);
-      providerRequest('usage', { provider: { id: 'selora', name: 'Selora' }, key: candidate })
-        .then((data) => {
-          const wallet = (data && data.wallet) || {};
-          const bal = wallet.balance_usd ?? wallet.balance ?? 0;
-          console.info('[Selora] ключ OK', data);
-          setLine('Selora ' + MARK_OK + ' ключ работает — баланс: ' + fmtUsd(bal) + (data.plan ? ' · план: ' + data.plan : ''), false);
-        })
-        .catch((err) => {
-          console.warn('[Selora] проверка не прошла', err);
-          let msg = 'Selora ' + MARK_X + ' ключ не прошёл проверку: ' + (err && err.message ? err.message : String(err));
-          if (err && err.status === 401) msg += ' — проверьте ключ';
-          setLine(msg, true);
-        });
-    } else {
-      const hasStored = vaultGet('hasSeloraKey');
-      console.info('[Selora] ключ в поле пустой' + (hasStored ? ' — оставляю сохранённый' : ''));
-      setLine(
-        hasStored
-          ? 'Selora ' + MARK_OK + ' ключ сохранён ранее — пустое поле его не меняет'
-          : 'Selora: ключ не задан',
-        false
-      );
-    }
-  }
+  const candidate =
+    dlgProvider === 'agentrouter'
+      ? arCandidate
+      : dlgProvider === 'openrouter'
+        ? orCandidate
+        : dlgProvider === 'selora'
+          ? seloraCandidate
+          : dlgProvider === 'experiential'
+            ? experientialCandidate
+            : xkiroCandidate;
   // antigravity: токен живёт на сервере — проверять в диалоге нечего
+  await runProviderKeyCheck({
+    id: dlgProvider,
+    candidate,
+    userId: arUserCandidate,
+    request: (path, payload) => providerRequest(path, payload),
+    readFlag: flag => vaultGet(flag),
+    setLine,
+  });
 }
 
 // ---------- Раздел «OmniRoute»: адрес + ключ + проверка ----------
@@ -556,7 +452,7 @@ async function saveOmniSettings() {
   // Запоминаем, какие адреса были до сохранения (чтобы очистить legacy,
   // если пользователь удалил старый адрес из списка)
   const previousUrls = getOmniUrls();
-  const removedUrls = previousUrls.filter((u) => !list.includes(u));
+  const removedUrls = previousUrls.filter(u => !list.includes(u));
 
   const entries = { omniUrls: list.join('\n') };
   // Если старый одиночный URL исчез из списка — очищаем его
@@ -577,10 +473,12 @@ async function saveOmniSettings() {
   emit('settings:changed');
 
   // Пустое поле ключа = «не изменять»: сообщаем, если ключ сохранён ранее
-  const keyNote = !omniKeyValue && vaultGet('hasOmniKey')
-    ? MARK_BR + 'Ключ сохранён ранее — пустое поле его не меняет'
-    : '';
-  const renderLine = (line, isErr) => showResult($res, isErr, 'Сохранено.' + MARK_BR + line + keyNote);
+  const keyNote =
+    !omniKeyValue && vaultGet('hasOmniKey')
+      ? MARK_BR + 'Ключ сохранён ранее — пустое поле его не меняет'
+      : '';
+  const renderLine = (line, isErr) =>
+    showResult($res, isErr, 'Сохранено.' + MARK_BR + line + keyNote);
   const summary = !list.length
     ? 'OmniRoute: не задан'
     : list.length === 1
@@ -591,15 +489,29 @@ async function saveOmniSettings() {
   // Фоновая проверка OmniRoute — уточняет строку результата
   if (list.length) {
     console.info('[OmniRoute] проверка', list);
-    omniFetch(COMBO_LIST_PATH).then((data) => {
-      const n = Array.isArray(data) ? data.length : Array.isArray(data.combos) ? data.combos.length : Array.isArray(data.data) ? data.data.length : 0;
-      console.info('[OmniRoute] OK', data);
-      renderLine('OmniRoute ' + MARK_OK + ' — доступно combo: ' + n + ' (адресов: ' + list.length + ')', false);
-    }).catch((err) => {
-      console.warn('[OmniRoute] проверка не прошла', err);
-      const isErr = !(err && err.status === 400); // 400 без URL не считаем критичным
-      renderLine('OmniRoute ' + MARK_X + ' — ' + (err && err.message ? err.message : String(err)), isErr);
-    });
+    omniFetch(COMBO_LIST_PATH)
+      .then(data => {
+        const n = Array.isArray(data)
+          ? data.length
+          : Array.isArray(data.combos)
+            ? data.combos.length
+            : Array.isArray(data.data)
+              ? data.data.length
+              : 0;
+        console.info('[OmniRoute] OK', data);
+        renderLine(
+          'OmniRoute ' + MARK_OK + ' — доступно combo: ' + n + ' (адресов: ' + list.length + ')',
+          false
+        );
+      })
+      .catch(err => {
+        console.warn('[OmniRoute] проверка не прошла', err);
+        const isErr = !(err && err.status === 400); // 400 без URL не считаем критичным
+        renderLine(
+          'OmniRoute ' + MARK_X + ' — ' + (err && err.message ? err.message : String(err)),
+          isErr
+        );
+      });
   }
 }
 
@@ -608,7 +520,9 @@ async function saveOmniSettings() {
 async function saveNotificationSettings() {
   const $res = $id('dlg-result-notifications');
   // Пороги: собираем числа из полей, сериализуем JSON
-  const saved = await saveSettings({ notificationThresholds: JSON.stringify(collectNotificationFields()) });
+  const saved = await saveSettings({
+    notificationThresholds: JSON.stringify(collectNotificationFields()),
+  });
   if (!saved.ok) {
     showResult($res, true, 'Сохранить не удалось: ' + (saved.message || 'ошибка записи'));
     return;
@@ -622,7 +536,9 @@ async function saveNotificationSettings() {
 async function saveAliasSettings() {
   const $res = $id('dlg-result-aliases');
   const aliasMap = collectAliasesFromUI();
-  const saved = await saveSettings({ aliases: JSON.stringify(Object.entries(aliasMap).filter(([id, name]) => id && name)) });
+  const saved = await saveSettings({
+    aliases: JSON.stringify(Object.entries(aliasMap).filter(([id, name]) => id && name)),
+  });
   if (!saved.ok) {
     showResult($res, true, 'Сохранить не удалось: ' + (saved.message || 'ошибка записи'));
     return;
@@ -631,14 +547,52 @@ async function saveAliasSettings() {
   showResult($res, false, 'Сохранено.');
 }
 
-function removeDialogKey() {
+/** Обновляет session.providers после сохранения ключей: флаги has*Key
+ *  приходят с сервера, а кеш /api/config устарел. */
+async function refreshProviderFlags() {
+  const cfg = await reloadAppConfig();
+  if (!cfg || !Array.isArray(cfg.providers) || !cfg.providers.length) return;
+  session.providers = cfg.providers;
+  if (session.activeProvider) {
+    const fresh = cfg.providers.find(p => p.id === session.activeProvider.id);
+    if (fresh) session.activeProvider = fresh;
+  }
+  if (session.modelsProvider) {
+    const fresh = cfg.providers.find(p => p.id === session.modelsProvider.id);
+    if (fresh) session.modelsProvider = fresh;
+  }
+}
+
+const PROVIDER_KEY_FIELD = {
+  xkiro: 'xkiroKey',
+  agentrouter: 'agentrouterKey',
+  openrouter: 'openrouterKey',
+  selora: 'seloraKey',
+  experiential: 'experientialKey',
+};
+
+const PROVIDER_LABEL = {
+  xkiro: 'xKiro',
+  agentrouter: 'AgentRouter',
+  openrouter: 'OpenRouter',
+  selora: 'Selora',
+  experiential: 'Experiential Labs',
+};
+
+async function removeDialogKey() {
   const $sel = $id('dlg-provider');
   const dlgProvider = $sel ? $sel.value : 'xkiro';
-  if (dlgProvider === 'agentrouter') vaultSet('agentrouterKey', '');
-  else if (dlgProvider === 'openrouter') vaultSet('openrouterKey', '');
-  else if (dlgProvider === 'selora') vaultSet('seloraKey', '');
-  else if (dlgProvider === 'experiential') vaultSet('experientialKey', '');
-  else removeKey();
+  const label = PROVIDER_LABEL[dlgProvider] || dlgProvider;
+  if (!confirm('Удалить сохранённый ключ ' + label + '? Запросы к провайдеру станут недоступны.'))
+    return;
+  if ($dlgRemove) $dlgRemove.disabled = true;
+  // Ждём подтверждения записи: раньше диалог закрывался сразу, а PUT
+  // мог ещё не завершиться — ключ возвращался после перезагрузки (P3-7).
+  const field = PROVIDER_KEY_FIELD[dlgProvider] || 'xkiroKey';
+  const res = await vaultSet(field, '');
+  if ($dlgRemove) $dlgRemove.disabled = false;
+  if (!res || res.ok === false) return;
+  await refreshProviderFlags();
   $dlg.close();
   emit('settings:changed');
 }
@@ -697,17 +651,18 @@ export function initSettingsDialog() {
   });
 
   on($dlgExperientialToggle, 'click', () => {
-    if ($dlgExperientialKey) $dlgExperientialKey.type = $dlgExperientialKey.type === 'password' ? 'text' : 'password';
+    if ($dlgExperientialKey)
+      $dlgExperientialKey.type = $dlgExperientialKey.type === 'password' ? 'text' : 'password';
   });
 
   on($id('dlg-th-ar-release'), 'change', updateArNotifyPermissionHint);
-  on($id('dlg-th-ar-notify-enable'), 'click', enableArBrowserNotify);
+  on($id('dlg-th-ar-notify-enable'), 'click', () => enableArBrowserNotify(showResult));
 
   on($id('dlg-ag-login'), 'click', agLogin);
   on($id('dlg-ag-paste-btn'), 'click', agPaste);
 
   // Enter в поле вставки = «Применить»
-  on($id('dlg-ag-paste'), 'keydown', (e) => {
+  on($id('dlg-ag-paste'), 'keydown', e => {
     if (e.key === 'Enter') {
       e.preventDefault();
       const $btn = $id('dlg-ag-paste-btn');
@@ -722,14 +677,14 @@ export function initSettingsDialog() {
   on($dlg.querySelector('.dlg-tabs'), 'keydown', onDlgTabsKeydown);
 
   // Enter в поле ввода = «сохранить» текущего раздела, а не закрыть диалог
-  on($dlg, 'keydown', (e) => {
+  on($dlg, 'keydown', e => {
     if (e.key !== 'Enter') return;
     const t = e.target;
     if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'SELECT')) return;
     if (t.id === 'dlg-ag-paste') return; // у поля вставки своя обработка
     const panel = t.closest('.dlg-panel');
     if (!panel) return;
-    const rec = DLG_TABS.find((x) => x.panel === panel.id);
+    const rec = DLG_TABS.find(x => x.panel === panel.id);
     const $btn = rec ? $id(rec.save) : null;
     if ($btn && !$btn.hidden) {
       e.preventDefault();

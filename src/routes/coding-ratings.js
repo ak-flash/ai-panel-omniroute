@@ -11,9 +11,7 @@ const { createCodingRatings } = require('../coding-ratings');
  *      (активный аккаунт → legacy-поле openrouterKey).
  */
 async function resolveOpenRouterKey({ req, getStore }) {
-  const apiKey = req.headers['x-openrouter-api-key']
-    || req.headers['x-api-key']
-    || '';
+  const apiKey = req.headers['x-openrouter-api-key'] || req.headers['x-api-key'] || '';
   if (apiKey) return apiKey;
   if (req.method === 'POST') {
     try {
@@ -21,7 +19,9 @@ async function resolveOpenRouterKey({ req, getStore }) {
       if (body && (body.apiKey || body.openrouter_api_key || body.key)) {
         return body.apiKey || body.openrouter_api_key || body.key;
       }
-    } catch { /* тело не JSON — берём ключ из хранилища */ }
+    } catch {
+      /* тело не JSON — берём ключ из хранилища */
+    }
   }
   try {
     const st = await getStore();
@@ -31,7 +31,9 @@ async function resolveOpenRouterKey({ req, getStore }) {
     }
     const s = await st.snapshot();
     if (s && s.openrouterKey) return s.openrouterKey;
-  } catch { /* нет хранилища — фолбэк ниже */ }
+  } catch {
+    /* нет хранилища — фолбэк ниже */
+  }
   return '';
 }
 

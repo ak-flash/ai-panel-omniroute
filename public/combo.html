@@ -1,90 +1,110 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Combo OmniRoute · AI Панель</title>
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <script src="js/theme-init.js"></script>
-  <link rel="stylesheet" href="css/themes.css">
-    <link rel="stylesheet" href="css/base.css">
-    <link rel="stylesheet" href="css/layout.css">
-    <link rel="stylesheet" href="css/components.css">
-    <link rel="stylesheet" href="css/pages.css">
-    <link rel="stylesheet" href="css/dialogs.css">
-    <link rel="stylesheet" href="css/responsive.css">
-</head>
-<body data-page="combo" class="is-booting">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Combo OmniRoute · AI Панель</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <script src="js/theme-init.js"></script>
+    <link rel="stylesheet" href="css/themes.css" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/layout.css" />
+    <link rel="stylesheet" href="css/components.css" />
+    <link rel="stylesheet" href="css/combo.css" />
+    <link rel="stylesheet" href="css/table.css" />
+    <link rel="stylesheet" href="css/combo-list.css" />
+    <link rel="stylesheet" href="css/dialogs.css" />
+    <link rel="stylesheet" href="css/responsive.css" />
+  </head>
+  <body data-page="combo" class="is-booting">
+    <a class="skip-link" href="#main">К содержимому</a>
 
-<a class="skip-link" href="#main">К содержимому</a>
+    <div id="tpl-topbar"></div>
 
-<div id="tpl-topbar"></div>
+    <main id="main">
+      <div id="tpl-banner"></div>
 
-<main id="main">
-  <div id="tpl-banner"></div>
-
-  <!-- Combos panel (OmniRoute) -->
-  <section id="combos-panel" class="combos-panel">
-    <div class="models-header">
-      <h2>Combo OmniRoute</h2>
-      <div class="combo-controls">
-        <select id="combo-select" class="select" aria-label="Combo"></select>
-        <button id="combo-refresh" class="btn" title="Обновить список combo"><svg class="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg></button>
-      </div>
-    </div>
-
-    <div id="combo-empty" class="combo-empty" hidden>
-      Combo не найдены. Убедитесь, что OmniRoute доступен и содержит хотя бы один combo.
-    </div>
-
-    <p id="combo-status" class="models-status" role="status"></p>
-
-    <div id="combo-details" hidden>
-      <div class="combo-info">
-        <div class="combo-info-meta">
-          <span class="badge" id="combo-strategy-badge"></span>
-          <span class="combo-meta" id="combo-targets-count"></span>
+      <!-- Combos panel (OmniRoute) -->
+      <section id="combos-panel" class="combos-panel">
+        <div class="models-header">
+          <h2>Combo OmniRoute</h2>
+          <div class="combo-controls">
+            <select id="combo-select" class="select" aria-label="Combo"></select>
+            <button id="combo-refresh" class="btn" title="Обновить список combo">
+              <svg
+                class="icon"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
-        <span id="combo-reorder-hint" class="combo-reorder-hint">
-          Перетащите модель за значок слева, чтобы изменить порядок. Изменения сохраняются автоматически.
-        </span>
-      </div>
-      <div class="table-wrap">
-        <ol id="combo-models-list" class="combo-list" aria-describedby="combo-reorder-hint"></ol>
-      </div>
-    </div>
-  </section>
 
-  <!-- Последние combo-запросы: реальная модель за каждым запросом -->
-  <section id="combo-recent" class="stats combos-panel" hidden>
-    <div class="stats-head">
-      <span class="stats-provider">Последние combo-запросы</span>
-      <span class="combo-recent-meta" id="combo-recent-meta"></span>
-    </div>
-    <p id="combo-recent-status" class="hint"></p>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Время</th>
-            <th scope="col">Combo</th>
-            <th scope="col">Реальная модель</th>
-            <th scope="col">Провайдер</th>
-            <th scope="col" class="num-col">Токены</th>
-            <th scope="col" class="num-col">Статус</th>
-          </tr>
-        </thead>
-        <tbody id="combo-recent-body"></tbody>
-      </table>
-    </div>
-    <p id="combo-recent-summary" class="hint"></p>
-  </section>
-</main>
+        <div id="combo-empty" class="combo-empty" hidden>
+          Combo не найдены. Убедитесь, что OmniRoute доступен и содержит хотя бы один combo.
+        </div>
 
+        <p id="combo-status" class="models-status" role="status"></p>
 
-<div id="tpl-dialog"></div>
-<div id="tpl-live"></div>
+        <div id="combo-details" hidden>
+          <div class="combo-info">
+            <div class="combo-info-meta">
+              <span class="badge" id="combo-strategy-badge"></span>
+              <span class="combo-meta" id="combo-targets-count"></span>
+            </div>
+            <span id="combo-reorder-hint" class="combo-reorder-hint">
+              Перетащите модель за значок слева или используйте кнопки «выше/ниже», чтобы изменить
+              порядок. Изменения сохраняются автоматически.
+            </span>
+          </div>
+          <div class="table-wrap">
+            <ol
+              id="combo-models-list"
+              class="combo-list"
+              aria-describedby="combo-reorder-hint"
+            ></ol>
+          </div>
+        </div>
+      </section>
 
-<script type="module" src="js/pages/combo.js"></script>
-</body>
+      <!-- Последние combo-запросы: реальная модель за каждым запросом -->
+      <section id="combo-recent" class="stats combos-panel" hidden>
+        <div class="stats-head">
+          <span class="stats-provider">Последние combo-запросы</span>
+          <span class="combo-recent-meta" id="combo-recent-meta"></span>
+        </div>
+        <p id="combo-recent-status" class="hint"></p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Время</th>
+                <th scope="col">Combo</th>
+                <th scope="col">Реальная модель</th>
+                <th scope="col">Провайдер</th>
+                <th scope="col" class="num-col">Токены</th>
+                <th scope="col" class="num-col">Статус</th>
+              </tr>
+            </thead>
+            <tbody id="combo-recent-body"></tbody>
+          </table>
+        </div>
+        <p id="combo-recent-summary" class="hint"></p>
+      </section>
+    </main>
+
+    <div id="tpl-dialog"></div>
+    <div id="tpl-live"></div>
+
+    <script type="module" src="js/pages/combo.js"></script>
+  </body>
 </html>

@@ -39,10 +39,12 @@ function createAntigravityService({
   let cache = { ts: 0, result: null, project: null };
   let loaded = false; // refresh-связка из хранилища читается один раз
   const oauthStates = new Map(); // state → expiresAt (анти-CSRF/replay)
+  let _refreshPromise = null; // дедупликация параллельных вызовов refresh()
 
-  const resetCache = () => { cache = { ts: 0, result: null, project: null }; };
-  const hasRefreshCreds = () =>
-    Boolean(state.refreshToken && state.clientId && state.clientSecret);
+  const resetCache = () => {
+    cache = { ts: 0, result: null, project: null };
+  };
+  const hasRefreshCreds = () => Boolean(state.refreshToken && state.clientId && state.clientSecret);
 
   async function setStore(key, value) {
     await (await getStore()).set(key, value);
@@ -87,8 +89,8 @@ function createAntigravityService({
     } catch {}
   }
 
-  /** Обновляет access-token по refresh-связке. true при успехе. */
-  async function refresh() {
+  /** Внутренняя реализация обновления токена. */
+  async function _doRefresh() {
     if (!hasRefreshCreds()) return false;
     const r = await googleOauth.refresh({
       refreshToken: state.refreshToken,
@@ -102,10 +104,23 @@ function createAntigravityService({
       return true;
     }
     if (r.error === 'invalid_grant') {
-      // Refresh-токен отозван — связка больше не поможет
+      // Refresh-токен отозван — связка больше не действительна
       state.token = '';
+      state.refreshToken = '';
+      state.clientId = '';
+      state.clientSecret = '';
     }
     return false;
+  }
+
+  /** Обновляет access-token по refresh-связке. true при успехе.
+   *  Параллельные вызовы дедуплицируются — в сеть уходит один запрос. */
+  function refresh() {
+    if (_refreshPromise) return _refreshPromise;
+    _refreshPromise = _doRefresh().finally(() => {
+      _refreshPromise = null;
+    });
+    return _refreshPromise;
   }
 
   /** Одноразовый OAuth state с TTL; заодно чистит протухшие. */
@@ -123,7 +138,11 @@ function createAntigravityService({
     const expiresAt = value ? oauthStates.get(value) : null;
     if (!expiresAt || expiresAt < Date.now()) {
       if (value) oauthStates.delete(value);
-      throw new AppError(400, 'invalid_oauth_state', 'OAuth state отсутствует, истёк или уже использован');
+      throw new AppError(
+        400,
+        'invalid_oauth_state',
+        'OAuth state отсутствует, истёк или уже использован'
+      );
     }
     oauthStates.delete(value);
   }
@@ -131,17 +150,25 @@ function createAntigravityService({
   /** POST /api/settings/google-token: частичное обновление данных.
    * Пустая строка очищает соответствующее поле. */
   async function applyCredentials(body) {
-    const str = (v) => typeof v === 'string' ? v.trim() : '';
+    const str = v => (typeof v === 'string' ? v.trim() : '');
     if ('token' in body) state.token = str(body.token);
     if ('refreshToken' in body) state.refreshToken = str(body.refreshToken);
     if ('clientId' in body) state.clientId = str(body.clientId);
     if ('clientSecret' in body) state.clientSecret = str(body.clientSecret);
     if ('project' in body) state.project = str(body.project);
+    if ('tokenExpiresAt' in body) {
+      const t = Number(body.tokenExpiresAt);
+      state.tokenExpiresAt = Number.isFinite(t) ? t : 0;
+    }
     // Самые важные поля персистим в хранилище (зашифровано на диске)
     if ('refreshToken' in body) await setStore('agRefreshToken', state.refreshToken);
     if ('project' in body) await setStore('agProject', state.project);
     if (!state.token && !hasRefreshCreds()) {
-      throw new AppError(400, 'no_token', 'Нужен access-token или связка refresh-token + client_id + client_secret');
+      throw new AppError(
+        400,
+        'no_token',
+        'Нужен access-token или связка refresh-token + client_id + client_secret'
+      );
     }
     resetCache(); // новые данные — сбрасываем кеш
   }
@@ -175,7 +202,11 @@ function createAntigravityService({
   async function exchangeCallback({ code, redirectUri }) {
     const r = await googleOauth.exchangeCode({ code, redirectUri });
     if (!r.ok) {
-      throw new AppError(502, r.error || 'oauth_exchange_failed', 'Не удалось обменять код авторизации');
+      throw new AppError(
+        502,
+        r.error || 'oauth_exchange_failed',
+        'Не удалось обменять код авторизации'
+      );
     }
     storeExchangedTokens(r);
     // Refresh-связку сохраняем на сервере, чтобы вход переживал перезапуск;
@@ -187,7 +218,11 @@ function createAntigravityService({
       try {
         const ui = await googleOauth.getUserInfo({ accessToken: state.token });
         if (ui.ok) state.email = ui.email || '';
-        if (state.email) { try { await setStore('agEmail', state.email); } catch {} }
+        if (state.email) {
+          try {
+            await setStore('agEmail', state.email);
+          } catch {}
+        }
       } catch {}
     }
     return { ok: true, hasToken: true, hasRefresh: Boolean(state.refreshToken) };
@@ -197,20 +232,27 @@ function createAntigravityService({
   async function getQuota(project) {
     await ensureLoaded();
     if (!state.token && !hasRefreshCreds()) {
-      throw new AppError(400, 'no_token', 'Задайте Antigravity OAuth-токен или refresh-связку в настройках');
+      throw new AppError(
+        400,
+        'no_token',
+        'Задайте Antigravity OAuth-токен или refresh-связку в настройках'
+      );
     }
     if (cache.result && cache.project === project && Date.now() - cache.ts < AG_CACHE_TTL_MS) {
       return cache.result;
     }
-    // Нет access-token, но есть refresh-связка — обновляем заранее
-    if (!state.token) await refresh();
+    // Нет токена или он истёк (с запасом 60 с) — обновляем заранее
+    const tokenExpired = state.tokenExpiresAt > 0 && Date.now() >= state.tokenExpiresAt - 60_000;
+    if (!state.token || tokenExpired) await refresh();
     // Email: разовый backfill после перезапуска — связка жива, а email в памяти пуст
     if (!state.email && state.token && typeof googleOauth.getUserInfo === 'function') {
       try {
         const ui = await googleOauth.getUserInfo({ accessToken: state.token });
         if (ui.ok && ui.email) {
           state.email = ui.email;
-          try { await setStore('agEmail', state.email); } catch {}
+          try {
+            await setStore('agEmail', state.email);
+          } catch {}
         }
       } catch {}
     }
@@ -227,7 +269,8 @@ function createAntigravityService({
     if (result.status === 200 && state.token) {
       try {
         const summary = await antigravity.getQuotaSummary({ token: state.token, project });
-        if (summary && summary.status === 200 && summary.data) result.data.windows = summary.data.windows;
+        if (summary && summary.status === 200 && summary.data)
+          result.data.windows = summary.data.windows;
       } catch {}
     }
     cache = { ts: Date.now(), result, project };

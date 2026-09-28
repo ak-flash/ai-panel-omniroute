@@ -21,13 +21,13 @@ export async function emit(name, payload) {
   const fns = listeners.get(name);
   if (!fns || !fns.size) return [];
   return Promise.all(
-    [...fns].map((fn) =>
+    [...fns].map(fn =>
       Promise.resolve()
         .then(() => fn(payload))
-        .catch((e) => {
+        .catch(e => {
           console.error('[events] обработчик «' + name + '» упал:', e);
           return null;
-        }),
-    ),
+        })
+    )
   );
 }

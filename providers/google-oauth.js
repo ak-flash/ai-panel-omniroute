@@ -30,6 +30,10 @@ const REQUEST_TIMEOUT_MS = 15000;
  * access_type=offline + prompt=consent — чтобы гарантированно
  * получить refresh_token.
  */
+/**
+ * @param {{redirectUri?: string, state?: string, clientId?: string, authUrl?: string}} opts
+ * @returns {string}
+ */
 function buildAuthUrl({ redirectUri, state, clientId = '', authUrl = DEFAULT_AUTH_URL }) {
   const params = new URLSearchParams({
     client_id: clientId,
@@ -69,6 +73,8 @@ function createGoogleOauth(config = {}) {
    *     invalid_grant  — refresh-token отозван/неверен (400/401 Google)
    *     oauth_error    — прочие ошибки Google
    *     network        — сеть/таймаут
+   *
+   * @param {{refreshToken?: string, clientId?: string, clientSecret?: string}} [creds]
    */
   async function refresh({ refreshToken, clientId, clientSecret } = {}) {
     if (!refreshToken || !clientId || !clientSecret) {
@@ -111,6 +117,8 @@ function createGoogleOauth(config = {}) {
    *   { ok:true, accessToken, refreshToken, expiresIn } — refreshToken
    *     может отсутствовать (Google отдаёт его не всегда)
    *   { ok:false, error } — invalid_grant / oauth_error / network
+   *
+   * @param {{code?: string, redirectUri?: string, clientId?: string, clientSecret?: string}} [opts]
    */
   async function exchangeCode({
     code,
@@ -159,6 +167,8 @@ function createGoogleOauth(config = {}) {
    * Возвращает:
    *   { ok:true, email }      — успех
    *   { ok:false, error }     — no_token / userinfo_error / network
+   *
+   * @param {{accessToken?: string}} [opts]
    */
   async function getUserInfo({ accessToken } = {}) {
     if (!accessToken) return { ok: false, error: 'no_token' };

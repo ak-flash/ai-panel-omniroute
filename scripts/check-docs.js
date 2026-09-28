@@ -17,7 +17,7 @@ const CODE_DIRS = ['src', 'providers', 'public', 'scripts'];
 const CODE_FILES = ['server.js'];
 const MARKDOWN_FILES = ['README.md', 'IMPROVEMENT_PLAN.md'];
 
-const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 function listJsFiles(dir) {
   const abs = path.join(ROOT, dir);
@@ -34,19 +34,22 @@ function listJsFiles(dir) {
 function checkEnvVars(errors, readme) {
   const { ENV_VARS } = require('../src/config');
   const declared = new Set(ENV_VARS);
-  const inReadme = new Set([...readme.matchAll(/^\|\s*`([A-Z][A-Z0-9_]*)`\s*\|/gm)].map((m) => m[1]));
+  const inReadme = new Set([...readme.matchAll(/^\|\s*`([A-Z][A-Z0-9_]*)`\s*\|/gm)].map(m => m[1]));
   const inExample = new Set(
-    [...read('.env.example').matchAll(/^#?\s*([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1])
+    [...read('.env.example').matchAll(/^#?\s*([A-Z][A-Z0-9_]*)=/gm)].map(m => m[1])
   );
   for (const name of declared) {
     if (!inReadme.has(name)) errors.push(`README.md: нет переменной ${name} в таблице настроек`);
-    if (!inExample.has(name)) errors.push(`.env.example: нет строки ${name}= (можно закомментированной)`);
+    if (!inExample.has(name))
+      errors.push(`.env.example: нет строки ${name}= (можно закомментированной)`);
   }
   for (const name of inReadme) {
-    if (!declared.has(name)) errors.push(`README.md: переменная ${name} не читается кодом (нет в ENV_VARS)`);
+    if (!declared.has(name))
+      errors.push(`README.md: переменная ${name} не читается кодом (нет в ENV_VARS)`);
   }
   for (const name of inExample) {
-    if (!declared.has(name)) errors.push(`.env.example: переменная ${name} не читается кодом (нет в ENV_VARS)`);
+    if (!declared.has(name))
+      errors.push(`.env.example: переменная ${name} не читается кодом (нет в ENV_VARS)`);
   }
 }
 
@@ -55,7 +58,9 @@ function checkEnvReads(errors, files) {
     if (rel === path.join('src', 'config.js') || rel.startsWith('public' + path.sep)) continue;
     // Передавать process.env целиком в src/config.js можно; читать переменные — нет
     if (/process\.env(?:\.[A-Za-z_]|\[)/.test(read(rel))) {
-      errors.push(`${rel}: process.env читается вне src/config.js — добавьте переменную в конфигурацию`);
+      errors.push(
+        `${rel}: process.env читается вне src/config.js — добавьте переменную в конфигурацию`
+      );
     }
   }
 }
@@ -63,8 +68,15 @@ function checkEnvReads(errors, files) {
 function checkProviders(errors, readme) {
   const { loadProviders } = require('../providers');
   for (const provider of loadProviders({ log: () => {} })) {
-    if (!readme.includes(`| **${provider.name}** |`)) {
-      errors.push(`README.md: провайдер «${provider.name}» (${provider.id}) не описан в таблице «Провайдеры»`);
+    // Ячейка таблицы может быть выровнена пробелами (Prettier), поэтому
+    // сравниваем по regex, а не по точной подстроке.
+    const cell = new RegExp(
+      `\\|\\s*\\*\\*${provider.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\*\\*\\s*\\|`
+    );
+    if (!cell.test(readme)) {
+      errors.push(
+        `README.md: провайдер «${provider.name}» (${provider.id}) не описан в таблице «Провайдеры»`
+      );
     }
   }
 }
@@ -72,7 +84,7 @@ function checkProviders(errors, readme) {
 function checkRoutes(errors, readme, files) {
   const routeRe = /router\.add\(\s*(?:\[[^\]]*\]|'[A-Z]+'|[A-Z_]+)\s*,\s*'([^']+)'/g;
   const seen = new Set();
-  for (const rel of files.filter((f) => f.startsWith('src' + path.sep))) {
+  for (const rel of files.filter(f => f.startsWith('src' + path.sep))) {
     for (const [, route] of read(rel).matchAll(routeRe)) {
       if (route === '*' || seen.has(route)) continue;
       seen.add(route);
@@ -95,7 +107,8 @@ function checkLinks(errors, files) {
   }
   for (const rel of files) {
     for (const [ref] of read(rel).matchAll(/docs\/[\w.-]+\.md/g)) {
-      if (!fs.existsSync(path.join(ROOT, ref))) errors.push(`${rel}: упоминание несуществующего ${ref}`);
+      if (!fs.existsSync(path.join(ROOT, ref)))
+        errors.push(`${rel}: упоминание несуществующего ${ref}`);
     }
   }
 }

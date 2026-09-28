@@ -20,7 +20,7 @@ const MAX_FAILURES_PER_IP = 10;
 const MAX_FAILURES_GLOBAL = 100;
 const MAX_TRACKED_IPS = 10000;
 
-const sha256 = (value) => crypto.createHash('sha256').update(String(value)).digest();
+const sha256 = value => crypto.createHash('sha256').update(String(value)).digest();
 
 /** Значение cookie по имени из заголовка Cookie (без зависимостей). */
 function readCookie(req, name = COOKIE_NAME) {
@@ -45,7 +45,8 @@ function createAuth({ token = '', ttlMs = SESSION_TTL_MS, now = Date.now } = {})
     : null;
   const tokenDigest = enabled ? sha256(token) : null;
 
-  const sign = (payload) => crypto.createHmac('sha256', signingKey).update(payload).digest('base64url');
+  const sign = payload =>
+    crypto.createHmac('sha256', signingKey).update(payload).digest('base64url');
 
   function checkToken(candidate) {
     if (!enabled || typeof candidate !== 'string' || !candidate) return false;

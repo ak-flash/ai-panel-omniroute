@@ -12,9 +12,21 @@ import { test, expect } from '@playwright/test';
 const EMPTY_CONFIG = {
   ok: true,
   data: {
-    aliases: '', comboActive: '', dlgProvider: 'xkiro', dlgTab: '', modelsProvider: '',
-    statsProvider: '', notificationThresholds: '', agentrouterUserId: '', agentrouterReleaseHoursUtc: '', omniUrl: '', omniUrls: '',
-    hasXkiroKey: false, hasAgentrouterKey: false, hasOmniRoute: false, hasOmniKey: false,
+    aliases: '',
+    comboActive: '',
+    dlgProvider: 'xkiro',
+    dlgTab: '',
+    modelsProvider: '',
+    statsProvider: '',
+    notificationThresholds: '',
+    agentrouterUserId: '',
+    agentrouterReleaseHoursUtc: '',
+    omniUrl: '',
+    omniUrls: '',
+    hasXkiroKey: false,
+    hasAgentrouterKey: false,
+    hasOmniRoute: false,
+    hasOmniKey: false,
     hasGoogleToken: false,
   },
   providers: [],
@@ -33,14 +45,22 @@ const SECTIONS = [
 
 async function mockConfig(page, puts, dataOverrides = {}) {
   const config = { ...EMPTY_CONFIG, data: { ...EMPTY_CONFIG.data, ...dataOverrides } };
-  await page.route('**/api/config', async (route) => {
+  await page.route('**/api/config', async route => {
     const req = route.request();
     if (req.method() === 'PUT') {
       if (puts) puts.push(req.postDataJSON());
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true }),
+      });
       return;
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(config) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(config),
+    });
   });
 }
 
@@ -81,22 +101,25 @@ test.describe('Настройки: табы и раздельное сохран
     await expect(page.locator('#dlg')).toBeVisible();
     await expect(page.locator('#dlg-result-notifications')).toContainText('Сохранено');
     await expect(page.locator('#dlg-result-notifications')).toHaveClass(/ok/);
-    expect(puts.find((p) => 'notificationThresholds' in p))
-      .toEqual({ notificationThresholds: '{"xkiro":{"short_window_pct":75}}' });
+    expect(puts.find(p => 'notificationThresholds' in p)).toEqual({
+      notificationThresholds: '{"xkiro":{"short_window_pct":75}}',
+    });
 
     // Провайдер: ключ сохраняется, алиасы/omni/пороги не улетают
     await page.locator('#dlg-tab-provider').click();
     await page.locator('#dlg-key').fill('sk-test-123');
     await page.locator('#dlg-key').press('Enter');
     await expect(page.locator('#dlg-result-provider')).toContainText('Сохранено');
-    expect(puts.find((p) => 'xkiroKey' in p))
-      .toEqual({ agentrouterUserId: '', xkiroKey: 'sk-test-123' });
+    expect(puts.find(p => 'xkiroKey' in p)).toEqual({
+      agentrouterUserId: '',
+      xkiroKey: 'sk-test-123',
+    });
 
     // OmniRoute: пустой адрес сохраняется без проверки
     await page.locator('#dlg-tab-omni').click();
     await page.locator('#dlg-save-omni').click();
     await expect(page.locator('#dlg-result-omni')).toContainText('OmniRoute: не задан');
-    expect(puts.find((p) => 'omniUrls' in p)).toEqual({ omniUrls: '' });
+    expect(puts.find(p => 'omniUrls' in p)).toEqual({ omniUrls: '' });
 
     // Имена: добавленная строка уходит в алиасы
     await page.locator('#dlg-tab-aliases').click();
@@ -106,12 +129,12 @@ test.describe('Настройки: табы и раздельное сохран
     await row.locator('input').nth(1).fill('Test Name');
     await page.locator('#dlg-save-aliases').click();
     await expect(page.locator('#dlg-result-aliases')).toContainText('Сохранено');
-    expect(puts.find((p) => 'aliases' in p)).toEqual({ aliases: '[["test-id","Test Name"]]' });
+    expect(puts.find(p => 'aliases' in p)).toEqual({ aliases: '[["test-id","Test Name"]]' });
 
     // Инвариант: ни один батч не смешивает ключи разных разделов
     for (const p of puts) {
       const keys = Object.keys(p);
-      const pure = SECTIONS.some((sec) => keys.every((k) => sec.includes(k)));
+      const pure = SECTIONS.some(sec => keys.every(k => sec.includes(k)));
       expect(pure, 'смешанный батч: ' + JSON.stringify(p)).toBe(true);
     }
   });
@@ -187,7 +210,7 @@ test.describe('Настройки: табы и раздельное сохран
     await page.setViewportSize({ width: 360, height: 800 });
     await openSettings(page);
 
-    const fits = await page.locator('#dlg-panel-provider').evaluate((p) => {
+    const fits = await page.locator('#dlg-panel-provider').evaluate(p => {
       const dlg = p.closest('dialog').getBoundingClientRect();
       const r = p.getBoundingClientRect();
       return r.right <= dlg.right + 0.5 && r.left >= dlg.left - 0.5;

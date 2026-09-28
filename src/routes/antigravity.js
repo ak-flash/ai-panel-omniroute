@@ -10,8 +10,12 @@ const { AppError, readJson, sendJson } = require('../http');
 /** Страница-подсказка callback: код остаётся в адресной строке. */
 const page = (title, msg) =>
   '<html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' +
-  title + '</title><body style="font-family:system-ui,sans-serif;text-align:center;padding:40px 16px"><h2 style="margin-top:0">' +
-  title + '</h2><p style="max-width:36em;margin:0 auto;line-height:1.5">' + msg + '</p></body></html>';
+  title +
+  '</title><body style="font-family:system-ui,sans-serif;text-align:center;padding:40px 16px"><h2 style="margin-top:0">' +
+  title +
+  '</h2><p style="max-width:36em;margin:0 auto;line-height:1.5">' +
+  msg +
+  '</p></body></html>';
 
 function registerAntigravityRoutes(router, { service, googleOauth, defaultPort = '8765' }) {
   // Единственный flow: пользователь входит в Google, браузер уходит на
@@ -33,7 +37,12 @@ function registerAntigravityRoutes(router, { service, googleOauth, defaultPort =
       ? 'http://127.0.0.1:' + listenPort + '/api/antigravity-auth/callback'
       : 'http://127.0.0.1:44127/callback';
     const state = service.issueState();
-    return sendJson(res, 200, { url: googleOauth.buildAuthUrl({ redirectUri, state }) }, { 'cache-control': 'no-store' });
+    return sendJson(
+      res,
+      200,
+      { url: googleOauth.buildAuthUrl({ redirectUri, state }) },
+      { 'cache-control': 'no-store' }
+    );
   });
 
   // Страница-подсказка после входа в Google: код остаётся в адресе,
@@ -44,12 +53,29 @@ function registerAntigravityRoutes(router, { service, googleOauth, defaultPort =
     const code = url.searchParams.get('code');
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     if (error) {
-      return res.end(page('Авторизация не выполнена', 'Google вернул ошибку: ' + String(error).replace(/[^\w.-]/g, '') + '. Закройте это окно и попробуйте ещё раз.'));
+      return res.end(
+        page(
+          'Авторизация не выполнена',
+          'Google вернул ошибку: ' +
+            String(error).replace(/[^\w.-]/g, '') +
+            '. Закройте это окно и попробуйте ещё раз.'
+        )
+      );
     }
     if (!code) {
-      return res.end(page('AI Панель', 'Это служебная страница: сюда браузер попадает после входа через Google. Если вы здесь случайно — просто закройте её.'));
+      return res.end(
+        page(
+          'AI Панель',
+          'Это служебная страница: сюда браузер попадает после входа через Google. Если вы здесь случайно — просто закройте её.'
+        )
+      );
     }
-    return res.end(page('Остался один шаг', 'Скопируйте адрес этой страницы из адресной строки браузера (начинается с <b>http://127.0.0.1</b> и содержит <b>code=</b>) и вставьте его в поле «Ссылка после входа» в настройках панели. Потом окно можно закрыть.'));
+    return res.end(
+      page(
+        'Остался один шаг',
+        'Скопируйте адрес этой страницы из адресной строки браузера (начинается с <b>http://127.0.0.1</b> и содержит <b>code=</b>) и вставьте его в поле «Ссылка после входа» в настройках панели. Потом окно можно закрыть.'
+      )
+    );
   });
 
   // Основной flow: пользователь вставляет ссылку, на которую ушёл браузер
@@ -58,10 +84,17 @@ function registerAntigravityRoutes(router, { service, googleOauth, defaultPort =
   router.add(['POST'], '/api/antigravity-auth/paste', async ({ req, res }) => {
     const body = await readJson(req);
     let pasted = '';
-    try { pasted = new URL(String(body.url || '').trim()); } catch {}
+    try {
+      pasted = new URL(String(body.url || '').trim());
+    } catch {}
     const code = pasted ? pasted.searchParams.get('code') : null;
     const state = pasted ? pasted.searchParams.get('state') : null;
-    if (!pasted || !code) throw new AppError(400, 'bad_callback_url', 'Нужна ссылка вида http://127.0.0.1:…/callback?code=…');
+    if (!pasted || !code)
+      throw new AppError(
+        400,
+        'bad_callback_url',
+        'Нужна ссылка вида http://127.0.0.1:…/callback?code=…'
+      );
     service.consumeState(state);
     pasted.hash = '';
     pasted.searchParams.delete('hash');
@@ -77,12 +110,22 @@ function registerAntigravityRoutes(router, { service, googleOauth, defaultPort =
     }
     if (req.method === 'DELETE') {
       await service.clearCredentials();
-      return sendJson(res, 200, { ok: true, hasToken: false, hasRefresh: false }, { 'cache-control': 'no-store' });
+      return sendJson(
+        res,
+        200,
+        { ok: true, hasToken: false, hasRefresh: false },
+        { 'cache-control': 'no-store' }
+      );
     }
     const body = await readJson(req);
     await service.applyCredentials(body);
     const status = service.status();
-    return sendJson(res, 200, { ok: true, hasToken: status.hasToken, hasRefresh: status.hasRefresh }, { 'cache-control': 'no-store' });
+    return sendJson(
+      res,
+      200,
+      { ok: true, hasToken: status.hasToken, hasRefresh: status.hasRefresh },
+      { 'cache-control': 'no-store' }
+    );
   });
 
   router.add(['GET'], '/api/antigravity-quota', async ({ res, url }) => {

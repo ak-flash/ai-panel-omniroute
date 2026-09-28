@@ -21,6 +21,7 @@ const AGENTROUTER_DAY_BALANCE_KEY = 'agentrouterDayBalance';
 function createAgentRouterTracker({
   getStore,
   provider,
+  getCredential,
   storeKey,
   userField,
   balanceKey = AGENTROUTER_DAY_BALANCE_KEY,
@@ -34,18 +35,19 @@ function createAgentRouterTracker({
   /** Разовый снимок: баланс ключом из хранилища → JSON в хранилище. */
   async function snapshotDayBalance() {
     try {
-      const s = await (await getStore()).snapshot();
-      const key = String(s[storeKey] || '').trim();
-      const uid = String(s[userField] || '').trim();
+      const st = await getStore();
+      const active = getCredential ? await getCredential() : null;
+      const s = await st.snapshot();
+      const key = String((active ? active.api_key || active.key : s[storeKey]) || '').trim();
+      const uid = String((active ? active.user_id : s[userField]) || '').trim();
       if (!key || !uid || !provider) return;
       const result = await provider.getUsage(key, uid);
       if (result.status !== 200) return;
-      const bal = Number((result.data && result.data.wallet || {}).balance_usd);
+      const bal = Number(((result.data && result.data.wallet) || {}).balance_usd);
       if (!Number.isFinite(bal)) return;
-      await (await getStore()).set(
-        balanceKey,
-        JSON.stringify({ date: todayStr(), balance_usd: bal }),
-      );
+      await (
+        await getStore()
+      ).set(balanceKey, JSON.stringify({ date: todayStr(), balance_usd: bal }));
     } catch {}
   }
 

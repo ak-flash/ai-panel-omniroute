@@ -1,45 +1,56 @@
 'use strict';
 
+// ============================================================
 // Провайдер Experiential Labs — OpenAI-совместимый API.
-// Базовый адрес API уже содержит /v1.
+// Базовый адрес API уже содержит /v1; management-эндпоинты лежат
+// на том же хосте без /v1, поэтому запросы идут с указанием base.
+//
+// Авторизация: Authorization: Bearer <ключ>.
+// ============================================================
 
-const { fetchJson } = require('../src/fetch-utils');
-const { normalizeLog } = require('../src/file-logger');
+const { createProviderClient, bearerAuth } = require('../src/provider-client');
+const { getDescriptor } = require('../src/provider-descriptors');
 
-const DEFAULT_NAME = 'Experiential Labs';
+const descriptor = getDescriptor('experiential');
+const DEFAULT_NAME = descriptor.name;
 const DEFAULT_URL = 'https://api.experientiallabs.ai/v1';
-const DEFAULT_SITE = 'https://platform.experientiallabs.ai/overview';
 const REQUEST_TIMEOUT_MS = 20000;
+
+const UNAUTHORIZED = {
+  error: 'unauthorized',
+  message: 'Experiential Labs не принял ключ',
+};
 
 function createExperientialProvider(config = {}) {
   const name = config.name || DEFAULT_NAME;
-  const upstream = String(config.url || DEFAULT_URL).replace(/\/+$/, '');
   const apiKey = config.apiKey || '';
-  const log = normalizeLog(config.log);
+
+  const client = createProviderClient({
+    // В логах — каноническое имя провайдера, а не подпись из config
+    name: descriptor.name,
+    upstream: config.url || DEFAULT_URL,
+    auth: bearerAuth(),
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    log: config.log,
+    debug: config.debug === true,
+    fetchImpl: config.fetchImpl,
+  });
+
   const authScheme = 'authorization';
-  const buildHeaders = (key) => (key ? { authorization: 'Bearer ' + key } : {});
+  const buildHeaders = key => bearerAuth().buildHeaders({ key });
 
-  const management = upstream.replace(/\/v1$/, '');
+  // Management-хост: тот же, что и API, но без суффикса /v1
+  const management = client.upstream.replace(/\/v1$/, '');
 
-  async function apiGet(pathname, key = '', base = upstream) {
-    const headers = { accept: 'application/json', ...buildHeaders(key || apiKey) };
-    try {
-      const { response, data } = await fetchJson(base + pathname, { headers }, REQUEST_TIMEOUT_MS);
+  const apiGet = (pathname, key = '', base) =>
+    client.get(pathname, { credential: { key: key || apiKey }, base });
 
-      return { status: response.status, data: data || {} };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      log(`[Experiential Labs] ${pathname}: сеть/таймаут — ${message}`);
-      return { status: 502, data: { error: 'provider_error', message } };
-    }
-  }
-
-  const toNumber = (value) => {
+  const toNumber = value => {
     const number = Number(value);
     return Number.isFinite(number) ? number : null;
   };
 
-  const rowsFrom = (data) => {
+  const rowsFrom = data => {
     if (Array.isArray(data)) return data;
     if (Array.isArray(data.data)) return data.data;
     if (Array.isArray(data.rows)) return data.rows;
@@ -50,13 +61,13 @@ function createExperientialProvider(config = {}) {
   async function getModels(key = '') {
     const result = await apiGet('/api/models', key, management);
     if (result.status === 401) {
-      return { status: 401, data: { error: 'unauthorized', message: 'Experiential Labs не принял ключ' } };
+      return { status: 401, data: { ...UNAUTHORIZED } };
     }
     if (result.status !== 200) return result;
 
     const models = rowsFrom(result.data)
-      .filter((model) => model && typeof model.id === 'string' && model.id)
-      .map((model) => {
+      .filter(model => model && typeof model.id === 'string' && model.id)
+      .map(model => {
         const pricing = model.pricing || {};
         const inputNano = toNumber(pricing.input_nano_usd_per_million ?? pricing.prompt);
         const outputNano = toNumber(pricing.output_nano_usd_per_million ?? pricing.completion);
@@ -68,8 +79,8 @@ function createExperientialProvider(config = {}) {
           access_tier: 'paid',
           context_length: model.context_length || model.context_window || null,
           pricing: {
-            input: inputNano == null ? (input == null ? 0 : input) : inputNano / 1000000000,
-            output: outputNano == null ? (output == null ? 0 : output) : outputNano / 1000000000,
+            input: inputNano != null ? inputNano / 1000000000 : input,
+            output: outputNano != null ? outputNano / 1000000000 : output,
           },
         };
       });
@@ -79,22 +90,28 @@ function createExperientialProvider(config = {}) {
   async function getUsage(key = '') {
     const whoami = await apiGet('/api/whoami', key, management);
     if (whoami.status === 401) {
-      return { status: 401, data: { error: 'unauthorized', message: 'Experiential Labs не принял ключ' } };
+      return { status: 401, data: { ...UNAUTHORIZED } };
     }
     if (whoami.status !== 200) return whoami;
 
     const orgId = whoami.data.org_id || (whoami.data.data && whoami.data.data.org_id);
     if (!orgId) {
-      return { status: 502, data: { error: 'bad_response', message: 'Experiential Labs не вернул org_id' } };
+      return {
+        status: 502,
+        data: { error: 'bad_response', message: 'Experiential Labs не вернул org_id' },
+      };
     }
 
-    const query = '?org_id=' + encodeURIComponent(orgId) + '&scope=org&group_by=day';
     const [credits, daily] = await Promise.all([
       apiGet('/api/v1/credits', key, management),
-      apiGet('/api/gateway/usage/daily' + query, key, management),
+      client.get('/api/gateway/usage/daily', {
+        credential: { key: key || apiKey },
+        base: management,
+        query: { org_id: orgId, scope: 'org', group_by: 'day' },
+      }),
     ]);
     if (credits.status === 401 || daily.status === 401) {
-      return { status: 401, data: { error: 'unauthorized', message: 'Experiential Labs не принял ключ' } };
+      return { status: 401, data: { ...UNAUTHORIZED } };
     }
     if (credits.status !== 200) return credits;
     if (daily.status !== 200) return daily;
@@ -104,10 +121,13 @@ function createExperientialProvider(config = {}) {
     const totalUsage = toNumber(creditData.total_usage);
     const balance = totalCredits == null || totalUsage == null ? null : totalCredits - totalUsage;
     const today = new Date().toISOString().slice(0, 10);
-    const todayRow = rowsFrom(daily.data).find((row) => String(row.day || row.date || '') === today);
+    const todayRow = rowsFrom(daily.data).find(row => String(row.day || row.date || '') === today);
     const todayNano = todayRow && (todayRow.spend_nano_usd ?? todayRow.cost_nano_usd);
     const todayUsd = toNumber(todayNano);
-    const requests = todayRow && toNumber(todayRow.requests ?? todayRow.request_count ?? todayRow.request_count_total);
+    // Строки за сегодня нет → значение неизвестно (null), а не 0 (P1-8)
+    const requests = todayRow
+      ? toNumber(todayRow.requests ?? todayRow.request_count ?? todayRow.request_count_total)
+      : null;
 
     return {
       status: 200,
@@ -122,8 +142,8 @@ function createExperientialProvider(config = {}) {
   return {
     id: 'experiential',
     name,
-    site: DEFAULT_SITE,
-    upstream,
+    site: descriptor.site,
+    upstream: client.upstream,
     apiKey,
     authScheme,
     buildHeaders,

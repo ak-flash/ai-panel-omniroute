@@ -1,3 +1,5 @@
+'use strict';
+
 // ============================================================
 // Провайдер OpenRouter (openrouter.ai) — фабрика адаптера.
 //
@@ -18,14 +20,20 @@
 // тестам (подмена адреса на mock-upstream).
 // ============================================================
 
-const { fetchJson } = require('../src/fetch-utils');
-const { normalizeLog } = require('../src/file-logger');
+const { createProviderClient, bearerAuth } = require('../src/provider-client');
+const { getDescriptor } = require('../src/provider-descriptors');
 
-const DEFAULT_NAME = 'OpenRouter';
+const descriptor = getDescriptor('openrouter');
+const DEFAULT_NAME = descriptor.name;
 const DEFAULT_URL = 'https://openrouter.ai/api/v1'; // вшит в фабрику — не выносится в настройки
 
 // Таймаут запросов к API провайдера
 const REQUEST_TIMEOUT_MS = 20000;
+
+const UNAUTHORIZED = {
+  error: 'unauthorized',
+  message: 'OpenRouter не принял ключ — проверьте его в Настройках → Провайдер → OpenRouter',
+};
 
 /**
  * Создаёт адаптер провайдера OpenRouter.
@@ -45,58 +53,31 @@ const REQUEST_TIMEOUT_MS = 20000;
  */
 function createOpenRouterProvider(config = {}) {
   const name = config.name || DEFAULT_NAME;
-  const upstream = String(config.url || DEFAULT_URL).replace(/\/+$/, '');
   const apiKey = config.apiKey || '';
-  // Диагностика уходит в log из config (в CLI — файловый логгер,
-  // см. src/file-logger.js); по умолчанию — консоль (тесты, dev)
-  const log = normalizeLog(config.log);
-  const debug = config.debug === true;
+
+  const client = createProviderClient({
+    // В логах — каноническое имя провайдера, а не подпись из config
+    name: descriptor.name,
+    upstream: config.url || DEFAULT_URL,
+    auth: bearerAuth(),
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    log: config.log,
+    debug: config.debug === true,
+    fetchImpl: config.fetchImpl,
+  });
 
   // OpenRouter авторизует запросы заголовком Authorization: Bearer
   const authScheme = 'authorization';
-  const buildHeaders = (key) => (key ? { authorization: 'Bearer ' + key } : {});
+  const buildHeaders = key => bearerAuth().buildHeaders({ key });
 
-  async function apiGet(pathname, key = '') {
-    const headers = { accept: 'application/json', ...buildHeaders(key || apiKey) };
-    const startedAt = Date.now();
-    if (debug) {
-      const safeHeaders = { ...headers };
-      if (safeHeaders.authorization) safeHeaders.authorization = 'Bearer ***';
-      log.info(`[OpenRouter] ${pathname}`, { headers: safeHeaders });
-    }
-    try {
-      const { response, data } = await fetchJson(upstream + pathname, { headers }, REQUEST_TIMEOUT_MS);
-      if (debug) {
-        log.info(`[OpenRouter] ${pathname} → ${response.status} (${Date.now() - startedAt} ms)`);
-      }
-      return { status: response.status, data: data || {} };
-    } catch (error) {
-      // Сеть / DNS / таймаут / не-JSON — наружу 502 с понятным сообщением
-      const msg = error instanceof Error ? error.message : String(error);
-      log(`[OpenRouter] ${pathname}: сеть/таймаут — ${msg}`);
-      return {
-        status: 502,
-        data: {
-          error: 'provider_error',
-          message: msg,
-        },
-      };
-    }
-  }
-
-  const isAuthFailure = (status) => status === 401;
+  const apiGet = (pathname, key = '') =>
+    client.get(pathname, { credential: { key: key || apiKey } });
 
   // GET /auth/key → { data: { label, limit, limit_remaining, usage, … } }
   async function getUsage(key = '') {
     const { status, data } = await apiGet('/auth/key', key);
-    if (isAuthFailure(status)) {
-      return {
-        status: 401,
-        data: {
-          error: 'unauthorized',
-          message: 'OpenRouter не принял ключ — проверьте его в Настройках → Провайдер → OpenRouter',
-        },
-      };
+    if (status === 401) {
+      return { status: 401, data: { ...UNAUTHORIZED } };
     }
     if (status !== 200) return { status, data };
 
@@ -123,15 +104,15 @@ function createOpenRouterProvider(config = {}) {
     let balance =
       remaining != null && Number.isFinite(remaining)
         ? remaining
-        : (limit != null && usage != null && Number.isFinite(limit) && Number.isFinite(usage)
+        : limit != null && usage != null && Number.isFinite(limit) && Number.isFinite(usage)
           ? limit - usage
-          : 0);
-    let used = Number.isFinite(usage) ? usage : 0;
-    let today = Number.isFinite(daily) ? daily : 0;
+          : null;
+    let used = Number.isFinite(usage) ? usage : null;
+    let today = Number.isFinite(daily) ? daily : null;
 
     // limit_remaining и limit оба null → баланс ключа неизвестен;
     // пробуем реальный баланс кошелька через /credits (работает с обычными ключами)
-    if (balance === 0 && remaining == null && limit == null) {
+    if (balance == null && remaining == null && limit == null) {
       const cr = await apiGet('/credits', key);
       if (cr.status === 200 && cr.data && cr.data.data) {
         const cd = cr.data.data;
@@ -150,8 +131,8 @@ function createOpenRouterProvider(config = {}) {
         plan: info.label || (info.is_free_tier ? 'Free' : name),
         wallet: { balance_usd: balance },
         windows: [], // окна расхода — только у xKiro
-        used_usd: Math.round(used * 100) / 100,
-        today_usd: Math.round(today * 100) / 100,
+        used_usd: used != null ? Math.round(used * 100) / 100 : null,
+        today_usd: today != null ? Math.round(today * 100) / 100 : null,
         requests: 0,
       },
     };
@@ -160,14 +141,8 @@ function createOpenRouterProvider(config = {}) {
   // GET /models → { data: [{ id, name, context_length, pricing: { prompt, completion } }] }
   async function getModels(key = '') {
     const { status, data } = await apiGet('/models', key);
-    if (isAuthFailure(status, data)) {
-      return {
-        status: 401,
-        data: {
-          error: 'unauthorized',
-          message: 'OpenRouter не принял ключ — проверьте его в Настройках → Провайдер → OpenRouter',
-        },
-      };
+    if (status === 401) {
+      return { status: 401, data: { ...UNAUTHORIZED } };
     }
     if (status !== 200) return { status, data };
 
@@ -182,21 +157,21 @@ function createOpenRouterProvider(config = {}) {
       };
     }
     const models = raw
-      .filter((m) => m && typeof m.id === 'string' && m.id)
-      .map((m) => {
+      .filter(m => m && typeof m.id === 'string' && m.id)
+      .map(m => {
         const pricing = m.pricing || {};
-        const input = Number(pricing.prompt);
-        const output = Number(pricing.completion);
+        const inputRaw = Number(pricing.prompt);
+        const outputRaw = Number(pricing.completion);
+        // OpenRouter отдаёт USD/токен → конвертируем в USD/1M токенов
+        const input = Number.isFinite(inputRaw) && inputRaw > 0 ? inputRaw * 1e6 : null;
+        const output = Number.isFinite(outputRaw) && outputRaw > 0 ? outputRaw * 1e6 : null;
         return {
           id: m.id,
           display_name: m.name || m.id,
           // OpenRouter помечает бесплатные модели суффиксом :free
           access_tier: /:free/.test(m.id + ' ' + (m.name || '')) ? 'free' : 'paid',
           context_length: m.context_length,
-          pricing: {
-            input: Number.isFinite(input) ? input : 0,
-            output: Number.isFinite(output) ? output : 0,
-          },
+          pricing: { input, output },
         };
       });
     return { status: 200, data: { data: models } };
@@ -205,8 +180,8 @@ function createOpenRouterProvider(config = {}) {
   return {
     id: 'openrouter',
     name,
-    site: 'https://openrouter.ai',
-    upstream,
+    site: descriptor.site,
+    upstream: client.upstream,
     apiKey,
     authScheme,
     buildHeaders,

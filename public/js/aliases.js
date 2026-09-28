@@ -10,19 +10,23 @@ import { vaultGet, vaultSet } from './settings.js';
 
 export function loadAliases() {
   try {
-    const raw = (vaultGet('aliases') || '');
+    const raw = vaultGet('aliases') || '';
     const arr = raw ? JSON.parse(raw) : [];
     const map = {};
     if (Array.isArray(arr)) for (const [id, name] of arr) if (id && name) map[id] = name;
     return map;
-  } catch { return {}; }
+  } catch {
+    return {};
+  }
 }
 
 export function saveAliasesMap(map) {
   try {
     const arr = Object.entries(map).filter(([id, name]) => id && name);
     vaultSet('aliases', JSON.stringify(arr));
-  } catch { /* JSON.stringify не должен падать на простых значениях */ }
+  } catch {
+    /* JSON.stringify не должен падать на простых значениях */
+  }
 }
 
 // Рендер списка alias-строк в #dlg-aliases-list
@@ -74,7 +78,7 @@ export function collectAliasesFromUI() {
   const list = $id('dlg-aliases-list');
   const map = {};
   if (!list) return map;
-  list.querySelectorAll('.alias-row').forEach((row) => {
+  list.querySelectorAll('.alias-row').forEach(row => {
     const inputs = row.querySelectorAll('input');
     if (inputs.length < 2) return;
     const id = (inputs[0].value || '').trim();

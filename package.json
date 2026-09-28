@@ -14,12 +14,13 @@
     "test:playwright:headed": "playwright test --config config/playwright.config.js --headed",
     "start": "node server.js",
     "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "node --test test/http.test.js test/model-match.test.js test/formatters.test.js test/call-logs.test.js test/providers-registry.test.js test/security.test.js test/store.test.js test/accounts.test.js test/accounts-merge.test.js test/file-logger.test.js test/config.test.js test/agentrouter-tracker.test.js test/xkiro-adapter.test.js test/agentrouter-adapter.test.js test/notifications.test.js test/openrouter.test.js test/selora-adapter.test.js test/experiential-adapter.test.js",
-    "test:integration": "node --test test/server.test.js test/antigravity.test.js test/accounts-api.test.js",
-    "test:ci": "node --test --experimental-test-coverage --test-coverage-include='src/**/*.js' --test-coverage-include='providers/**/*.js' --test-coverage-include='public/**/*.js' --test-coverage-lines=93 --test-coverage-branches=82 --test-coverage-functions=91 --test-reporter=spec",
+    "test:unit": "node --test \"test/unit/*.test.js\"",
+    "test:integration": "node --test \"test/integration/*.test.js\"",
+    "test:ci": "node --test --experimental-test-coverage \"test/unit/*.test.js\" \"test/integration/*.test.js\" --test-coverage-include=\"src/**/*.js\" --test-coverage-include=\"providers/**/*.js\" --test-coverage-include=\"public/**/*.js\" --test-coverage-lines=96 --test-coverage-branches=89 --test-coverage-functions=93 --test-reporter=spec",
     "test:coverage": "node --test --experimental-test-coverage",
     "test:security": "npm run test:unit -- --test-name-pattern security",
     "check:secrets": "node scripts/check-secrets.js",
+    "check:types": "tsc --noEmit",
     "lint:docs": "node scripts/check-docs.js"
   },
   "engines": {
@@ -37,11 +38,13 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
+    "@types/node": "^26.6.3",
     "eslint": "^10.9.1",
     "eslint-plugin-no-unsanitized": "^4.1.5",
     "globals": "^17.12.0",
     "prettier": "^3.9.6",
     "stylelint": "^17.14.1",
-    "stylelint-config-recommended": "^18.0.0"
+    "stylelint-config-recommended": "^18.0.0",
+    "typescript": "^7.0.2"
   }
 }

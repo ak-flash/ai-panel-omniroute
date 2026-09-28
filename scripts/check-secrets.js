@@ -33,7 +33,14 @@ function isProbablyDocumentation(filePath) {
 function walk(dir, list = []) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
-    if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'coverage' || entry.name === 'playwright-report' || entry.name === 'logs' || entry.name === 'data') {
+    if (
+      entry.name === 'node_modules' ||
+      entry.name === '.git' ||
+      entry.name === 'coverage' ||
+      entry.name === 'playwright-report' ||
+      entry.name === 'logs' ||
+      entry.name === 'data'
+    ) {
       continue;
     }
     const full = path.join(dir, entry.name);
@@ -60,9 +67,9 @@ function listFiles(root) {
     });
     return out
       .split('\0')
-      .filter((rel) => rel && FILE_EXTS.includes(path.extname(rel)))
-      .map((rel) => path.join(root, rel))
-      .filter((file) => fs.existsSync(file));
+      .filter(rel => rel && FILE_EXTS.includes(path.extname(rel)))
+      .map(rel => path.join(root, rel))
+      .filter(file => fs.existsSync(file));
   } catch {
     return walk(root);
   }

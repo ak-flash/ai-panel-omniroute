@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "node16",
+    "moduleResolution": "node16",
+    "lib": ["ES2023", "DOM"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src/store/**/*.js",
+    "src/provider-client.js",
+    "src/provider-descriptors.js",
+    "src/provider-store-fields.js",
+    "src/fetch-utils.js",
+    "src/file-logger.js",
+    "providers/**/*.js"
+  ]
+}

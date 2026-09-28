@@ -26,6 +26,7 @@ const { StoreError, encryptValue, decryptValue } = require('./crypto');
 const { resolveMasterKey } = require('./master-key');
 const { openDatabase, createPersistQueue } = require('./persistence');
 const { createAccountStore } = require('./accounts');
+const { PROVIDER_CREDENTIAL_STORE_KEYS } = require('../provider-descriptors');
 
 const SEE_OPERATIONS = '(см. README, раздел «Эксплуатация»)';
 
@@ -40,14 +41,26 @@ const ACTIVE_ACCOUNT_KEY = 'activeAccount';
 
 // Allowlist ключей панели (схема хранилища). Писать можно только их;
 // чтение (snapshot) остаётся терпимым к унаследованным записям.
+// Ключи секретов провайдеров приходят из дескрипторов (P2-1): новый
+// провайдер не требует правки схемы хранилища.
 const STORE_KEYS = [
-  'xkiroKey', 'agentrouterKey', 'openrouterKey', 'seloraKey', 'experientialKey', 'agentrouterUserId',
-  'omniUrl', 'omniUrls', 'omniKey',
-  'agRefreshToken', 'agProject', 'agEmail',
-  'aliases', 'comboActive', 'dlgProvider', 'dlgTab', 'modelsProvider', 'statsProvider',
+  ...PROVIDER_CREDENTIAL_STORE_KEYS,
+  'omniUrl',
+  'omniUrls',
+  'omniKey',
+  'agRefreshToken',
+  'agProject',
+  'agEmail',
+  'aliases',
+  'comboActive',
+  'dlgProvider',
+  'dlgTab',
+  'modelsProvider',
+  'statsProvider',
   'agentrouterDayBalance',
   'agentrouterReleaseHoursUtc',
-  'notificationThresholds', 'comboDisabled',
+  'notificationThresholds',
+  'comboDisabled',
   ACTIVE_ACCOUNT_KEY,
 ];
 
@@ -71,6 +84,14 @@ function readRows(db, sql, params) {
  *               иначе файл <db>.key или генерация
  *   logger    — куда писать предупреждения (сбой записи, миграции)
  *   persistRetryDelaysMs — паузы повторов записи (тесты)
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.dbPath]
+ * @param {string} [opts.keyPath]
+ * @param {boolean} [opts.memory]
+ * @param {string} [opts.masterKey]
+ * @param {*} [opts.logger]
+ * @param {number[]} [opts.persistRetryDelaysMs]
  */
 async function createStore({
   dbPath,
@@ -105,7 +126,7 @@ async function createStore({
     dbPath: resolvedDbPath,
     inMemory,
     retryDelaysMs: persistRetryDelaysMs,
-    onError: (err) =>
+    onError: err =>
       warn('[store] не удалось записать базу на диск, повторю позже:', err && err.message),
   });
 
@@ -142,16 +163,16 @@ async function createStore({
           'created_at INTEGER NOT NULL, ' +
           'updated_at INTEGER NOT NULL, ' +
           'UNIQUE(account_name, provider_id, credential_type)' +
-          ')',
+          ')'
       );
       db.run('CREATE INDEX IF NOT EXISTS idx_credentials_account ON credentials(account_name)');
     },
     hasLegacyCredential: () =>
       Boolean(
         legacySnapshot.xkiroKey ||
-          legacySnapshot.agentrouterKey ||
-          legacySnapshot.omniUrl ||
-          legacySnapshot.agRefreshToken,
+        legacySnapshot.agentrouterKey ||
+        legacySnapshot.omniUrl ||
+        legacySnapshot.agRefreshToken
       ),
     migrateFromLegacy: () => legacySnapshot,
     getActiveAccountName: async () => {
@@ -162,7 +183,7 @@ async function createStore({
         return 'default';
       }
     },
-    setActiveAccountName: async (name) => {
+    setActiveAccountName: async name => {
       if (typeof name !== 'string' || !/^[a-z0-9_-]{1,32}$/.test(name)) {
         throw new StoreError('invalid_account_name', 'Имя активного аккаунта недопустимо');
       }
@@ -196,20 +217,38 @@ async function createStore({
     ]);
     await queue.persist();
   } else {
-    const verifyFailure = failures.find((f) => f.key === VERIFY_KEY);
+    const verifyFailure = failures.find(f => f.key === VERIFY_KEY);
     if (verifyFailure) {
       if (verifyFailure.reason === 'format') {
-        throw new StoreError('corrupted', 'Проверочная запись хранилища повреждена — восстановите базу из бэкапа ' + SEE_OPERATIONS);
+        throw new StoreError(
+          'corrupted',
+          'Проверочная запись хранилища повреждена — восстановите базу из бэкапа ' + SEE_OPERATIONS
+        );
       }
       if (failures.length === rows.length) {
-        throw new StoreError('wrong_key', 'Master key не подходит к базе: ни одна запись не расшифровывается. Проверьте AIPANEL_MASTER_KEY / файл <db>.key ' + SEE_OPERATIONS);
+        throw new StoreError(
+          'wrong_key',
+          'Master key не подходит к базе: ни одна запись не расшифровывается. Проверьте AIPANEL_MASTER_KEY / файл <db>.key ' +
+            SEE_OPERATIONS
+        );
       }
-      throw new StoreError('corrupted', 'Проверочная запись не расшифровывается, хотя данные читаются — база повреждена, восстановите из бэкапа ' + SEE_OPERATIONS);
+      throw new StoreError(
+        'corrupted',
+        'Проверочная запись не расшифровывается, хотя данные читаются — база повреждена, восстановите из бэкапа ' +
+          SEE_OPERATIONS
+      );
     }
 
     if (failures.length > 0) {
-      const names = failures.map((f) => '«' + f.key + '»').join(', ');
-      throw new StoreError('corrupted', failures.length + ' записей базы повреждены (' + names + ') — восстановите из бэкапа ' + SEE_OPERATIONS);
+      const names = failures.map(f => '«' + f.key + '»').join(', ');
+      throw new StoreError(
+        'corrupted',
+        failures.length +
+          ' записей базы повреждены (' +
+          names +
+          ') — восстановите из бэкапа ' +
+          SEE_OPERATIONS
+      );
     }
 
     const verifyRow = rows.find(([key]) => key === VERIFY_KEY);
@@ -224,7 +263,10 @@ async function createStore({
     } else {
       const magic = decryptValue(masterKey, verifyRow[1]);
       if (magic.value !== VERIFY_MAGIC) {
-        throw new StoreError('corrupted', 'Проверочная запись не совпадает с ожидаемой — база повреждена ' + SEE_OPERATIONS);
+        throw new StoreError(
+          'corrupted',
+          'Проверочная запись не совпадает с ожидаемой — база повреждена ' + SEE_OPERATIONS
+        );
       }
     }
   }
@@ -237,7 +279,10 @@ async function createStore({
 
   function assertKnownKey(key) {
     if (!STORE_KEYS.includes(key)) {
-      throw new StoreError('unknown_key', 'Неизвестный ключ хранилища: «' + key + '». Разрешены только ключи панели (STORE_KEYS)');
+      throw new StoreError(
+        'unknown_key',
+        'Неизвестный ключ хранилища: «' + key + '». Разрешены только ключи панели (STORE_KEYS)'
+      );
     }
   }
 
@@ -255,7 +300,8 @@ async function createStore({
     const found = readRows(db, 'SELECT value FROM kv WHERE key = ?', [key]);
     if (!found.length) return null;
     const res = decryptValue(masterKey, found[0][0]);
-    if (!res.ok) throw new StoreError('corrupted', 'Запись «' + key + '» повреждена ' + SEE_OPERATIONS);
+    if (!res.ok)
+      throw new StoreError('corrupted', 'Запись «' + key + '» повреждена ' + SEE_OPERATIONS);
     return res.value;
   }
 
@@ -286,7 +332,8 @@ async function createStore({
     for (const [key, payload] of readRows(db, 'SELECT key, value FROM kv')) {
       if (key === VERIFY_KEY) continue;
       const res = decryptValue(masterKey, payload);
-      if (!res.ok) throw new StoreError('corrupted', 'Запись «' + key + '» повреждена ' + SEE_OPERATIONS);
+      if (!res.ok)
+        throw new StoreError('corrupted', 'Запись «' + key + '» повреждена ' + SEE_OPERATIONS);
       out[key] = res.value;
     }
     return out;

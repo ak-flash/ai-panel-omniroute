@@ -49,7 +49,9 @@ function dismiss(el) {
   if (!el.isConnected || el.dataset.leaving) return;
   el.dataset.leaving = '1';
   el.classList.remove('toast-show');
-  const remove = () => { if (el.isConnected) el.remove(); };
+  const remove = () => {
+    if (el.isConnected) el.remove();
+  };
   el.addEventListener('transitionend', remove, { once: true });
   // Страховка: при prefers-reduced-motion transitionend может не прийти
   setTimeout(remove, ENTER_EXIT_MS + 120);

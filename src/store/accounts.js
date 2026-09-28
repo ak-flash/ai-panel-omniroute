@@ -10,8 +10,9 @@
 //   - account_name — пользовательский псевдоним (например, "work", "personal").
 //     Допустимы только [a-z0-9_-], длина 1..32. Регистр сохраняется, но
 //     сравнение в lookup делается case-insensitive.
-//   - provider_id — фиксированный список (xkiro, agentrouter, openrouter,
-//     selora, omniroute, antigravity).
+//   - provider_id — фиксированный список из src/provider-descriptors.js
+//     (xkiro, agentrouter, openrouter, selora, experiential, omniroute,
+//     antigravity).
 //   - credential_type — внутренний тег (api_key, oauth_refresh, url_key_pair,
 //     user_id) для будущего расширения.
 //   - encrypted_value — то же представление v1:<iv>:<tag>:<data>, что и kv.
@@ -23,7 +24,10 @@ const { StoreError, encryptValue, decryptValue } = require('./crypto');
 
 const ACCOUNT_NAME_PATTERN = /^[a-z0-9_-]{1,32}$/;
 
-const PROVIDER_IDS = ['xkiro', 'agentrouter', 'openrouter', 'selora', 'experiential', 'omniroute', 'antigravity'];
+// Список провайдеров и соответствие «ключ хранилища → поле credentials»
+// берём из дескрипторов (P2-1), чтобы новый провайдер не требовал
+// правки этого файла.
+const { PROVIDER_IDS, getDescriptor } = require('../provider-descriptors');
 
 // Сколько может быть разных провайдеров на один (account_name, provider_id):
 //  - xkiro: api_key
@@ -43,11 +47,37 @@ const ALLOWED_CREDENTIAL_TYPES = new Set([
 
 const MAX_ACCOUNTS = 10;
 
+// Плоские ключи хранилища → поля credentials активного аккаунта.
+// Строится по дескрипторам (P2-1); DESCRIPTORS[id].credentials даёт
+// пары { field, storeKey }.
+const LEGACY_ALIASES = { xkiro: { api_key: ['xkiroKey', 'xkiro'] } };
+
+/** Собирает блок credentials провайдера из плоских ключей хранилища.
+ *  Пустые значения отбрасываются; если ничего нет — null. */
+function legacyCredentialsFor(providerId, legacy) {
+  const descriptor = getDescriptor(providerId);
+  if (!descriptor) return null;
+  const block = {};
+  for (const { field, storeKey } of descriptor.credentials || []) {
+    const aliases = LEGACY_ALIASES[providerId]?.[field] || [storeKey];
+    for (const key of aliases) {
+      const value = legacy[key];
+      if (value != null && value !== '') {
+        block[field] = value;
+        break;
+      }
+    }
+  }
+  // Имена полей дескриптора совпадают с credential_type, поэтому
+  // normalizeCredentials разложит их без ручного маппинга.
+  return Object.keys(block).length ? block : null;
+}
+
 function assertAccountName(name) {
   if (typeof name !== 'string' || !ACCOUNT_NAME_PATTERN.test(name)) {
     throw new StoreError(
       'invalid_account_name',
-      'Имя аккаунта должно быть 1–32 символа из [a-z0-9_-]',
+      'Имя аккаунта должно быть 1–32 символа из [a-z0-9_-]'
     );
   }
 }
@@ -56,7 +86,7 @@ function assertProviderId(id) {
   if (!PROVIDER_IDS.includes(id)) {
     throw new StoreError(
       'invalid_provider',
-      'Неизвестный провайдер: «' + id + '». Допустимо: ' + PROVIDER_IDS.join(', '),
+      'Неизвестный провайдер: «' + id + '». Допустимо: ' + PROVIDER_IDS.join(', ')
     );
   }
 }
@@ -88,7 +118,10 @@ function normalizeCredentials(raw) {
       continue;
     }
     if (typeof block !== 'object' || Array.isArray(block)) {
-      throw new StoreError('bad_credentials', 'Поле «' + providerId + '» должно быть строкой или объектом');
+      throw new StoreError(
+        'bad_credentials',
+        'Поле «' + providerId + '» должно быть строкой или объектом'
+      );
     }
     for (const field of Object.keys(block)) {
       const value = block[field];
@@ -181,15 +214,15 @@ function createAccountStore({
     if (typeof ensureSchema === 'function') return ensureSchema();
     exec(
       'CREATE TABLE IF NOT EXISTS credentials (' +
-      'id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
-      'account_name TEXT NOT NULL, ' +
-      'provider_id TEXT NOT NULL, ' +
-      'credential_type TEXT NOT NULL, ' +
-      'encrypted_value TEXT NOT NULL, ' +
-      'created_at INTEGER NOT NULL, ' +
-      'updated_at INTEGER NOT NULL, ' +
-      'UNIQUE(account_name, provider_id, credential_type)' +
-      ')',
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
+        'account_name TEXT NOT NULL, ' +
+        'provider_id TEXT NOT NULL, ' +
+        'credential_type TEXT NOT NULL, ' +
+        'encrypted_value TEXT NOT NULL, ' +
+        'created_at INTEGER NOT NULL, ' +
+        'updated_at INTEGER NOT NULL, ' +
+        'UNIQUE(account_name, provider_id, credential_type)' +
+        ')'
     );
     exec('CREATE INDEX IF NOT EXISTS idx_credentials_account ON credentials(account_name)');
   }
@@ -198,8 +231,8 @@ function createAccountStore({
     assertAccountName(name);
     const rows = select(
       'SELECT created_at, updated_at FROM credentials WHERE account_name = ? ' +
-      'ORDER BY updated_at DESC LIMIT 1',
-      [name],
+        'ORDER BY updated_at DESC LIMIT 1',
+      [name]
     );
     return rows[0] || null;
   }
@@ -208,8 +241,8 @@ function createAccountStore({
     assertAccountName(name);
     const rows = select(
       'SELECT account_name, provider_id, credential_type, encrypted_value, created_at, updated_at ' +
-      'FROM credentials WHERE account_name = ?',
-      [name],
+        'FROM credentials WHERE account_name = ?',
+      [name]
     );
     return selectRowsForAccount(rows, name);
   }
@@ -219,7 +252,7 @@ function createAccountStore({
     // Получаем уникальные имена с временем последнего обновления
     const nameRows = select(
       'SELECT account_name, MIN(created_at) as created_at, MAX(updated_at) as updated_at ' +
-      'FROM credentials GROUP BY account_name ORDER BY MIN(created_at) ASC',
+        'FROM credentials GROUP BY account_name ORDER BY MIN(created_at) ASC'
     );
     const result = [];
     for (const [name, createdAt, updatedAt] of nameRows) {
@@ -246,15 +279,15 @@ function createAccountStore({
     if (current >= MAX_ACCOUNTS) {
       throw new StoreError(
         'too_many_accounts',
-        'Превышен лимит аккаунтов (' + MAX_ACCOUNTS + '). Удалите неиспользуемые.',
+        'Превышен лимит аккаунтов (' + MAX_ACCOUNTS + '). Удалите неиспользуемые.'
       );
     }
     const now = Date.now();
     for (const { providerId, credentialType, value } of normalized) {
       exec(
         'INSERT INTO credentials (account_name, provider_id, credential_type, encrypted_value, created_at, updated_at) ' +
-        'VALUES (?, ?, ?, ?, ?, ?)',
-        [name, providerId, credentialType, encryptValue(masterKey, value), now, now],
+          'VALUES (?, ?, ?, ?, ?, ?)',
+        [name, providerId, credentialType, encryptValue(masterKey, value), now, now]
       );
     }
     await queue.persist();
@@ -276,10 +309,10 @@ function createAccountStore({
     for (const { providerId, credentialType, value } of normalized) {
       exec(
         'INSERT INTO credentials (account_name, provider_id, credential_type, encrypted_value, created_at, updated_at) ' +
-        'VALUES (?, ?, ?, ?, ?, ?) ' +
-        'ON CONFLICT(account_name, provider_id, credential_type) DO UPDATE SET ' +
-        'encrypted_value = excluded.encrypted_value, updated_at = excluded.updated_at',
-        [name, providerId, credentialType, encryptValue(masterKey, value), now, now],
+          'VALUES (?, ?, ?, ?, ?, ?) ' +
+          'ON CONFLICT(account_name, provider_id, credential_type) DO UPDATE SET ' +
+          'encrypted_value = excluded.encrypted_value, updated_at = excluded.updated_at',
+        [name, providerId, credentialType, encryptValue(masterKey, value), now, now]
       );
     }
     await queue.persist();
@@ -313,8 +346,8 @@ function createAccountStore({
     assertProviderId(providerId);
     const rows = select(
       'SELECT credential_type, encrypted_value FROM credentials ' +
-      'WHERE account_name = ? AND provider_id = ?',
-      [accountName, providerId],
+        'WHERE account_name = ? AND provider_id = ?',
+      [accountName, providerId]
     );
     if (!rows.length) return null;
     const fields = {};
@@ -334,6 +367,26 @@ function createAccountStore({
     return resolveCredential(activeName, providerId);
   }
 
+  async function setActiveCredentialField(providerId, credentialType, value) {
+    ensureAccountsSchema();
+    assertProviderId(providerId);
+    assertCredentialType(credentialType);
+    const accountName = (await getActiveAccountName()) || 'default';
+    exec(
+      'DELETE FROM credentials WHERE account_name = ? AND provider_id = ? AND credential_type = ?',
+      [accountName, providerId, credentialType]
+    );
+    if (value !== '') {
+      const now = Date.now();
+      exec(
+        'INSERT INTO credentials (account_name, provider_id, credential_type, encrypted_value, created_at, updated_at) ' +
+          'VALUES (?, ?, ?, ?, ?, ?)',
+        [accountName, providerId, credentialType, encryptValue(masterKey, value), now, now]
+      );
+    }
+    await queue.persist();
+  }
+
   /**
    * Миграция со старых плоских ключей (xkiroKey и т.д.) в аккаунт 'default'.
    * Вызывается один раз из store/index.js при открытии базы.
@@ -348,19 +401,15 @@ function createAccountStore({
       return false; // нечего мигрировать
     }
     if (typeof migrateFromLegacy !== 'function') return false;
-    const legacy = migrateFromLegacy(); // { xkiro: 'sk-...', agentrouterKey: '...', ... }
-    const normalized = {
-      xkiro: legacy.xkiroKey || legacy.xkiro,
-      agentrouter: legacy.agentrouterKey
-        ? { key: legacy.agentrouterKey, userId: legacy.agentrouterUserId }
-        : null,
-      openrouter: legacy.openrouterKey || null,
-      selora: legacy.seloraKey || null,
-      omniroute: legacy.omniUrl ? { url: legacy.omniUrl, key: legacy.omniKey } : null,
-      antigravity: legacy.agRefreshToken
-        ? { refreshToken: legacy.agRefreshToken, project: legacy.agProject, email: legacy.agEmail }
-        : null,
-    };
+    const legacy = migrateFromLegacy(); // { xkiroKey: 'sk-...', … }
+    // Плоские ключи → структура credentials по дескрипторам (P2-1).
+    // Имена полей в credentials отличаются от имён в KV, поэтому
+    // соответствие задано в CREDENTIAL_FIELD_ALIASES.
+    const normalized = {};
+    for (const id of PROVIDER_IDS) {
+      const value = legacyCredentialsFor(id, legacy);
+      if (value) normalized[id] = value;
+    }
     const cleaned = Object.fromEntries(Object.entries(normalized).filter(([, v]) => v));
     if (!Object.keys(cleaned).length) return false;
     await createAccount('default', cleaned);
@@ -375,6 +424,7 @@ function createAccountStore({
     deleteAccount,
     resolveCredential,
     getActiveCredential,
+    setActiveCredentialField,
     migrateFromLegacyIfNeeded,
   };
 }

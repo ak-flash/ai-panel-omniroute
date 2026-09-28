@@ -29,7 +29,9 @@ const path = require('path');
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24ч
 
 function normModelName(s) {
-  return String(s || '').toLowerCase().replace(/[^a-z0-9.:/]/g, '');
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9.:/]/g, '');
 }
 
 function tierFromScore(score) {
@@ -39,9 +41,10 @@ function tierFromScore(score) {
   return 'low';
 }
 
-async function fetchFromOpenRouter(apiKey) {
-  const url = 'https://openrouter.ai/api/v1/benchmarks?source=artificial-analysis&task_type=coding&max_results=100';
-  const res = await fetch(url, {
+async function fetchFromOpenRouter(apiKey, { fetch: fetchImpl = fetch } = {}) {
+  const url =
+    'https://openrouter.ai/api/v1/benchmarks?source=artificial-analysis&task_type=coding&max_results=100';
+  const res = await fetchImpl(url, {
     headers: { Authorization: `Bearer ${apiKey}` },
     signal: AbortSignal.timeout(15000),
   });
@@ -57,8 +60,10 @@ async function fetchFromOpenRouter(apiKey) {
 
   const ratings = {};
   const asOf = json.meta && json.meta.as_of ? json.meta.as_of : new Date().toISOString();
-  const citation = json.meta && json.meta.citation ? json.meta.citation : 'Artificial Analysis via OpenRouter';
-  const sourceUrl = json.meta && json.meta.source_url ? json.meta.source_url : 'https://artificialanalysis.ai';
+  const citation =
+    json.meta && json.meta.citation ? json.meta.citation : 'Artificial Analysis via OpenRouter';
+  const sourceUrl =
+    json.meta && json.meta.source_url ? json.meta.source_url : 'https://artificialanalysis.ai';
   for (const item of items) {
     const idx = item.coding_index;
     if (idx == null || typeof idx !== 'number') continue;
@@ -103,7 +108,7 @@ async function fetchFromOpenRouter(apiKey) {
  * Рейтинг с кэшем: в памяти (TTL 24 ч) и в JSON-файле cachePath.
  * Возвращает { getCodingRatings, refreshCodingRatings }.
  */
-function createCodingRatings({ cachePath, logger = console } = {}) {
+function createCodingRatings({ cachePath, logger = console, fetch: fetchImpl } = {}) {
   let memoryCache = null;
   let memoryCacheAt = 0;
 
@@ -112,7 +117,13 @@ function createCodingRatings({ cachePath, logger = console } = {}) {
     try {
       const raw = await fs.readFile(cachePath, 'utf8');
       const data = JSON.parse(raw);
-      if (data && typeof data.ratings === 'object' && data.source && data.source !== 'curated-fallback') return data;
+      if (
+        data &&
+        typeof data.ratings === 'object' &&
+        data.source &&
+        data.source !== 'curated-fallback'
+      )
+        return data;
     } catch {}
     return null;
   }
@@ -121,16 +132,20 @@ function createCodingRatings({ cachePath, logger = console } = {}) {
     if (!cachePath) return;
     try {
       await fs.mkdir(path.dirname(cachePath), { recursive: true });
-      await fs.writeFile(cachePath, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
+      await fs.writeFile(cachePath, JSON.stringify(data, null, 2), {
+        encoding: 'utf8',
+        mode: 0o600,
+      });
     } catch (e) {
       // не критично — рейтинг остаётся в памяти
-      if (logger && typeof logger.warn === 'function') logger.warn('[coding-ratings] saveCache failed', e.message);
+      if (logger && typeof logger.warn === 'function')
+        logger.warn('[coding-ratings] saveCache failed', e.message);
     }
   }
 
   async function getCodingRatings({ allowStale = true } = {}) {
     const now = Date.now();
-    if (memoryCache && (now - memoryCacheAt) < DEFAULT_TTL_MS && allowStale) {
+    if (memoryCache && now - memoryCacheAt < DEFAULT_TTL_MS && allowStale) {
       return memoryCache;
     }
     const data = await loadCache();
@@ -144,7 +159,8 @@ function createCodingRatings({ cachePath, logger = console } = {}) {
       updatedAt: null,
       source: 'none',
       sourceUrl: null,
-      citation: 'Нет онлайн-данных. Введите ключ OpenRouter в Настройках → Провайдер → OpenRouter и нажмите «Обновить рейтинг» для загрузки Artificial Analysis Coding Index.',
+      citation:
+        'Нет онлайн-данных. Введите ключ OpenRouter в Настройках → Провайдер → OpenRouter и нажмите «Обновить рейтинг» для загрузки Artificial Analysis Coding Index.',
       ratings: {},
     };
     memoryCache = empty;
@@ -155,12 +171,14 @@ function createCodingRatings({ cachePath, logger = console } = {}) {
   async function refreshCodingRatings({ apiKey } = {}) {
     const key = apiKey || '';
     if (!key) {
-      const err = new Error('Ключ OpenRouter не задан. Введите его в Настройках → Провайдер → OpenRouter и нажмите «Обновить рейтинг».');
+      const err = new Error(
+        'Ключ OpenRouter не задан. Введите его в Настройках → Провайдер → OpenRouter и нажмите «Обновить рейтинг».'
+      );
       err.code = 'missing_api_key';
       err.status = 400;
       throw err;
     }
-    const fresh = await fetchFromOpenRouter(key);
+    const fresh = await fetchFromOpenRouter(key, { fetch: fetchImpl });
     fresh.cachedAt = new Date().toISOString();
     await saveCache(fresh);
     memoryCache = fresh;

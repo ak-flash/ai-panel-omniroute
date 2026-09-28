@@ -21,7 +21,7 @@ const DEFAULT_RETRY_DELAYS_MS = [1000, 5000, 30000, 60000];
 
 let sqlJsInit = null;
 function loadSqlJs() {
-  if (!sqlJsInit) sqlJsInit = require('sql.js')().then((m) => m);
+  if (!sqlJsInit) sqlJsInit = require('sql.js')().then(m => m);
   return sqlJsInit;
 }
 

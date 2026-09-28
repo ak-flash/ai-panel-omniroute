@@ -32,6 +32,8 @@ const ENV_VARS = Object.freeze([
   'AIPANEL_DATA_DIR',
   'AIPANEL_LOG_DIR',
   'AIPANEL_PROVIDER_DEBUG',
+  'AIPANEL_USAGE_CACHE_MS',
+  'AIPANEL_MODELS_CACHE_MS',
   'AIPANEL_CODING_CACHE_PATH',
   'GOOGLE_CLIENT_ID',
   'GOOGLE_CLIENT_SECRET',
@@ -48,7 +50,7 @@ class ConfigError extends Error {
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const FALSE_VALUES = new Set(['', '0', 'false', 'no', 'off']);
 
-const text = (value) => String(value == null ? '' : value).trim();
+const text = value => String(value == null ? '' : value).trim();
 
 function parseBoolean(name, raw) {
   const value = text(raw).toLowerCase();
@@ -85,9 +87,9 @@ function parseOrigin(name, raw) {
 function parseOriginList(name, raw) {
   return text(raw)
     .split(',')
-    .map((item) => item.trim())
+    .map(item => item.trim())
     .filter(Boolean)
-    .map((item) => parseOrigin(name, item));
+    .map(item => parseOrigin(name, item));
 }
 
 /** Hostname в форме URL.hostname (нижний регистр, IPv6 в скобках); порт отбрасывается. */
@@ -103,9 +105,9 @@ function parseHostname(name, raw) {
 function parseHostList(name, raw) {
   return text(raw)
     .split(',')
-    .map((item) => item.trim())
+    .map(item => item.trim())
     .filter(Boolean)
-    .map((item) => parseHostname(name, item));
+    .map(item => parseHostname(name, item));
 }
 
 function parseAuthToken(raw) {
@@ -116,6 +118,17 @@ function parseAuthToken(raw) {
     );
   }
   return value;
+}
+
+/** Время жизни кеша ответов провайдера, мс; 0 — кеш выключен. */
+function parseDuration(name, raw, fallback) {
+  const value = text(raw);
+  if (!value) return fallback;
+  const ms = Number(value);
+  if (!Number.isFinite(ms) || ms < 0 || ms > 3600_000) {
+    throw new ConfigError(`${name}: ожидается 0–3600000 мс, получено «${raw}»`);
+  }
+  return Math.floor(ms);
 }
 
 /** Относительные пути считаются от корня проекта, а не от cwd процесса. */
@@ -157,7 +170,10 @@ function loadEnvFile(filePath, env = process.env) {
     if (!line || line.startsWith('#')) continue;
     const eq = line.indexOf('=');
     if (eq === -1) continue;
-    const name = line.slice(0, eq).trim().replace(/^export\s+/, '');
+    const name = line
+      .slice(0, eq)
+      .trim()
+      .replace(/^export\s+/, '');
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) continue;
     let value = line.slice(eq + 1).trim();
     const quoted =
@@ -222,6 +238,8 @@ function loadConfig(env = process.env) {
     logFile: path.join(logDir, 'ai-panel.log'),
     logMaxBytes: LOG_MAX_BYTES,
     providerDebug: parseBoolean('AIPANEL_PROVIDER_DEBUG', env.AIPANEL_PROVIDER_DEBUG),
+    usageCacheMs: parseDuration('AIPANEL_USAGE_CACHE_MS', env.AIPANEL_USAGE_CACHE_MS, 30_000),
+    modelsCacheMs: parseDuration('AIPANEL_MODELS_CACHE_MS', env.AIPANEL_MODELS_CACHE_MS, 600_000),
     codingCachePath: parsePath(
       env.AIPANEL_CODING_CACHE_PATH,
       path.join(dataDir, 'coding-ratings.json')
@@ -241,6 +259,7 @@ module.exports = {
   loadConfig,
   loadEnvFile,
   parseBoolean,
+  parseDuration,
   parseOriginList,
   resolveEnvFile,
   resolveLogDir,

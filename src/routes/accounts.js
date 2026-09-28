@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 // ============================================================
 // /api/accounts — multi-account credentials (RFC-0003).
@@ -21,15 +21,19 @@ function mapStoreError(err) {
   if (!err) return new AppError(500, 'unknown', 'Неизвестная ошибка');
   const code = err.code || 'unknown';
   const status =
-    code === 'account_not_found' ? 404 :
-    code === 'account_exists' ? 409 :
-    code === 'too_many_accounts' ? 409 :
-    code === 'empty_credentials' ? 400 :
-    400;
+    code === 'account_not_found'
+      ? 404
+      : code === 'account_exists'
+        ? 409
+        : code === 'too_many_accounts'
+          ? 409
+          : code === 'empty_credentials'
+            ? 400
+            : 400;
   return new AppError(status, code, err.message || code);
 }
 
-function registerAccountRoutes(router, { getStore }) {
+function registerAccountRoutes(router, { getStore, onCredentialsChanged = () => {} }) {
   router.add(['GET', 'HEAD'], '/api/accounts', async ({ res }) => {
     const st = await getStore();
     const result = await st.accounts.listAccounts();
@@ -44,18 +48,22 @@ function registerAccountRoutes(router, { getStore }) {
 
   router.add(['PUT'], '/api/accounts/active', async ({ req, res }) => {
     const body = await readJson(req);
-    if (!body || typeof body !== 'object') {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
       throw new AppError(400, 'bad_json', 'Ожидается JSON-объект');
     }
     const name = pickAccountName(body.active);
     const st = await getStore();
     if (name !== 'default') {
       const list = await st.accounts.listAccounts();
-      if (!list.accounts.some((a) => a.name === name)) {
+      if (!list.accounts.some(a => a.name === name)) {
         throw new AppError(404, 'account_not_found', 'Аккаунт «' + name + '» не найден');
       }
     }
     await st.set('activeAccount', name);
+    // Новый активный аккаунт — другие credentials, кеш провайдеров сбрасываем
+    try {
+      onCredentialsChanged();
+    } catch {}
     return sendJson(res, 200, { ok: true, active: name }, { 'cache-control': 'no-store' });
   });
 
@@ -68,6 +76,9 @@ function registerAccountRoutes(router, { getStore }) {
     const st = await getStore();
     try {
       const result = await st.accounts.createAccount(name, body.credentials || {});
+      try {
+        onCredentialsChanged();
+      } catch {}
       return sendJson(res, 201, { ok: true, ...result }, { 'cache-control': 'no-store' });
     } catch (err) {
       throw mapStoreError(err);
@@ -83,6 +94,9 @@ function registerAccountRoutes(router, { getStore }) {
     const st = await getStore();
     try {
       const result = await st.accounts.updateAccount(name, body.credentials || {});
+      try {
+        onCredentialsChanged();
+      } catch {}
       return sendJson(res, 200, { ok: true, ...result }, { 'cache-control': 'no-store' });
     } catch (err) {
       throw mapStoreError(err);
@@ -94,6 +108,9 @@ function registerAccountRoutes(router, { getStore }) {
     const st = await getStore();
     try {
       const result = await st.accounts.deleteAccount(name);
+      try {
+        onCredentialsChanged();
+      } catch {}
       return sendJson(res, 200, { ok: true, ...result }, { 'cache-control': 'no-store' });
     } catch (err) {
       throw mapStoreError(err);

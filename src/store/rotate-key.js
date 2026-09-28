@@ -29,8 +29,34 @@ const { loadConfig, loadEnvFile, resolveEnvFile } = require('../config');
  * oldKey обязателен (64 hex); newKey опционален — генерируется.
  * Ключевые файлы не трогает — только содержимое базы.
  * Возвращает { newKey, rows }.
+ *
+ * @param {{dbPath?: string, oldKey?: string, newKey?: string}} [opts]
+ * @returns {Promise<{newKey: string, rows: number}>}
  */
 async function rotateKey({ dbPath, oldKey, newKey } = {}) {
+  assertValidMasterKey(oldKey);
+  if (!dbPath) throw new StoreError('bad_config', 'Не задан путь к базе для ротации');
+  const lockPath = dbPath + '.rotate.lock';
+  let lockHandle;
+  try {
+    lockHandle = await fs.promises.open(lockPath, 'wx');
+    await lockHandle.writeFile(String(process.pid) + '\\n');
+  } catch (err) {
+    if (err && err.code === 'EEXIST') {
+      throw new StoreError('rotation_locked', 'Ротация уже выполняется: ' + lockPath);
+    }
+    throw err;
+  }
+
+  try {
+    return await rotateKeyLocked({ dbPath, oldKey, newKey });
+  } finally {
+    await lockHandle.close().catch(() => {});
+    await fs.promises.unlink(lockPath).catch(() => {});
+  }
+}
+
+async function rotateKeyLocked({ dbPath, oldKey, newKey }) {
   assertValidMasterKey(oldKey);
   if (newKey === undefined) newKey = generateMasterKey();
   assertValidMasterKey(newKey);
@@ -41,21 +67,57 @@ async function rotateKey({ dbPath, oldKey, newKey } = {}) {
   const { db } = await openDatabase({ dbPath, inMemory: false });
   const queue = createPersistQueue({ db, dbPath, inMemory: false });
   try {
-    const res = db.exec('SELECT key, value FROM kv');
-    const rows = res.length ? res[0].values : [];
-    const reencrypted = [];
-    for (const [key, payload] of rows) {
+    const kvResult = db.exec('SELECT key, value FROM kv');
+    const kvRows = kvResult.length ? kvResult[0].values : [];
+    const hasCredentialsTable =
+      db.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'credentials'")
+        .length > 0;
+    const credentialResult = hasCredentialsTable
+      ? db.exec(
+          'SELECT id, account_name, provider_id, credential_type, encrypted_value FROM credentials'
+        )
+      : [];
+    const credentialRows = credentialResult.length ? credentialResult[0].values : [];
+    const reencryptedKv = [];
+    const reencryptedCredentials = [];
+
+    // Расшифровать всё до первой записи: ошибка оставляет базу неизменённой.
+    for (const [key, payload] of kvRows) {
       const dec = decryptValue(oldKey, payload);
       if (!dec.ok) {
-        throw new StoreError('wrong_key', 'Запись «' + key + '» не расшифровывается старым ключом — ротация отменена, база не изменена');
+        throw new StoreError(
+          'wrong_key',
+          'Запись «' +
+            key +
+            '» не расшифровывается старым ключом — ротация отменена, база не изменена'
+        );
       }
-      reencrypted.push([key, encryptValue(newKey, dec.value)]);
+      reencryptedKv.push([key, encryptValue(newKey, dec.value)]);
     }
-    for (const [key, payload] of reencrypted) {
+    for (const [id, account, provider, type, payload] of credentialRows) {
+      const dec = decryptValue(oldKey, payload);
+      if (!dec.ok) {
+        throw new StoreError(
+          'wrong_key',
+          'Credential «' +
+            account +
+            '/' +
+            provider +
+            '/' +
+            type +
+            '» не расшифровывается старым ключом — ротация отменена, база не изменена'
+        );
+      }
+      reencryptedCredentials.push([id, encryptValue(newKey, dec.value)]);
+    }
+    for (const [key, payload] of reencryptedKv) {
       db.run('UPDATE kv SET value = ? WHERE key = ?', [payload, key]);
     }
+    for (const [id, payload] of reencryptedCredentials) {
+      db.run('UPDATE credentials SET encrypted_value = ? WHERE id = ?', [payload, id]);
+    }
     await queue.persist();
-    return { newKey, rows: reencrypted.length };
+    return { newKey, rows: reencryptedKv.length + reencryptedCredentials.length };
   } finally {
     await queue.close();
   }
@@ -70,10 +132,21 @@ function parseArgs(argv) {
   return args;
 }
 
-async function main(argv = process.argv.slice(2)) {
+/** Ошибка уровня CLI: печатается как есть и даёт код выхода 1. */
+class RotateKeyCliError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'RotateKeyCliError';
+  }
+}
+
+async function main(
+  argv = process.argv.slice(2),
+  { env = process.env, print = msg => console.log(msg) } = {}
+) {
   const args = parseArgs(argv);
-  loadEnvFile(resolveEnvFile(process.env));
-  const config = loadConfig(process.env);
+  loadEnvFile(resolveEnvFile(env), env);
+  const config = loadConfig(env);
   const dbPath = args.dbPath || config.dbPath;
   const keyPath = dbPath + '.key';
 
@@ -83,22 +156,37 @@ async function main(argv = process.argv.slice(2)) {
     oldKey = fs.readFileSync(keyPath, 'utf8').trim();
   }
   if (!oldKey) {
-    console.error('Не найден старый master key: задайте AIPANEL_MASTER_KEY или файл ' + keyPath);
-    process.exit(1);
+    const message = 'Не найден старый master key: задайте AIPANEL_MASTER_KEY или файл ' + keyPath;
+    print(message);
+    throw new RotateKeyCliError(message);
   }
 
   const result = await rotateKey({ dbPath, oldKey, newKey: args.newKey });
   if (fromEnv) {
-    console.log('База перешифрована (' + result.rows + ' записей). Новый master key — добавьте в AIPANEL_MASTER_KEY:');
-    console.log(result.newKey);
+    print(
+      'База перешифрована (' +
+        result.rows +
+        ' записей). Новый master key — добавьте в AIPANEL_MASTER_KEY:'
+    );
+    print(result.newKey);
   } else {
-    fs.writeFileSync(keyPath, result.newKey + '\n', { mode: 0o600 });
-    console.log('База перешифрована (' + result.rows + ' записей), новый ключ записан в ' + keyPath);
+    const temporaryKeyPath = keyPath + '.new';
+    const handle = await fs.promises.open(temporaryKeyPath, 'w', 0o600);
+    try {
+      await handle.writeFile(result.newKey + '\n');
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await fs.promises.rename(temporaryKeyPath, keyPath);
+    print('База перешифрована (' + result.rows + ' записей), новый ключ записан в ' + keyPath);
   }
+  return result;
 }
 
-module.exports = { rotateKey };
-if (require.main === module) main().catch((err) => {
-  console.error(err && err.message ? err.message : err);
-  process.exit(1);
-});
+module.exports = { rotateKey, main, parseArgs, RotateKeyCliError };
+if (require.main === module)
+  main().catch(err => {
+    console.error(err && err.message ? err.message : err);
+    process.exit(1);
+  });

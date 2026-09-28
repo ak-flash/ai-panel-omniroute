@@ -1,0 +1,246 @@
+/* Стили интерактивного списка моделей combo. */
+
+/* Кнопка проверки модели (иконка play) */
+.combo-test-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.combo-test-btn svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.combo-test-btn.combo-test-err {
+  color: var(--danger);
+}
+
+.combo-test-btn.combo-test-err:hover {
+  color: var(--text-faint);
+}
+
+.combo-test-btn:hover {
+  color: var(--accent);
+}
+
+.combo-test-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
+.combo-test-ms {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+
+.combo-test-ms.combo-test-ok {
+  color: var(--ok);
+}
+
+/* Клавиатурная перестановка: пара кнопок «выше/ниже» у каждой строки */
+.combo-move {
+  display: inline-flex;
+  gap: 2px;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.combo-move-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.combo-move-btn svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.combo-move-btn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--border);
+}
+
+.combo-move-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.combo-move-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Во время проверки кнопка скрыта, но место занимает — ряд не прыгает */
+.combo-test-btn.combo-test-btn-hidden {
+  visibility: hidden;
+}
+
+.combo-test-loading {
+  color: var(--text-muted);
+  border-color: currentColor;
+}
+
+.combo-test-loading::before {
+  content: '';
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-inline-end: 5px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  vertical-align: -1px;
+  animation: combo-test-spin 0.8s linear infinite;
+}
+
+@keyframes combo-test-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Switch «модель включена/выключена» — кнопка с role="switch" */
+.combo-switch {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+  align-self: center;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-2);
+  cursor: pointer;
+  transition:
+    background-color 140ms ease-out,
+    border-color 140ms ease-out;
+}
+
+.combo-switch::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  transform: translateY(-50%);
+  transition:
+    left 140ms ease-out,
+    background-color 140ms ease-out;
+}
+
+.combo-switch[aria-checked='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.combo-switch[aria-checked='true']::before {
+  left: 18px;
+  background: var(--accent-text);
+}
+
+.combo-switch:hover {
+  border-color: var(--accent);
+}
+
+.combo-switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.combo-list li[draggable='true'] {
+  cursor: grab;
+}
+
+.combo-drag-handle {
+  display: inline-flex;
+  flex: 0 0 20px;
+  align-self: center;
+  justify-content: center;
+  color: var(--text-faint);
+  cursor: grab;
+  transition: color 120ms ease-out;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.combo-drag-handle svg {
+  width: 16px;
+  height: 16px;
+}
+
+.combo-list li:hover .combo-drag-handle {
+  color: var(--text-muted);
+}
+
+.combo-list li.dragging .combo-drag-handle {
+  cursor: grabbing;
+}
+
+.combo-list li.dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+.combo-list li.drag-over {
+  border-top: 2px solid var(--accent);
+}
+
+.combo-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font-size: var(--fs-md);
+  pointer-events: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .combo-drag-handle {
+    flex-basis: 32px;
+    padding: 8px;
+    cursor: default;
+    touch-action: none;
+  }
+
+  .combo-drag-handle svg {
+    width: 20px;
+    height: 20px;
+  }
+}

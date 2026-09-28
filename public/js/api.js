@@ -22,13 +22,12 @@ const DIRECT_PATHS = {
 // OmniRoute API: пути через серверный прокси /omniroute.
 // URL и ключ хранятся на сервере (настройки) — клиент их не передаёт.
 export const COMBO_LIST_PATH = '/api/combos';
-export const COMBO_PATH = (id) => '/api/combos/' + encodeURIComponent(id);
+export const COMBO_PATH = id => '/api/combos/' + encodeURIComponent(id);
 
 // Call logs OmniRoute: список последних запросов с реальной моделью,
 // которая обслужила запрос (поле model), и запрошенной (requestedModel).
 export const CALL_LOGS_PATH = '/api/usage/call-logs';
-export const CALL_LOGS_URL = (limit) =>
-  CALL_LOGS_PATH + '?limit=' + encodeURIComponent(limit);
+export const CALL_LOGS_URL = limit => CALL_LOGS_PATH + '?limit=' + encodeURIComponent(limit);
 
 /**
  * Запрос к API активного провайдера (resource: 'usage' | 'models').
@@ -43,9 +42,7 @@ export async function providerRequest(resource, opts = {}) {
   const headers = {};
   if (key) headers['x-api-key'] = key;
   // Доп. данные авторизации (AgentRouter: числовой ID для New-Api-User)
-  const extraUserId = opts.userId !== undefined
-    ? opts.userId
-    : getAgentRouterUserId();
+  const extraUserId = opts.userId !== undefined ? opts.userId : getAgentRouterUserId();
   if (extraUserId) headers['x-agentrouter-user-id'] = extraUserId;
 
   const url =
@@ -63,12 +60,12 @@ export async function providerRequest(resource, opts = {}) {
   let data = null;
   try {
     data = await response.json();
-  } catch { /* не JSON — ошибка ниже с кодом статуса */ }
+  } catch {
+    /* не JSON — ошибка ниже с кодом статуса */
+  }
 
   if (!response.ok) {
-    const err = new Error(
-      (data && (data.message || data.error)) || 'HTTP ' + response.status
-    );
+    const err = new Error((data && (data.message || data.error)) || 'HTTP ' + response.status);
     err.status = response.status;
     throw err;
   }
@@ -89,7 +86,11 @@ export async function omniFetch(path, opts = {}) {
   });
   if (!response.ok) {
     let payload = null;
-    try { payload = await response.json(); } catch { /* не JSON */ }
+    try {
+      payload = await response.json();
+    } catch {
+      /* не JSON */
+    }
     let msg = payload && payload.message ? payload.message : 'HTTP ' + response.status;
     if (payload && payload.error === 'no_omniroute_url') {
       msg = 'Укажите OmniRoute URL в Настройках';
@@ -98,7 +99,10 @@ export async function omniFetch(path, opts = {}) {
     } else if (response.status === 401 || response.status === 403) {
       msg += ' — проверьте OmniRoute API Key в Настройках';
     }
-    throw Object.assign(new Error(msg), { status: response.status, code: payload && payload.error });
+    throw Object.assign(new Error(msg), {
+      status: response.status,
+      code: payload && payload.error,
+    });
   }
   return response.json();
 }
@@ -109,7 +113,8 @@ export async function omniFetch(path, opts = {}) {
 // Нужен и странице статистики, и диалогу настроек.
 export const AG_ERROR_MESSAGES = {
   no_token: 'Токен не задан — вставьте Antigravity OAuth-токен в настройках.',
-  token_expired: 'Токен истёк — обновите его в настройках или задайте refresh-связку для автообновления.',
+  token_expired:
+    'Токен истёк — обновите его в настройках или задайте refresh-связку для автообновления.',
   project_required: 'Google требует project_id — укажите его в настройках Antigravity.',
   rate_limited: 'Слишком частые запросы к Google — попробуйте позже.',
   provider_error: 'Не удалось получить квоты Google.',

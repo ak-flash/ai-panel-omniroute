@@ -6,19 +6,19 @@
 import { session } from '../session.js';
 import { $id, on } from '../dom.js';
 import { setStatus, touchUpdated } from '../topbar.js';
-import { providerRequest, omniFetch, COMBO_LIST_PATH, COMBO_PATH } from '../api.js';
+import { providerRequest } from '../api.js';
 import { vaultSet, keyForProvider, setProviderKey } from '../settings.js';
 import { rebootPage, start } from '../boot.js';
 import { compact } from '../formatters.js';
-import { matchModel } from '../../model-match.js';
+import { matchModel } from '../model-match.js';
 import { setIcon } from '../dom.js';
 import {
   codingRatingResolved,
   codingScoreResolved,
   setOnlineRatings,
   getOnlineMeta,
-} from '../../coding-rating.js';
-import { extractComboTargets, combosFromResponse } from '../combos.js';
+} from '../coding-rating.js';
+import { loadComboList, comboTargets } from '../combos.js';
 import { showToast } from '../toast.js';
 
 // Статичные элементы страницы — доступны на момент eval модуля
@@ -34,22 +34,32 @@ const $setupProviderName = $id('setup-provider-name');
 const $codingRefreshBtn = $id('coding-refresh-btn');
 const $codingSourceStatus = $id('coding-source-status');
 
+// Совпадение модели с целями combo считается один раз на модель и
+// переиспользуется при каждой перерисовке таблицы (P3-4): раньше
+// matchModel вызывался для каждой цели и дважды на строку.
+let comboMarks = { src: null, map: new Map() };
+let modelsLoading = false;
+
 function isModelInCombo(model) {
-  if (!session.comboTargetIds || !session.comboTargetIds.length) return false;
-  // matchModel ожидает массив каталога и id из combo — проверяем каждым target'ом
-  for (const tid of session.comboTargetIds) {
-    const m = matchModel([model], tid);
-    if (m) return true;
+  const targets = session.comboTargetIds;
+  if (!targets || !targets.length) return false;
+  if (comboMarks.src !== targets) comboMarks = { src: targets, map: new Map() };
+  let hit = comboMarks.map.get(model.id);
+  if (hit === undefined) {
+    // matchModel ожидает массив каталога и id из combo — проверяем каждым target'ом
+    hit = targets.some(tid => Boolean(matchModel([model], tid)));
+    comboMarks.map.set(model.id, hit);
   }
-  return false;
+  return hit;
 }
 
 function formatCodingSourceLabel(meta) {
   if (!meta || !meta.source || meta.source === 'none') return '';
   const when = meta.updatedAt ? new Date(meta.updatedAt).toLocaleDateString('ru-RU') : '';
-  const src = meta.source === 'artificial-analysis via openrouter'
-    ? 'Artificial Analysis (Coding Index) via OpenRouter'
-    : meta.source;
+  const src =
+    meta.source === 'artificial-analysis via openrouter'
+      ? 'Artificial Analysis (Coding Index) via OpenRouter'
+      : meta.source;
   return when ? `${src} • ${when}` : src;
 }
 
@@ -66,7 +76,8 @@ function updateCodingSourceStatus() {
   $codingSourceStatus.textContent = label
     ? `Источник: ${label} • в кэше ${count} моделей`
     : `В кэше ${count} моделей`;
-  if (meta.citation) $codingSourceStatus.title = meta.citation + (meta.sourceUrl ? ' — ' + meta.sourceUrl : '');
+  if (meta.citation)
+    $codingSourceStatus.title = meta.citation + (meta.sourceUrl ? ' — ' + meta.sourceUrl : '');
   else $codingSourceStatus.title = label;
 }
 
@@ -131,7 +142,8 @@ function codingCell(model) {
 
   const badge = document.createElement('span');
   const hasScore = r.score != null;
-  badge.className = 'badge coding-badge coding-' + r.tier + (r.hasOnline ? ' coding-online' : ' coding-none-state');
+  badge.className =
+    'badge coding-badge coding-' + r.tier + (r.hasOnline ? ' coding-online' : ' coding-none-state');
   if (!hasScore || r.tier === 'none') {
     badge.textContent = '—';
   } else if (r.tier === 'top') {
@@ -139,12 +151,19 @@ function codingCell(model) {
   } else {
     badge.textContent = String(r.score);
   }
-  const reasons = r.reasons.length ? r.reasons.join(' · ') : (r.hasOnline ? 'онлайн-бенчмарк' : 'нет онлайн-данных');
+  const reasons = r.reasons.length
+    ? r.reasons.join(' · ')
+    : r.hasOnline
+      ? 'онлайн-бенчмарк'
+      : 'нет онлайн-данных';
   const srcLabel = r.hasOnline ? 'онлайн' : 'нет данных';
   const scoreLabel = hasScore ? r.score + '/100' : '—';
   badge.title = reasons + ' — ' + scoreLabel + ' (' + srcLabel + ')';
   if (r.citation) badge.title += ' — ' + r.citation;
-  badge.setAttribute('aria-label', 'Рейтинг для кодинга ' + scoreLabel + ' (' + srcLabel + '): ' + reasons);
+  badge.setAttribute(
+    'aria-label',
+    'Рейтинг для кодинга ' + scoreLabel + ' (' + srcLabel + '): ' + reasons
+  );
   wrap.appendChild(badge);
 
   // Тонкая полоска-бар под бейджем для быстрого визуального сравнения.
@@ -214,16 +233,15 @@ function modelRow(model) {
 
   const tdCtx = document.createElement('td');
   tdCtx.className = 'num-col';
-  tdCtx.textContent =
-    model.context_length != null ? compact(model.context_length) : '—';
+  tdCtx.textContent = model.context_length != null ? compact(model.context_length) : '—';
 
   const pricing = model.pricing || {};
   const tdIn = document.createElement('td');
   tdIn.className = 'num-col';
-  tdIn.textContent = Number(pricing.input || 0).toFixed(2);
+  tdIn.textContent = pricing.input != null ? pricing.input.toFixed(2) : '—';
   const tdOut = document.createElement('td');
   tdOut.className = 'num-col';
-  tdOut.textContent = Number(pricing.output || 0).toFixed(2);
+  tdOut.textContent = pricing.output != null ? pricing.output.toFixed(2) : '—';
 
   tr.append(tdId, tdCode, tdTier, tdCtx, tdIn, tdOut);
   return tr;
@@ -235,45 +253,68 @@ function filterModels() {
   const tier = $modelsTier && $modelsTier.value !== 'all' ? $modelsTier.value : null;
   const codingFilter = $modelsCoding && $modelsCoding.value !== 'all' ? $modelsCoding.value : null;
   $modelsBody.replaceChildren();
-  const rows = session.models
-    .filter((m) => {
-      if (tier && (m.access_tier || 'paid') !== tier) return false;
-      if (codingFilter) {
-        const r = codingRatingResolved(m);
-        if (codingFilter === 'top' && r.tier !== 'top') return false;
-        if (codingFilter === 'good' && !(r.tier === 'top' || r.tier === 'good')) return false;
-        if (codingFilter === 'low' && r.tier !== 'low') return false;
-        if (codingFilter === 'none' && r.tier !== 'none') return false;
-      }
-      if (!q) return true;
-      const hay = (m.id + ' ' + (m.display_name || '')).toLowerCase();
-      return hay.includes(q);
-    });
+  const rows = session.models.filter(m => {
+    if (tier && (m.access_tier || 'paid') !== tier) return false;
+    if (codingFilter) {
+      const r = codingRatingResolved(m);
+      if (codingFilter === 'top' && r.tier !== 'top') return false;
+      if (codingFilter === 'good' && !(r.tier === 'top' || r.tier === 'good')) return false;
+      if (codingFilter === 'low' && r.tier !== 'low') return false;
+      if (codingFilter === 'none' && r.tier !== 'none') return false;
+    }
+    if (!q) return true;
+    const hay = (m.id + ' ' + (m.display_name || '')).toLowerCase();
+    return hay.includes(q);
+  });
   // «Все для кода» — сортировка по цене: сначала вход $/1M,
   // при равенстве — выход. «Топ и хорошие» — по рейтингу
   // от большего к меньшему, при равенстве — по цене.
-  const inPrice = (m) => Number((m.pricing || {}).input || 0);
-  const outPrice = (m) => Number((m.pricing || {}).output || 0);
+  const inPrice = m => {
+    const p = (m.pricing || {}).input;
+    return p != null ? p : Infinity;
+  };
+  const outPrice = m => {
+    const p = (m.pricing || {}).output;
+    return p != null ? p : Infinity;
+  };
   const byPrice = (a, b) =>
     inPrice(a) - inPrice(b) || outPrice(a) - outPrice(b) || a.id.localeCompare(b.id);
   if (!codingFilter) {
     rows.sort(byPrice);
   } else if (codingFilter === 'good') {
-    rows.sort(
-      (a, b) => codingScoreResolved(b) - codingScoreResolved(a) || byPrice(a, b)
-    );
+    rows.sort((a, b) => codingScoreResolved(b) - codingScoreResolved(a) || byPrice(a, b));
   }
   for (const m of rows) $modelsBody.appendChild(modelRow(m));
-  // Обновляем сводку в статус-баре, если есть данные.
-  if ($modelsStatus && !$modelsStatus.hidden && session.models && session.models.length) {
-    // не трогаем текст «Загружаю…» во время загрузки
-  } else if (session.models && session.models.length && rows.length !== session.models.length) {
-    setStatus('ok', 'Показано ' + rows.length + ' из ' + session.models.length);
+  updateModelsSummary(rows.length);
+}
+
+/** Сводка под таблицей: «Показано N из M» или «ничего не найдено». */
+function updateModelsSummary(shown) {
+  const total = session.models ? session.models.length : 0;
+  if (!$modelsStatus) return;
+  if (modelsLoading) return; // идёт загрузка каталога — текст не трогаем
+  if (!total) {
+    $modelsStatus.hidden = false;
+    $modelsStatus.textContent = 'Каталог провайдера пуст.';
+    $modelsStatus.className = 'models-status is-empty';
+    return;
+  }
+  $modelsStatus.hidden = false;
+  if (!shown) {
+    $modelsStatus.textContent = 'Ничего не найдено — измените запрос или фильтры.';
+    $modelsStatus.className = 'models-status is-empty';
+  } else {
+    $modelsStatus.textContent = 'Показано ' + shown + ' из ' + total;
+    $modelsStatus.className = 'models-status';
   }
 }
 
 function renderModels(data) {
   session.models = data.data || [];
+  modelsLoading = false;
+  // Статус-строка прячется до перерисовки — updateModelsSummary
+  // не перезапишет «Загружаю каталог…»
+  if ($modelsStatus) $modelsStatus.hidden = true;
   filterModels();
 }
 
@@ -294,7 +335,7 @@ function renderModelsProviders() {
     $modelsProvider.appendChild(opt);
   }
   const name = session.modelsProvider
-    ? (session.modelsProvider.name || session.modelsProvider.id)
+    ? session.modelsProvider.name || session.modelsProvider.id
     : '';
   if ($modelsProviderName) $modelsProviderName.textContent = name;
   if ($setupProviderName) $setupProviderName.textContent = name;
@@ -312,43 +353,42 @@ function renderModelsProviders() {
 }
 
 async function loadModels() {
+  modelsLoading = true;
   $modelsStatus.hidden = false;
+  $modelsStatus.className = 'models-status';
   $modelsStatus.textContent = 'Загружаю каталог…';
   setStatus('loading', 'Обновляю…');
   try {
     const data = await providerRequest('models', { provider: session.modelsProvider });
     renderModels(data);
-    $modelsStatus.hidden = true;
     setStatus('ok', 'Моделей: ' + (session.models ? session.models.length : 0));
     touchUpdated();
   } catch (err) {
     setStatus('err', 'Ошибка');
-    $modelsStatus.textContent =
-      'Ошибка загрузки каталога: ' + (err.message || err);
+    $modelsStatus.textContent = 'Ошибка загрузки каталога: ' + (err.message || err);
+  } finally {
+    modelsLoading = false;
   }
 }
 
 // Тихо собирает id моделей из всех combo — для меток «Combo» в каталоге
 async function loadModelsComboMarks() {
   try {
-    const data = await omniFetch(COMBO_LIST_PATH);
-    const combos = combosFromResponse(data);
-    const ids = [];
+    const combos = await loadComboList();
+    const ids = new Set();
     for (const c of combos) {
-      let targets = extractComboTargets(c);
-      if (!targets.length) {
-        try { const d = await omniFetch(COMBO_PATH(c.id)); targets = extractComboTargets(d); } catch { /* нет деталей — пропускаем */ }
-      }
-      for (const t of targets) {
-        if (t.modelId) ids.push(t.modelId);
-        if (t.key && t.key !== t.modelId) ids.push(t.key);
-        if (t.display && t.display !== t.modelId) ids.push(t.display);
+      for (const t of comboTargets(c)) {
+        if (t.modelId) ids.add(t.modelId);
+        if (t.key && t.key !== t.modelId) ids.add(t.key);
+        if (t.display && t.display !== t.modelId) ids.add(t.display);
       }
     }
-    session.comboTargetIds = ids;
-    console.debug('[Combo] marks', ids.length, ids.slice(0, 3));
+    session.comboTargetIds = [...ids];
+    console.debug('[Combo] marks', ids.size, [...ids].slice(0, 3));
     if (session.models) filterModels();
-  } catch (e) { console.warn('[Combo] loadModelsComboMarks failed', e); }
+  } catch (e) {
+    console.warn('[Combo] loadModelsComboMarks failed', e);
+  }
 }
 
 export async function init() {
@@ -365,13 +405,23 @@ export async function init() {
     return;
   }
   if ($setup) $setup.hidden = true;
-  await loadModels();
-  loadModelsComboMarks();
+  // Каталог догружается после показа страницы (P3-1): таблица сразу
+  // получает статус «Загружаю каталог…», а не пустой экран.
+  void Promise.resolve().then(loadModels).then(loadModelsComboMarks);
 }
 
 /* ---------- события (привязываются один раз) ---------- */
 
-on($modelsSearch, 'input', filterModels);
+// Поиск перерисовывает всю таблицу — на каждое нажатие клавиши это
+// лишняя работа, поэтому ввод объединяется (P3-4)
+let searchDebounce = 0;
+on($modelsSearch, 'input', () => {
+  if (searchDebounce) clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    searchDebounce = 0;
+    filterModels();
+  }, 150);
+});
 on($modelsTier, 'change', filterModels);
 on($modelsCoding, 'change', filterModels);
 on($codingRefreshBtn, 'click', refreshCodingRatings);
@@ -379,7 +429,7 @@ on($codingRefreshBtn, 'click', refreshCodingRatings);
 // Экран «Нужен ключ»: форма сохраняет ключ выбранного провайдера
 // в настройках (write-only) и перезагружает страницу.
 const $setupForm = $id('setup-form');
-on($setupForm, 'submit', (e) => {
+on($setupForm, 'submit', e => {
   e.preventDefault();
   const $inp = $id('setup-key');
   const key = ($inp ? $inp.value : '').trim();
@@ -389,8 +439,7 @@ on($setupForm, 'submit', (e) => {
 
 on($modelsProvider, 'change', () => {
   const id = $modelsProvider.value;
-  session.modelsProvider =
-    session.providers.find((p) => p.id === id) || session.activeProvider;
+  session.modelsProvider = session.providers.find(p => p.id === id) || session.activeProvider;
   vaultSet('modelsProvider', session.modelsProvider.id);
   rebootPage();
 });

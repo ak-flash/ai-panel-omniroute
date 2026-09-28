@@ -6,6 +6,14 @@ body.is-booting {
   visibility: hidden;
 }
 
+/* Карточка статистики, пока идёт первый запрос к провайдеру: значения
+   ещё пустые, поэтому приглушаем их, а не показываем «—» как готовые */
+.provider-card.is-loading .stat-value,
+.provider-card.is-loading .stat-meta,
+.provider-card.is-loading .bar-fill {
+  opacity: 0.4;
+}
+
 body.is-booting .topbar {
   visibility: visible;
 }
@@ -26,8 +34,13 @@ body.is-booting .topbar {
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 15px;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  font-size: var(--fs-base);
   line-height: 1.5;
   color: var(--text);
   background: var(--bg);
@@ -42,8 +55,7 @@ img {
 
 .num {
   font-variant-numeric: tabular-nums;
-  font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas,
-    monospace;
+  font-family: ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
 }
 
 main {

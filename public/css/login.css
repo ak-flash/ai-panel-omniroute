@@ -1,0 +1,45 @@
+﻿/* ---------- Страница входа (remote-режим) ---------- */
+.login-wrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  display: grid;
+  gap: 12px;
+}
+
+.login-card h1 {
+  margin: 0;
+  font-size: var(--fs-2xl);
+}
+
+.login-label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.login-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.login-submit {
+  justify-self: start;
+}
+
+.login-error {
+  color: var(--danger, #c0392b);
+}

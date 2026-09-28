@@ -21,9 +21,12 @@ import { compact } from './formatters.js';
 /** Ответ может быть массивом или обёрнут в { logs } / { data } */
 export function callLogsFromResponse(data) {
   if (!data || typeof data !== 'object') return [];
-  return Array.isArray(data) ? data
-    : Array.isArray(data.logs) ? data.logs
-      : Array.isArray(data.data) ? data.data
+  return Array.isArray(data)
+    ? data
+    : Array.isArray(data.logs)
+      ? data.logs
+      : Array.isArray(data.data)
+        ? data.data
         : [];
 }
 
@@ -56,7 +59,7 @@ export function requestedOf(row) {
  */
 export function recentComboRows(rows, limit = 10) {
   const list = callLogsFromResponse(rows)
-    .filter((r) => isComboRow(r) && !r.active)
+    .filter(r => isComboRow(r) && !r.active)
     .sort(byNewestFirst);
   return Number.isInteger(limit) && limit > 0 ? list.slice(0, limit) : list;
 }

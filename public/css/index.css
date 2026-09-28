@@ -1,0 +1,856 @@
+/* Стили главной страницы и карточек провайдеров. */
+
+/* Страницы: карточки провайдеров, setup, модели, комбо — восстановлено из styles.css @ 9ac1b32 */
+/* --------------------------------------------------------------------------
+   Provider cards
+   -------------------------------------------------------------------------- */
+.stats {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  padding: 20px 24px;
+}
+
+.provider-card {
+  overflow: hidden;
+  box-shadow:
+    0 1px 2px oklch(0% 0 0 / 0.08),
+    0 12px 32px oklch(0% 0 0 / 0.06);
+}
+
+/* Единый вертикальный ритм карточек провайдеров. */
+#cards ~ .provider-card {
+  margin-top: 16px;
+}
+
+.provider-dashboard-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.provider-dashboard-row .provider-card {
+  min-width: 0;
+  margin: 0;
+}
+
+#index-combo {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  background: linear-gradient(
+    135deg,
+    var(--surface) 0%,
+    color-mix(in oklch, var(--surface) 88%, var(--accent)) 100%
+  );
+  box-shadow:
+    0 1px 2px oklch(0% 0 0 / 0.06),
+    0 10px 24px oklch(0% 0 0 / 0.05);
+}
+
+.index-combo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+}
+
+.index-combo-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.index-combo-icon {
+  display: grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 12%, var(--surface));
+  border: 1px solid color-mix(in oklch, var(--accent) 24%, var(--border));
+  border-radius: var(--radius-m);
+}
+
+.index-combo-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.index-combo-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.index-combo-title-row h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  line-height: 1.2;
+}
+
+.index-combo-heading p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+
+.index-combo-count {
+  display: inline-flex;
+  min-width: 22px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 12%, var(--surface));
+  border: 1px solid color-mix(in oklch, var(--accent) 24%, var(--border));
+  border-radius: 99px;
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.index-combo-link {
+  display: none;
+  min-height: 36px;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 7px 11px;
+  color: var(--accent);
+  background: var(--surface);
+  border: 1px solid color-mix(in oklch, var(--accent) 32%, var(--border));
+  border-radius: var(--radius-m);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-decoration: none;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    transform 0.15s;
+}
+
+.index-combo-link:hover {
+  background: color-mix(in oklch, var(--accent) 8%, var(--surface));
+  border-color: var(--accent);
+}
+
+.index-combo-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.index-combo-link:active {
+  transform: scale(0.96);
+}
+
+.index-combo-link .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.index-combo-status {
+  min-height: 0;
+  margin: 14px 0 8px;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+
+.index-combo-status:empty {
+  display: none;
+}
+
+.index-combo-status.is-empty,
+.index-combo-status.is-error {
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-m);
+}
+
+.index-combo-status.is-error {
+  color: var(--danger);
+}
+
+.index-combo-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.index-combo-row {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+  min-height: 70px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+
+.index-combo-row:hover {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  box-shadow:
+    0 1px 2px oklch(0% 0 0 / 0.05),
+    0 6px 14px oklch(0% 0 0 / 0.04);
+}
+
+.index-combo-name {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  padding-inline-start: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.index-combo-row.is-unconfigured .index-combo-name {
+  color: var(--warn);
+}
+
+.index-combo-model {
+  min-width: 0;
+  padding-inline-start: 4px;
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+  font-size: var(--fs-xs);
+}
+
+.index-combo-row.is-unconfigured .index-combo-model {
+  color: var(--warn);
+  font-family: inherit;
+}
+
+@media (max-width: 560px) {
+  #index-combo {
+    padding: 16px 14px;
+  }
+
+  .index-combo-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .index-combo-link {
+    display: inline-flex;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .index-combo-list {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .index-combo-row {
+    min-height: 0;
+  }
+
+  .index-combo-model {
+    padding-inline-start: 4px;
+  }
+}
+
+/* Секция «Последние combo-запросы» на странице Combo */
+#combo-recent td.num-col {
+  max-width: 180px;
+}
+
+#combo-recent .badge {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#combo-recent {
+  margin-top: 16px;
+}
+
+.stats-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.provider-card-head {
+  align-items: flex-start;
+  gap: 16px 24px;
+  margin: -20px -24px 16px;
+  padding: 14px 24px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+/* xKiro: элементы шапки по вертикали по центру, компактнее по высоте */
+#cards > .provider-card-head {
+  align-items: center;
+  padding: 12px 24px;
+}
+
+.provider-identity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.provider-name-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Статичный ярлык секции вне карточки провайдера (например, «Маршруты»)
+   сохраняет прежний вид пилюли */
+
+.stats-title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+
+.page-title {
+  margin: 0 0 12px;
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+}
+
+/* Ярлык секции (например, «Маршруты») — пилюля */
+.stats-provider {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 2px 10px;
+}
+
+/* Имя провайдера в шапке карточки — пилюля в обычном регистре */
+.provider-name-badge {
+  font-size: var(--fs-md);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  background: var(--surface);
+}
+
+/* Селектор провайдера статистики в шапке карточки */
+.stats-provider-select {
+  display: inline-flex;
+}
+
+.stats-provider-select select {
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.stats-provider-select select:hover {
+  border-color: var(--border-strong, var(--border));
+}
+
+/* Имя провайдера как ссылка на его сайт — без подчёркивания, в цвете ссылки */
+.provider-site-link {
+  color: inherit;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.provider-site-link:hover,
+.provider-site-link:focus-visible {
+  text-decoration: underline;
+  color: var(--accent);
+}
+
+/* «Google AI Pro» + email аккаунта прижаты вправо от имени провайдера */
+.ag-head-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin-inline-start: auto;
+}
+
+.ag-subtitle {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ag-email {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 2px 10px;
+}
+
+.stats-head .badge {
+  margin-inline-start: 0;
+}
+
+/* Бейджи в шапке карточки: подложка поверхности, чтобы читались на surface-2 */
+.provider-card-head .badge {
+  background: var(--surface);
+}
+
+.provider-balance {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+  min-width: 150px;
+  margin-inline-start: auto;
+  text-align: end;
+}
+
+.provider-balance .stat-value {
+  margin: 0;
+  font-size: var(--fs-3xl);
+}
+
+.provider-balance-note {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+#cards > .stats-row,
+#ar-card > .stats-row,
+#or-card > .stats-row,
+#selora-card > .stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+#experiential-card > .stats-row {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.provider-card-wallet .provider-card-head {
+  margin-bottom: -16px;
+  border-bottom: 0;
+}
+
+/* --- Wallet-карточки (AgentRouter, OpenRouter, Selora) в один ряд --- */
+.wallet-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.wallet-cards .provider-card {
+  margin: 0;
+}
+
+/* --- AgentRouter: баланс в начале карточки --- */
+.ar-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 24px;
+  margin: -20px -24px 16px;
+  padding: 14px 24px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.ar-hero .provider-name-row {
+  align-self: flex-start;
+}
+
+/* Название провайдера в карточке AgentRouter — как у Antigravity
+   (в provider-card-head бейдж получает background: var(--surface);
+   здесь ar-hero без этого класса, поэтому повторяем правило). */
+.ar-hero .provider-name-badge {
+  background: var(--surface);
+}
+
+/* Selora: баланс в шапке — в одну строку с именем провайдера */
+.selora-hero-balance {
+  align-self: center;
+  margin-inline-start: auto;
+  font-size: var(--fs-md);
+}
+
+/* Подсказки и ошибки внутри карточек — контрастнее на подложке карточки */
+.provider-card .hint {
+  color: var(--text-muted);
+}
+
+/* Строка «Высвобождение пула» в wallet-карточке AgentRouter:
+   отсчёт — основным цветом, остальное приглушено */
+.ar-release {
+  margin-bottom: 0;
+}
+
+.ar-release strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.stat {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+}
+
+/* Использовано / лимит — разные цвета */
+.val-used {
+  color: var(--text);
+}
+
+.val-limit {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.72em;
+}
+
+.val-sep {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.stat-top {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.stat-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.stat-pct {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 0 7px;
+  line-height: 1;
+  min-height: 18px;
+  margin-inline-start: auto;
+  align-self: center;
+}
+
+.stat-label {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.stat-meta {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* Иконка «thinking» — берёт приглушённый цвет темы (currentColor) */
+.ag-thinking {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ag-thinking-icon {
+  width: 11px;
+  height: 11px;
+  color: var(--text-faint);
+}
+
+.ag-thinking-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Маленькие inline иконки статуса (✓ / ✗) */
+.ico-status {
+  width: 16px;
+  height: 16px;
+  vertical-align: text-bottom;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.ico-status svg {
+  width: 100%;
+  height: 100%;
+}
+
+.stat-value {
+  font-size: var(--fs-3xl);
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+
+.stat-reset {
+  color: var(--text-muted);
+}
+
+.stat-reset > span {
+  font-size: var(--fs-base);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.stat-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: var(--fs-xs);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.stat-bar {
+  height: 6px;
+}
+
+/* Трек прогресса внутри подложки метрики — поверхность вместо surface-2 */
+.stat .bar-track {
+  background: var(--surface);
+}
+
+/* Компактная карточка квот Antigravity */
+.stat.compact {
+  flex: 1 1 150px;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 4px 10px;
+  padding: 6px 12px;
+}
+
+.stat.compact .stat-value {
+  font-size: var(--fs-lg);
+}
+
+.stat.compact .stat-label {
+  font-size: var(--fs-sm);
+  text-transform: none;
+  letter-spacing: normal;
+  overflow-wrap: break-word;
+}
+
+/* Иконка thinking — при первой строке названия, не переносится */
+.stat.compact .stat-head {
+  flex-wrap: nowrap;
+}
+
+.stat.compact .ag-thinking {
+  flex-shrink: 0;
+}
+
+/* Имя модели + маленький прогресс-бар под ним */
+.ag-model {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.ag-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 130px;
+}
+
+.ag-bar {
+  flex: 1;
+  height: 4px;
+}
+
+.ag-bar .bar-fill {
+  background: var(--ok);
+}
+
+.ag-pct {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+  padding-bottom: 2px;
+}
+
+/* Квота истрачена: пустой трек подсвечен красным, процент — статус */
+.ag-bar.exhausted {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklch, var(--danger) 30%, var(--surface)),
+    color-mix(in oklch, var(--danger) 30%, var(--surface)) 4px,
+    color-mix(in oklch, var(--danger) 12%, var(--surface)) 4px,
+    color-mix(in oklch, var(--danger) 12%, var(--surface)) 8px
+  );
+}
+
+.ag-pct.exhausted {
+  color: var(--danger);
+}
+
+/* Время восстановления квоты прямо в карточке модели */
+.ag-card-reset {
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.ag-card-reset > span {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ag-card-reset.exhausted > span {
+  color: var(--danger);
+}
+
+/* Группы моделей Antigravity со сворачиваемой шапкой */
+.ag-group {
+  margin-top: 4px;
+  width: 100%;
+}
+
+.ag-group + .ag-group {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.ag-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+  padding-bottom: 6px;
+}
+
+.ag-group-title {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.ag-group-count {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 0 8px;
+}
+
+.ag-group-reset {
+  font-size: var(--fs-md);
+  color: var(--text-faint);
+  font-weight: 600;
+}
+
+.ag-group-reset > span {
+  font-weight: 700;
+  color: var(--text);
+  font-size: var(--fs-base);
+}
+
+.ag-group-remaining {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.ag-group-remaining.full {
+  color: var(--ok);
+}
+
+.ag-chevron {
+  margin-inline-start: auto;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.ag-group.collapsed .ag-chevron {
+  transform: rotate(-90deg);
+}
+
+.ag-group-body {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 12px;
+  margin-top: 0;
+  padding-top: 2px;
+  padding-bottom: 8px;
+}
+
+.ag-group.collapsed .ag-group-body {
+  display: none;
+}

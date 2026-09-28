@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
 const CONFIG = { ok: true, data: {}, providers: [], activeProvider: 'xkiro' };
 
 async function mockAuth(page, { authEnabled = true, authenticated = false } = {}) {
-  await page.route('**/api/auth/status', (route) =>
+  await page.route('**/api/auth/status', route =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -27,7 +27,7 @@ test.describe('Страница входа', () => {
 
   test('неверный токен → сообщение об ошибке, без перехода', async ({ page }) => {
     await mockAuth(page);
-    await page.route('**/api/auth/login', (route) =>
+    await page.route('**/api/auth/login', route =>
       route.fulfill({
         status: 401,
         contentType: 'application/json',
@@ -44,10 +44,14 @@ test.describe('Страница входа', () => {
 
   test('верный токен → переход на запрошенную страницу', async ({ page }) => {
     await mockAuth(page);
-    await page.route('**/api/auth/login', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
+    await page.route('**/api/auth/login', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true }),
+      })
     );
-    await page.route('**/api/config', (route) =>
+    await page.route('**/api/config', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(CONFIG) })
     );
     await page.goto('/login.html?next=%2Fcheatsheet.html');
@@ -59,7 +63,7 @@ test.describe('Страница входа', () => {
 
   test('уже активная сессия → сразу на запрошенную страницу', async ({ page }) => {
     await mockAuth(page, { authenticated: true });
-    await page.route('**/api/config', (route) =>
+    await page.route('**/api/config', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(CONFIG) })
     );
     await page.goto('/login.html?next=%2Fcheatsheet.html');

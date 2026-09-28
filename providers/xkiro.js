@@ -1,15 +1,22 @@
+'use strict';
+
 // ============================================================
 // Провайдер xKiro — фабрика адаптера для работы с его API.
 //
 // Окружение не используется: адрес API вшит (DEFAULT_URL), ключ
 // всегда присылает клиент. config нужен тестам (подмена адреса на
-// mock-upstream) и будущим вшитым провайдерам.
+// mock-upstream).
+//
+// Запросы идёт общий клиент (src/provider-client.js): таймаут,
+// коды ошибок и диагностика не-JSON ответов у всех провайдеров
+// одинаковые, здесь только адрес и заголовок авторизации.
 // ============================================================
 
-const { fetchJson } = require('../src/fetch-utils');
-const { normalizeLog } = require('../src/file-logger');
+const { createProviderClient, apiKeyAuth } = require('../src/provider-client');
+const { getDescriptor } = require('../src/provider-descriptors');
 
-const DEFAULT_NAME = 'xKiro';
+const descriptor = getDescriptor('xkiro');
+const DEFAULT_NAME = descriptor.name;
 const DEFAULT_URL = 'https://api.xkiro.com'; // вшит в фабрику — не выносится в настройки
 
 // Таймаут запросов к API провайдера
@@ -22,6 +29,8 @@ const REQUEST_TIMEOUT_MS = 20000;
  *   name   — отображаемое имя
  *   url    — базовый адрес API (тесты подменяют на mock-upstream)
  *   apiKey — ключ адаптера; по умолчанию пуст — ключ присылает клиент
+ *   log    — логгер (по умолчанию консоль: тесты, dev)
+ *   debug  — подробный лог запросов к провайдеру
  *
  * Адаптер предоставляет функции взаимодействия с API:
  *   getUsage(key)  → GET /v1/usage  (кошелёк, окна расхода, free-токены)
@@ -33,75 +42,37 @@ const REQUEST_TIMEOUT_MS = 20000;
  */
 function createXKiroProvider(config = {}) {
   const name = config.name || DEFAULT_NAME;
-  const upstream = String(config.url || DEFAULT_URL).replace(/\/+$/, '');
   const apiKey = config.apiKey || '';
-  // Диагностика уходит в log из config (в CLI — файловый логгер,
-  // см. src/file-logger.js); по умолчанию — консоль (тесты, dev)
-  const log = normalizeLog(config.log);
-  const debug = config.debug === true;
+
+  const client = createProviderClient({
+    // В логах — каноническое имя провайдера, а не подпись из config
+    name: descriptor.name,
+    upstream: config.url || DEFAULT_URL,
+    auth: apiKeyAuth(),
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    log: config.log,
+    debug: config.debug === true,
+    fetchImpl: config.fetchImpl,
+  });
 
   // xKiro авторизует запросы заголовком x-api-key
   const authScheme = 'x-api-key';
-  const buildHeaders = (key) => (key ? { 'x-api-key': key } : {});
+  const buildHeaders = key => apiKeyAuth().buildHeaders({ key });
 
-  async function apiGet(pathname, key = '') {
-    const headers = { accept: 'application/json', ...buildHeaders(key || apiKey) };
-    const startedAt = Date.now();
-    if (debug) {
-      const safeHeaders = { ...headers };
-      if (safeHeaders['x-api-key']) safeHeaders['x-api-key'] = '***';
-      log.info(`[xKiro] ${pathname}`, { headers: safeHeaders });
-    }
-    try {
-      const { response, data } = await fetchJson(upstream + pathname, { headers }, REQUEST_TIMEOUT_MS);
-      if (debug) {
-        log.info(`[xKiro] ${pathname} → ${response.status} (${Date.now() - startedAt} ms)`);
-      }
-      return { status: response.status, data: data || {} };
-    } catch (error) {
-      if (error.code === 'upstream_invalid_json') {
-        // Не-JSON вместо JSON — обычно HTML-заглушка защиты (Cloudflare и
-        // т.п.) или страница ошибки: показываем статус и content-type
-        // upstream в интерфейсе панели, а тело заглушки (одной строкой,
-        // с обрезкой) — в лог сервера, по нему видно, кто отвечает.
-        const { status, contentType, snippet } = error.details;
-        log(
-          `[xKiro] ${pathname}: не-JSON ответ (HTTP ${status}, ${contentType}):`,
-          snippet || '(пустое тело)',
-        );
-        return {
-          status: 502,
-          data: {
-            error: 'bad_response',
-            message: `Провайдер вернул не-JSON ответ (HTTP ${status}, ${contentType})`,
-          },
-        };
-      }
-      // Ошибка сети / DNS / таймаут
-      const msg = error.message || 'Ошибка запроса';
-      const cause = error.cause instanceof Error ? error.cause.message : '';
-      log(`[xKiro] ${pathname}: сеть/таймаут — ${msg}${cause ? ' (причина: ' + cause + ')' : ''}`);
-      return {
-        status: 502,
-        data: {
-          error: 'provider_error',
-          message: msg,
-        },
-      };
-    }
-  }
+  const apiGet = (pathname, key = '') =>
+    client.get(pathname, { credential: { key: key || apiKey } });
 
   return {
     id: 'xkiro',
     name,
-    site: 'https://xkiro.com/dashboard',
-    upstream,
+    site: descriptor.site,
+    upstream: client.upstream,
     apiKey,
     authScheme,
     buildHeaders,
     // Функции взаимодействия с API xKiro
-    getUsage: (key) => apiGet('/v1/usage', key),
-    getModels: (key) => apiGet('/v1/models', key),
+    getUsage: key => apiGet('/v1/usage', key),
+    getModels: key => apiGet('/v1/models', key),
   };
 }
 

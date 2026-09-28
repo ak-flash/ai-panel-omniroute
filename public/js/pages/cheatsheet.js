@@ -16,7 +16,9 @@ async function copyCommand() {
   try {
     await navigator.clipboard.writeText(cmd);
     if ($copyStatus) $copyStatus.textContent = 'Скопировано!';
-    setTimeout(() => { if ($copyStatus) $copyStatus.textContent = ''; }, 2000);
+    setTimeout(() => {
+      if ($copyStatus) $copyStatus.textContent = '';
+    }, 2000);
   } catch {
     if ($copyStatus) $copyStatus.textContent = 'Не удалось скопировать';
   }

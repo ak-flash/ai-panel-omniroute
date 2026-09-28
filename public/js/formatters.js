@@ -5,10 +5,24 @@
 
 export function fmtUsd(v) {
   const n = typeof v === 'string' ? parseFloat(v) : v;
-  return '$' + (Number.isFinite(n) ? n : 0).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return (
+    '$' +
+    (Number.isFinite(n) ? n : 0).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  );
+}
+
+export function fmtPrice(v) {
+  if (v == null || !Number.isFinite(Number(v))) return '—';
+  return (
+    '$' +
+    Number(v).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
+    })
+  );
 }
 
 export function compact(n) {
@@ -63,7 +77,7 @@ export function barClass(p) {
  */
 export function nextReleaseUtc(hoursUtc, now = Date.now()) {
   if (!Array.isArray(hoursUtc)) return null;
-  const valid = hoursUtc.filter((h) => Number.isInteger(h) && h >= 0 && h <= 23);
+  const valid = hoursUtc.filter(h => Number.isInteger(h) && h >= 0 && h <= 23);
   if (!valid.length) return null;
   const nowMs = now instanceof Date ? now.getTime() : Number(now);
   if (!Number.isFinite(nowMs)) return null;

@@ -29,6 +29,8 @@ jobs:
       - run: npm run stylelint
       - run: npm run lint:docs
       - run: npm run check:secrets
+      - run: npm run check:types
+      - run: npm run format:check
 
   test:
     name: Тесты (Node ${{ matrix.node }})
@@ -46,9 +48,9 @@ jobs:
           cache: npm
       - run: npm ci
       # Порог покрытия — на основной версии (.nvmrc), на остальных — обычный прогон
-      - if: matrix.node == 22
+      - if: matrix.node == 24
         run: npm run test:ci
-      - if: matrix.node != 22
+      - if: matrix.node != 24
         run: npm test
 
   playwright:

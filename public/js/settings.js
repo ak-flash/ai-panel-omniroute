@@ -18,15 +18,38 @@ const LS_OMNI_URL = 'aipanel.omni.url';
 
 let vaultCache = null; // null = ещё не загружен, {} = пусто
 let vaultLoaded = false;
+let configPromise = null; // один общий запрос /api/config на загрузку страницы
+
+/**
+ * Единственный запрос GET /api/config на страницу: и vault, и список
+ * провайдеров берутся из одного ответа (P3-6).
+ */
+function fetchConfig() {
+  if (!configPromise) {
+    configPromise = (async () => {
+      try {
+        const r = await fetch('/api/config');
+        if (!r.ok) return null;
+        return await r.json();
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return configPromise;
+}
 
 export async function loadVault() {
   if (vaultLoaded) return vaultCache;
-  if (location.protocol === 'file:') { vaultLoaded = true; vaultCache = {}; return vaultCache; }
-  try {
-    const r = await fetch('/api/config');
-    const j = await r.json();
-    vaultCache = (j && j.data) || {};
-  } catch {
+  if (location.protocol === 'file:') {
+    vaultLoaded = true;
+    vaultCache = {};
+    return vaultCache;
+  }
+  const j = await fetchConfig();
+  if (j) {
+    vaultCache = j.data || {};
+  } else {
     console.warn('[settings] /api/config недоступен — начинаю с пустых настроек');
     vaultCache = {};
   }
@@ -34,9 +57,34 @@ export async function loadVault() {
   return vaultCache;
 }
 
+/** Перечитать /api/config с сервера (после смены ключей) и обновить кеш. */
+export async function reloadAppConfig() {
+  if (location.protocol === 'file:') return null;
+  configPromise = null;
+  const j = await fetchConfig();
+  if (j) {
+    vaultCache = j.data || {};
+    vaultLoaded = true;
+  }
+  return j;
+}
+
 export function vaultGet(key, fallback = '') {
   if (vaultCache && key in vaultCache) return vaultCache[key];
   return fallback;
+}
+
+/** Несекретная настройка, хранящаяся как JSON-строка (пороги, расписания).
+ *  Возвращает null, если значения нет или оно разбирается как не-объект. */
+export function vaultGetJson(key) {
+  try {
+    const raw = vaultGet(key, '');
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === 'object' ? obj : null;
+  } catch {
+    return null;
+  }
 }
 
 // Отдельная запись одного ключа — для несекретных предпочтений UI
@@ -44,21 +92,28 @@ export function vaultGet(key, fallback = '') {
 // пишем в консоль, чтобы пропажу настройки можно было диагностировать.
 export async function vaultSet(key, value) {
   const v = value == null ? '' : String(value);
-  if (vaultCache) vaultCache[key] = v;
-  if (location.protocol === 'file:') return;
+  if (location.protocol === 'file:') return { ok: true };
   try {
     const res = await fetch('/api/config', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ [key]: v }),
     });
-    if (!res.ok) console.warn('[settings] не сохранился ключ «' + key + '»: HTTP ' + res.status);
+    if (!res.ok) {
+      console.warn('[settings] не сохранился ключ «' + key + '»: HTTP ' + res.status);
+      return { ok: false, status: res.status };
+    }
+    if (vaultCache) vaultCache[key] = v;
+    return { ok: true };
   } catch {
     console.warn('[settings] не сохранился ключ «' + key + '»: нет доступа к API');
+    return { ok: false, message: 'Нет доступа к API' };
   }
 }
 
-export async function vaultRemove(key) { return vaultSet(key, ''); }
+export async function vaultRemove(key) {
+  return vaultSet(key, '');
+}
 
 /**
  * Батч-сохранение настроек одним PUT /api/config (сервер пишет
@@ -76,7 +131,11 @@ export async function saveSettings(entries) {
     });
     if (!res.ok) {
       let payload = null;
-      try { payload = await res.json(); } catch { /* не JSON */ }
+      try {
+        payload = await res.json();
+      } catch {
+        /* не JSON */
+      }
       return {
         ok: false,
         status: res.status,
@@ -97,40 +156,63 @@ export async function saveSettings(entries) {
 /** GET /api/config: список провайдеров и несекретные поля. null — недоступен. */
 export async function loadAppConfig() {
   if (location.protocol === 'file:') return null;
-  try {
-    const res = await fetch('/api/config');
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
+  return fetchConfig();
 }
 
 /* ---------- ключи провайдеров ---------- */
 
 export function getKey() {
   if (vaultLoaded) return vaultGet('xkiroKey') || '';
-  try { const v = localStorage.getItem(LS_XKIRO_KEY); if (v) return v.startsWith('enc:') ? atob(v.slice(4)) : v; } catch { /* нет localStorage */ }
-  try { return localStorage.getItem(LS_KEY) || ''; } catch { return ''; }
+  try {
+    const v = localStorage.getItem(LS_XKIRO_KEY);
+    if (v) return v.startsWith('enc:') ? atob(v.slice(4)) : v;
+  } catch {
+    /* нет localStorage */
+  }
+  try {
+    return localStorage.getItem(LS_KEY) || '';
+  } catch {
+    return '';
+  }
 }
-export function setKey(k) { vaultSet('xkiroKey', k); }
-export function removeKey() { vaultSet('xkiroKey', ''); }
+export function setKey(k) {
+  vaultSet('xkiroKey', k);
+}
+export function removeKey() {
+  vaultSet('xkiroKey', '');
+}
 
-export function getAgentRouterKey() { return vaultGet('agentrouterKey') || ''; }
+export function getAgentRouterKey() {
+  return vaultGet('agentrouterKey') || '';
+}
 // Числовой ID пользователя AgentRouter — второй фактор авторизации
 // (заголовок New-Api-User); не секрет, но храним рядом с токеном
-export function getAgentRouterUserId() { return vaultGet('agentrouterUserId') || ''; }
+export function getAgentRouterUserId() {
+  return vaultGet('agentrouterUserId') || '';
+}
 
 // Ключ OpenRouter — обслуживает и каталог моделей, и «Обновить рейтинг»
 // на странице Модели (маршрут /api/coding-ratings/refresh берёт его сам)
-export function getOpenRouterKey() { return vaultGet('openrouterKey') || ''; }
-export function setOpenRouterKey(k) { vaultSet('openrouterKey', k); }
+export function getOpenRouterKey() {
+  return vaultGet('openrouterKey') || '';
+}
+export function setOpenRouterKey(k) {
+  vaultSet('openrouterKey', k);
+}
 
 // Ключ Selora (sk-gw-…) — обслуживает и каталог моделей, и статистику
-export function getSeloraKey() { return vaultGet('seloraKey') || ''; }
-export function setSeloraKey(k) { vaultSet('seloraKey', k); }
-export function getExperientialKey() { return vaultGet('experientialKey') || ''; }
-export function setExperientialKey(k) { vaultSet('experientialKey', k); }
+export function getSeloraKey() {
+  return vaultGet('seloraKey') || '';
+}
+export function setSeloraKey(k) {
+  vaultSet('seloraKey', k);
+}
+export function getExperientialKey() {
+  return vaultGet('experientialKey') || '';
+}
+export function setExperientialKey(k) {
+  vaultSet('experientialKey', k);
+}
 
 // Сохранить ключ произвольного вшитого провайдера (экран «Нужен ключ»)
 export function setProviderKey(id, key) {
@@ -154,16 +236,26 @@ export function keyForProvider(id) {
 
 export function getOmniUrl() {
   return vaultLoaded
-    ? (vaultGet('omniUrl') || '')
-    : (() => { try { return localStorage.getItem(LS_OMNI_URL) || ''; } catch { return ''; } })();
+    ? vaultGet('omniUrl') || ''
+    : (() => {
+        try {
+          return localStorage.getItem(LS_OMNI_URL) || '';
+        } catch {
+          return '';
+        }
+      })();
 }
 
-export function getAgRefreshToken() { return vaultGet('agRefreshToken') || ''; }
+export function getAgRefreshToken() {
+  return vaultGet('agRefreshToken') || '';
+}
 
 // Нормализация URL OmniRoute: убираем хвостовые слэши и лишние суффиксы
 // (/v1, /v1/, /api), которые пользователь мог ввести по ошибке.
 export function normalizeOmniUrl(url) {
-  let u = String(url || '').trim().replace(/\/+$/, '');
+  let u = String(url || '')
+    .trim()
+    .replace(/\/+$/, '');
   u = u.replace(/\/(v\d+|api)$/i, '');
   return u;
 }

@@ -4,14 +4,17 @@ const dns = require('dns').promises;
 const net = require('net');
 
 const SECURITY_HEADERS = Object.freeze({
-  'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+  'content-security-policy':
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
   'referrer-policy': 'no-referrer',
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'DENY',
 });
 
 function firstForwardedValue(value) {
-  return String(value || '').split(',')[0].trim();
+  return String(value || '')
+    .split(',')[0]
+    .trim();
 }
 
 /**
@@ -21,7 +24,11 @@ function firstForwardedValue(value) {
  */
 function getExternalOrigin(req, publicOrigin = '', trustProxy = false) {
   if (publicOrigin) {
-    try { return new URL(publicOrigin).origin; } catch { return ''; }
+    try {
+      return new URL(publicOrigin).origin;
+    } catch {
+      return '';
+    }
   }
   const forwardedHost = trustProxy ? firstForwardedValue(req.headers['x-forwarded-host']) : '';
   const host = forwardedHost || req.headers.host;
@@ -29,7 +36,11 @@ function getExternalOrigin(req, publicOrigin = '', trustProxy = false) {
   const forwardedProto = trustProxy ? firstForwardedValue(req.headers['x-forwarded-proto']) : '';
   const protocol = forwardedProto || 'http';
   if (protocol !== 'http' && protocol !== 'https') return '';
-  try { return new URL(protocol + '://' + host).origin; } catch { return ''; }
+  try {
+    return new URL(protocol + '://' + host).origin;
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -66,7 +77,11 @@ function isSameOrigin(req, origin, publicOrigin = '', trustProxy = false) {
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
     // Прямой loopback-доступ: работает и когда панель развёрнута за
     // reverse proxy (задан PUBLIC_ORIGIN), — локальная разработка/админка.
-    if (req.headers.host && parsed.host === req.headers.host && isLoopbackHostname(parsed.hostname)) {
+    if (
+      req.headers.host &&
+      parsed.host === req.headers.host &&
+      isLoopbackHostname(parsed.hostname)
+    ) {
       return true;
     }
     // Доступ через reverse proxy (x-forwarded-* при TRUST_PROXY) или PUBLIC_ORIGIN.
@@ -102,17 +117,23 @@ function applyRequestSecurity(
       merged['access-control-allow-origin'] = corsOrigin;
       merged.vary = merged.vary ? merged.vary + ', Origin' : 'Origin';
       merged['access-control-allow-methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
-      merged['access-control-allow-headers'] = 'authorization, x-api-key, x-agentrouter-user-id, content-type, accept';
+      merged['access-control-allow-headers'] =
+        'authorization, x-api-key, x-agentrouter-user-id, content-type, accept';
     }
     return originalWriteHead(statusCode, merged);
   };
 
   const forwardedHost = trustProxy ? firstForwardedValue(req.headers['x-forwarded-host']) : '';
-  if (!isAllowedHost(req.headers.host, allowedHosts) || (forwardedHost && !isAllowedHost(forwardedHost, allowedHosts))) {
+  if (
+    !isAllowedHost(req.headers.host, allowedHosts) ||
+    (forwardedHost && !isAllowedHost(forwardedHost, allowedHosts))
+  ) {
     return rejectRequest(res, 421, 'host_not_allowed', 'Host is not allowed');
   }
   const allowed =
-    !origin || isSameOrigin(req, origin, publicOrigin, trustProxy) || allowedOrigins.includes(origin);
+    !origin ||
+    isSameOrigin(req, origin, publicOrigin, trustProxy) ||
+    allowedOrigins.includes(origin);
   if (!allowed) return rejectRequest(res, 403, 'origin_forbidden', 'Origin is not allowed');
   return true;
 }
@@ -120,17 +141,27 @@ function applyRequestSecurity(
 function isPrivateAddress(address) {
   if (net.isIPv4(address)) {
     const parts = address.split('.').map(Number);
-    return parts[0] === 10 || parts[0] === 127 || parts[0] === 0 ||
+    return (
+      parts[0] === 10 ||
+      parts[0] === 127 ||
+      parts[0] === 0 ||
       (parts[0] === 169 && parts[1] === 254) ||
       (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
-      (parts[0] === 192 && parts[1] === 168);
+      (parts[0] === 192 && parts[1] === 168)
+    );
   }
   if (net.isIPv6(address)) {
     const normalized = address.toLowerCase();
-    return normalized === '::' || normalized === '::1' || normalized.startsWith('fc') ||
-      normalized.startsWith('fd') || normalized.startsWith('fe8') ||
-      normalized.startsWith('fe9') || normalized.startsWith('fea') ||
-      normalized.startsWith('feb');
+    return (
+      normalized === '::' ||
+      normalized === '::1' ||
+      normalized.startsWith('fc') ||
+      normalized.startsWith('fd') ||
+      normalized.startsWith('fe8') ||
+      normalized.startsWith('fe9') ||
+      normalized.startsWith('fea') ||
+      normalized.startsWith('feb')
+    );
   }
   return true;
 }

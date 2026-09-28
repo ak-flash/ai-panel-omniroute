@@ -22,7 +22,7 @@
   align-items: center;
   gap: 8px;
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--fs-xl);
 }
 
 .logo {
@@ -74,7 +74,7 @@
 
 #status-text,
 .status-label {
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
 }
 
@@ -136,7 +136,7 @@
   border-radius: var(--radius-s);
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-weight: 600;
   white-space: nowrap;
   transition:
@@ -177,18 +177,28 @@
 /* --------------------------------------------------------------------------
    Footer
    -------------------------------------------------------------------------- */
-body[data-page="combo"] #updated-wrap { display: none; }
-body[data-page="combo"] .status-label { padding-right: 20px; }
-body[data-page="index"] #updated-wrap { padding-right: 20px; }
-body[data-page="models"] #updated-wrap { padding-right: 20px; }
-body[data-page="cheatsheet"] #status-text,
-body[data-page="cheatsheet"] #status-dot { display: none; }
+body[data-page='combo'] #updated-wrap {
+  display: none;
+}
+body[data-page='combo'] .status-label {
+  padding-right: 20px;
+}
+body[data-page='index'] #updated-wrap {
+  padding-right: 20px;
+}
+body[data-page='models'] #updated-wrap {
+  padding-right: 20px;
+}
+body[data-page='cheatsheet'] #status-text,
+body[data-page='cheatsheet'] #status-dot {
+  display: none;
+}
 
 .updated {
   display: inline-block;
   min-width: 50px;
   text-align: right;
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--text-faint);
   white-space: nowrap;
 }

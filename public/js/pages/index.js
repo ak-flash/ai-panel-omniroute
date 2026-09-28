@@ -5,21 +5,29 @@
    ============================================================ */
 
 import { session, PROVIDER_FALLBACK } from '../session.js';
-import { $id, setIcon, span, GAP } from '../dom.js';
+import { $id, span, GAP } from '../dom.js';
 import { setStatus, touchUpdated } from '../topbar.js';
 import { showBanner, hideBanner } from '../banner.js';
-import { providerRequest, fetchAntigravityQuota, AG_ERROR_MESSAGES, omniFetch, COMBO_LIST_PATH, COMBO_PATH } from '../api.js';
-import { keyForProvider, getAgentRouterKey, getOpenRouterKey, getSeloraKey, vaultGet } from '../settings.js';
+import { providerRequest } from '../api.js';
+import { keyForProvider, vaultGetJson, vaultSet } from '../settings.js';
 import { onEvent } from '../events.js';
-import { start } from '../boot.js';
-import { fmtUsd, compact, dur, num, pct, barClass, nextReleaseUtc, clockTime } from '../formatters.js';
-import { extractComboTargets, combosFromResponse } from '../combos.js';
+import { rebootPage, start } from '../boot.js';
+import { fmtUsd, compact, dur, num, pct, barClass } from '../formatters.js';
+import { loadComboList, comboTargets } from '../combos.js';
+import { createWalletCard } from '../cards/wallet-card.js';
+import {
+  loadAntigravityQuota,
+  getQuota as getAntigravityQuota,
+  tick as tickAntigravity,
+} from '../cards/antigravity.js';
 import { showToast } from '../toast.js';
+import { renderRelease as renderAgentRouterRelease } from '../cards/agentrouter-release.js';
 import { evaluateAll } from '../notifications.js';
 
 // Статичные элементы страницы — доступны на момент eval модуля
 const $cards = $id('cards');
 const $statsProvider = $id('stats-provider');
+const $statsProviderSelect = $id('stats-provider-select');
 const $setup = $id('setup');
 const $planBadge = $id('plan-badge');
 const $walletBalance = $id('wallet-balance');
@@ -28,36 +36,13 @@ const $shortCard = $id('card-short');
 const $longCard = $id('card-long');
 const $freeCard = $id('card-free');
 const $live = $id('live');
-const $agSection = $id('antigravity-quota');
-const $agCards = $id('ag-cards');
-const $agHint = $id('ag-hint');
-const $agBadge = $id('ag-status-badge');
-const $agEmail = $id('ag-account-email');
 const $experientialCard = $id('experiential-card');
 
-async function loadExperientialCard() {
-  if (!$experientialCard) return;
-  const hasKey = Boolean(keyForProvider('experiential')) ||
-    session.providers.some((p) => p.id === 'experiential' && p.hasKey);
-  if (!hasKey || session.activeProvider.id === 'experiential') {
-    $experientialCard.hidden = true;
-    return;
-  }
-  try {
-    const data = await providerRequest('usage', {
-      provider: { id: 'experiential', name: 'Experiential Labs' },
-    });
-    renderExperientialCard(data);
-  } catch (err) {
-    $experientialCard.hidden = false;
-    const error = $id('experiential-error');
-    if (error) {
-      error.hidden = false;
-      error.textContent = 'Не удалось получить статистику — ' +
-        (err && err.message ? err.message : String(err));
-    }
-  }
+function hasProviderKey(id) {
+  return Boolean(keyForProvider(id)) || session.providers.some(p => p.id === id && p.hasKey);
 }
+
+const isActiveProvider = id => session.activeProvider.id === id;
 
 function renderExperientialCard(data) {
   if (!$experientialCard) return;
@@ -80,14 +65,23 @@ function renderExperientialCard(data) {
   if (used) used.textContent = Number(data.today_usd) > 0 ? fmtUsd(data.today_usd) : '—';
 }
 
+const loadExperientialCard = createWalletCard({
+  id: 'experiential',
+  name: 'Experiential Labs',
+  cardId: 'experiential-card',
+  errorId: 'experiential-error',
+  errorPrefix: 'Не удалось получить статистику',
+  hasKey: () => hasProviderKey('experiential'),
+  isActive: () => isActiveProvider('experiential'),
+  render: renderExperientialCard,
+});
+
 // Состояние страницы (локальное)
 let usage = null;
 let fetchedAt = null;
 let deadlineShort = null;
 let deadlineLong = null;
 let deadlineFree = null;
-let antigravityQuota = null; // квоты Antigravity (модели Google AI Pro)
-let antigravityEmail = '';   // email аккаунта Google (из сервера, после входа)
 let agentRouterUsage = null; // последний ответ /api/providers/agentrouter/usage (для порогов)
 
 // Множество id уведомлений, уже показанных в этой сессии — чтобы
@@ -95,24 +89,13 @@ let agentRouterUsage = null; // последний ответ /api/providers/age
 // Дропается при перезагрузке страницы (сессия = текущий запуск).
 const notified = new Set();
 
-function readThresholds() {
-  try {
-    const raw = vaultGet('notificationThresholds', '');
-    if (!raw) return null;
-    const obj = JSON.parse(raw);
-    return obj && typeof obj === 'object' ? obj : null;
-  } catch {
-    return null;
-  }
-}
-
 function checkNotifications() {
-  const thresholds = readThresholds();
+  const thresholds = vaultGetJson('notificationThresholds');
   if (!thresholds) return;
   const data = {
     xkiro: usage,
     agentrouter: agentRouterUsage,
-    antigravity: antigravityQuota,
+    antigravity: getAntigravityQuota(),
   };
   for (const note of evaluateAll(data, thresholds)) {
     if (notified.has(note.id)) continue;
@@ -139,6 +122,41 @@ function renderProviderLabel() {
   } else {
     $statsProvider.textContent = name;
   }
+  renderStatsProviderSelect();
+}
+
+/**
+ * Селектор провайдера статистики (P3-2). Показываем только тех, у кого
+ * есть ключ: выбор без ключа давал бы вечный баннер «проверьте ключ».
+ */
+function renderStatsProviderSelect() {
+  if (!$statsProviderSelect) return;
+  const list = session.providers.filter(p => keyForProvider(p.id) || p.hasKey);
+  if (list.length < 2) {
+    $statsProviderSelect.hidden = true;
+    $statsProviderSelect.replaceChildren();
+    return;
+  }
+  $statsProviderSelect.hidden = false;
+  $statsProviderSelect.replaceChildren();
+  for (const p of list) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name || p.id;
+    opt.selected = p.id === (session.activeProvider || {}).id;
+    $statsProviderSelect.appendChild(opt);
+  }
+}
+
+function initStatsProviderSelect() {
+  if (!$statsProviderSelect) return;
+  $statsProviderSelect.addEventListener('change', () => {
+    const id = $statsProviderSelect.value;
+    const p = session.providers.find(item => item.id === id);
+    if (!p || (session.activeProvider && session.activeProvider.id === id)) return;
+    session.activeProvider = p;
+    void vaultSet('statsProvider', id).then(rebootPage);
+  });
 }
 
 // Окна последнего ответа usage (используются setWindow)
@@ -153,27 +171,25 @@ function setWindow(kind, card) {
   }
 
   const p = pct(w.spent_usd, w.cap_usd);
-  document.getElementById(kind + '-pct').textContent =
-    w.cap_usd ? Math.round(p) + '%' : '';
+  document.getElementById(kind + '-pct').textContent = w.cap_usd ? Math.round(p) + '%' : '';
 
   card.querySelector('.stat-meta').textContent = dur(w.window_sec);
-  card.querySelector('.stat-value').replaceChildren(
-    span('val-used', fmtUsd(w.spent_usd)),
-    GAP(),
-    span('val-sep', '/'),
-    GAP(),
-    span('val-limit', fmtUsd(w.cap_usd))
-  );
+  card
+    .querySelector('.stat-value')
+    .replaceChildren(
+      span('val-used', fmtUsd(w.spent_usd)),
+      GAP(),
+      span('val-sep', '/'),
+      GAP(),
+      span('val-limit', fmtUsd(w.cap_usd))
+    );
 
   const bar = card.querySelector('.bar-fill');
   const progress = card.querySelector('[role="progressbar"]');
   bar.style.width = p + '%';
   if (progress) {
     progress.setAttribute('aria-valuenow', String(Math.round(p)));
-    progress.setAttribute(
-      'aria-valuetext',
-      `${fmtUsd(w.spent_usd)} из ${fmtUsd(w.cap_usd)}`,
-    );
+    progress.setAttribute('aria-valuetext', `${fmtUsd(w.spent_usd)} из ${fmtUsd(w.cap_usd)}`);
   }
   bar.classList.remove('warn', 'danger');
   const cls = barClass(p);
@@ -212,12 +228,15 @@ function renderFreeTokens(free) {
   const limit = free.limit_per_day == null ? null : num(free.limit_per_day);
 
   const usedPct = limit ? pct(used, limit) : 0;
-  document.getElementById('free-pct').textContent =
-    limit != null ? Math.round(usedPct) + '%' : '';
-  document.getElementById('free-value').replaceChildren(
-    span('val-used', compact(used)),
-    ...(limit == null ? [] : [GAP(), span('val-sep', '/'), GAP(), span('val-limit', compact(limit))])
-  );
+  document.getElementById('free-pct').textContent = limit != null ? Math.round(usedPct) + '%' : '';
+  document
+    .getElementById('free-value')
+    .replaceChildren(
+      span('val-used', compact(used)),
+      ...(limit == null
+        ? []
+        : [GAP(), span('val-sep', '/'), GAP(), span('val-limit', compact(limit))])
+    );
 
   const bar = $freeCard.querySelector('.bar-fill');
   const progress = $freeCard.querySelector('[role="progressbar"]');
@@ -226,7 +245,7 @@ function renderFreeTokens(free) {
     progress.setAttribute('aria-valuenow', String(Math.round(usedPct)));
     progress.setAttribute(
       'aria-valuetext',
-      limit == null ? `${compact(used)} использовано` : `${compact(used)} из ${compact(limit)}`,
+      limit == null ? `${compact(used)} использовано` : `${compact(used)} из ${compact(limit)}`
     );
   }
   bar.classList.remove('warn', 'danger');
@@ -236,11 +255,7 @@ function renderFreeTokens(free) {
   deadlineFree = fetchedAt + (free.resets_in_sec || 0) * 1000;
   if (!free.resets_in_sec) {
     const now = new Date();
-    deadlineFree = Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate() + 1,
-    );
+    deadlineFree = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
   }
   tickFree();
 }
@@ -252,9 +267,7 @@ function renderUsage(data) {
   $cards.hidden = false;
   $setup.hidden = true;
 
-  $planBadge.textContent = data.plan
-    ? String(data.plan).toUpperCase()
-    : 'payg';
+  $planBadge.textContent = data.plan ? String(data.plan).toUpperCase() : 'payg';
 
   const wallet = data.wallet || {};
   $walletBalance.textContent = fmtUsd(wallet.balance_usd);
@@ -263,7 +276,7 @@ function renderUsage(data) {
 
   // API отдаёт окна массивом объектов с полем kind: 'short' | 'long'
   const list = Array.isArray(data.windows) ? data.windows : [];
-  const byKind = Object.fromEntries(list.map((w) => [w.kind, w]));
+  const byKind = Object.fromEntries(list.map(w => [w.kind, w]));
   windowShort = byKind.short || null;
   windowLong = byKind.long || null;
   setWindow('short', $shortCard);
@@ -275,9 +288,10 @@ function renderUsage(data) {
   touchUpdated();
 
   if ($live) {
-    $live.textContent =
-      'Баланс ' + fmtUsd(wallet.balance_usd) +
-      ', план ' + (data.plan || 'PAYG');
+    // Live-регион не должен повторно озвучивать баланс при каждом
+    // обновлении страницы — только когда значение изменилось (P3-5)
+    const announcement = 'Баланс ' + fmtUsd(wallet.balance_usd) + ', план ' + (data.plan || 'PAYG');
+    if ($live.textContent !== announcement) $live.textContent = announcement;
   }
 }
 
@@ -312,38 +326,6 @@ async function loadUsage() {
 
 // Показываем карточку, только если у AgentRouter есть токен; когда в
 // полосе статистики уже выбран AgentRouter — прячем (не дублируем)
-async function loadAgentRouterCard() {
-  const $card = $id('ar-card');
-  if (!$card) return;
-  const hasKey =
-    Boolean(getAgentRouterKey()) ||
-    session.providers.some((p) => p.id === 'agentrouter' && p.hasKey);
-  if (!hasKey || session.activeProvider.id === 'agentrouter') {
-    $card.hidden = true;
-    renderAgentRouterRelease();
-    return;
-  }
-  try {
-    const data = await providerRequest('usage', {
-      provider: { id: 'agentrouter', name: 'AgentRouter' },
-    });
-    agentRouterUsage = data;
-    renderAgentRouterCard(data);
-    checkNotifications();
-  } catch (err) {
-    $card.hidden = false;
-    const $err = $id('ar-error');
-    if ($err) {
-      $err.hidden = false;
-      $err.textContent =
-        'Не удалось получить баланс — ' +
-        (err && err.message ? err.message : String(err));
-    }
-  }
-  // Видимость карточки окончательная — обновить строку с высвобождением
-  renderAgentRouterRelease();
-}
-
 function renderAgentRouterCard(data) {
   const $card = $id('ar-card');
   if (!$card) return;
@@ -378,169 +360,24 @@ function renderAgentRouterCard(data) {
   }
 }
 
-/* ---------- AgentRouter: таймер высвобождения пула (Claude/GPT) ---------- */
-
-// График приходит вместе с /api/config (vault) объектом
-// { timezone, hoursUtc } — часы графика в UTC, якорь — Пекин.
-let arReleaseHours = null; // ближайший график: непустой массив часов UTC
-let arReleaseTz = '';      // якорный часовой пояс графика (для подписи)
-
-function readAgentRouterReleases() {
-  // Отображение счётчика полностью определяется локальной настройкой
-  // agentrouterReleaseHoursUtc: пусто = не задано → блок скрыт (дефолт
-  // с сервера в agentrouterReleases для счётчика не показываем).
-  const raw = vaultGet('agentrouterReleaseHoursUtc');
-  if (typeof raw !== 'string' || !raw.trim()) {
-    arReleaseHours = null;
-    arReleaseTz = '';
-    return false;
-  }
-  const seen = new Set();
-  for (const p of raw.split(',')) {
-    const t = p.trim();
-    if (!t) continue;
-    const h = Number(t);
-    if (Number.isInteger(h) && h >= 0 && h <= 23) seen.add(h);
-  }
-  if (!seen.size) {
-    arReleaseHours = null;
-    arReleaseTz = '';
-    return false;
-  }
-  arReleaseHours = [...seen].sort((a, b) => a - b);
-  arReleaseTz = 'Asia/Shanghai';
-  return true;
-}
-
-// Считает ближайшее высвобождение пула, показывает обратный отсчёт и
-// локальное время (часовой пояс браузера). Дублируется в двух местах:
-// карточка в полосе статистики (когда AgentRouter — активный провайдер)
-// и строка в wallet-карточке AgentRouter (когда активен другой провайдер).
-function hideAgentRouterReleaseElements() {
-  const $main = $id('card-ar-release');
-  if ($main) $main.hidden = true;
-  const $line = $id('ar-release');
-  if ($line) $line.hidden = true;
-}
-function renderAgentRouterRelease() {
-  if (!readAgentRouterReleases()) { clearAgentRouterReleaseTimer(); hideAgentRouterReleaseElements(); return; }
-  const ts = nextReleaseUtc(arReleaseHours, Date.now());
-  if (ts === null) { clearAgentRouterReleaseTimer(); hideAgentRouterReleaseElements(); return; }
-
-  // Отсчёт только до минут (с округлением вверх — никогда не «0 с»),
-  // а секунды не нужны: таймер живёт от обновления страницы
-  const remainMin = Math.max(1, Math.ceil((ts - Date.now()) / 60000));
-  const countdown = dur(remainMin * 60);
-  const localAt = clockTime(ts);
-
-  // Расписание дня в локальном времени: для каждого часа UTC берём его
-  // таймстамп сегодня и форматируем в часовом поясе браузера
-  const d = new Date();
-  const schedule = arReleaseHours.map((h) =>
-    clockTime(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h)),
-  );
-
-  const isArActive = session.activeProvider.id === 'agentrouter';
-
-  // Карточка в полосе статистики (AgentRouter активен)
-  const $main = $id('card-ar-release');
-  if ($main) {
-    $main.hidden = !isArActive;
-    if (isArActive) {
-      $id('ar-release-value').textContent = countdown;
-      $id('ar-release-sub').textContent =
-        'в ' + localAt + ' · расписание: ' + schedule.join(', ');
-    }
-  }
-
-  // Строка в wallet-карточке AgentRouter (когда активен другой провайдер)
-  const $arCard = $id('ar-card');
-  const $line = $id('ar-release');
-  if ($line && $arCard && !$arCard.hidden && !isArActive) {
-    $line.hidden = false;
-    $id('ar-release-countdown').textContent = countdown;
-    $id('ar-release-at').textContent =
-      'в ' + localAt + ' · ' +
-      (arReleaseTz ? arReleaseTz + ' · ' : '') +
-      'локально ' + schedule.join(', ');
-  } else if ($line) {
-    $line.hidden = true;
-  }
-  scheduleAgentRouterReleaseNotify();
-}
-
-/* ---------- AgentRouter: браузерные уведомления о сбросе пула ---------- */
-
-let arReleaseTimer = null;
-
-function isAgentRouterReleaseNotifyEnabled() {
-  const t = readThresholds();
-  return Boolean(t && t.agentrouter && t.agentrouter.notify_on_release);
-}
-
-function clearAgentRouterReleaseTimer() {
-  if (arReleaseTimer) {
-    clearTimeout(arReleaseTimer);
-    arReleaseTimer = null;
-  }
-}
-
-function fireAgentRouterRelease() {
-  const scheduleLabel = arReleaseHours ? arReleaseHours.map((h) => String(h).padStart(2, '0') + ':00 UTC').join(' / ') : '';
-  const msg = 'Пул AgentRouter сброшен — лимиты обновлены' + (scheduleLabel ? ' (' + scheduleLabel + ')' : '');
-  showToast(msg, { type: 'ok', timeout: 8000 });
-  if ('Notification' in window && Notification.permission === 'granted') {
-    try {
-      new Notification('AgentRouter — сброс пула', {
-        body: 'Окна 10:00 / 19:00 по Пекину — лимиты обнулены',
-        icon: '/favicon.svg',
-        tag: 'agentrouter-release',
-      });
-    } catch { }
-  }
-  scheduleAgentRouterReleaseNotify();
-  renderAgentRouterRelease();
-}
-
-function scheduleAgentRouterReleaseNotify() {
-  clearAgentRouterReleaseTimer();
-  if (!isAgentRouterReleaseNotifyEnabled()) return;
-  if (!readAgentRouterReleases()) return;
-  const ts = nextReleaseUtc(arReleaseHours, Date.now());
-  if (ts == null) return;
-  const delay = ts - Date.now();
-  if (delay < 0 || delay > 2147483647) return;
-  arReleaseTimer = setTimeout(fireAgentRouterRelease, Math.max(0, delay));
-}
-
+// Загрузчик карточки AgentRouter: при удаче кладём ответ в agentRouterUsage
+// (пороги уведомлений), в любом случае пересчитываем строку высвобождения.
+const loadAgentRouterCard = createWalletCard({
+  id: 'agentrouter',
+  name: 'AgentRouter',
+  cardId: 'ar-card',
+  errorId: 'ar-error',
+  errorPrefix: 'Не удалось получить баланс',
+  hasKey: () => hasProviderKey('agentrouter'),
+  isActive: () => isActiveProvider('agentrouter'),
+  render: renderAgentRouterCard,
+  onLoaded: data => {
+    agentRouterUsage = data;
+    checkNotifications();
+  },
+  onSettled: () => renderAgentRouterRelease(),
+});
 /* ---------- OpenRouter: карточка баланса на главной ---------- */
-
-async function loadOpenRouterCard() {
-  const $card = $id('or-card');
-  if (!$card) return;
-  const hasKey =
-    Boolean(getOpenRouterKey()) ||
-    session.providers.some((p) => p.id === 'openrouter' && p.hasKey);
-  if (!hasKey || session.activeProvider.id === 'openrouter') {
-    $card.hidden = true;
-    return;
-  }
-  try {
-    const data = await providerRequest('usage', {
-      provider: { id: 'openrouter', name: 'OpenRouter' },
-    });
-    renderOpenRouterCard(data);
-  } catch (err) {
-    $card.hidden = false;
-    const $err = $id('or-error');
-    if ($err) {
-      $err.hidden = false;
-      $err.textContent =
-        'Не удалось получить баланс — ' +
-        (err && err.message ? err.message : String(err));
-    }
-  }
-}
 
 function renderOpenRouterCard(data) {
   const $card = $id('or-card');
@@ -565,34 +402,18 @@ function renderOpenRouterCard(data) {
   if (usedEl) usedEl.textContent = used > 0 ? fmtUsd(used) : '—';
 }
 
-/* ---------- Selora: карточка баланса и окон на главной ---------- */
+const loadOpenRouterCard = createWalletCard({
+  id: 'openrouter',
+  name: 'OpenRouter',
+  cardId: 'or-card',
+  errorId: 'or-error',
+  errorPrefix: 'Не удалось получить баланс',
+  hasKey: () => hasProviderKey('openrouter'),
+  isActive: () => isActiveProvider('openrouter'),
+  render: renderOpenRouterCard,
+});
 
-async function loadSeloraCard() {
-  const $card = $id('selora-card');
-  if (!$card) return;
-  const hasKey =
-    Boolean(getSeloraKey()) ||
-    session.providers.some((p) => p.id === 'selora' && p.hasKey);
-  if (!hasKey || session.activeProvider.id === 'selora') {
-    $card.hidden = true;
-    return;
-  }
-  try {
-    const data = await providerRequest('usage', {
-      provider: { id: 'selora', name: 'Selora' },
-    });
-    renderSeloraCard(data);
-  } catch (err) {
-    $card.hidden = false;
-    const $err = $id('selora-error');
-    if ($err) {
-      $err.hidden = false;
-      $err.textContent =
-        'Не удалось получить статистику — ' +
-        (err && err.message ? err.message : String(err));
-    }
-  }
-}
+/* ---------- Selora: карточка баланса и окон на главной ---------- */
 
 function renderSeloraCard(data) {
   const $card = $id('selora-card');
@@ -613,10 +434,21 @@ function renderSeloraCard(data) {
 
   // Окна: сессия (short) и неделя (long) — формат как в главной ленте
   const list = Array.isArray(data.windows) ? data.windows : [];
-  const byKind = Object.fromEntries(list.map((w) => [w.kind, w]));
+  const byKind = Object.fromEntries(list.map(w => [w.kind, w]));
   renderSeloraWindow(byKind.short, 'selora-session');
   renderSeloraWindow(byKind.long, 'selora-week');
 }
+
+const loadSeloraCard = createWalletCard({
+  id: 'selora',
+  name: 'Selora',
+  cardId: 'selora-card',
+  errorId: 'selora-error',
+  errorPrefix: 'Не удалось получить статистику',
+  hasKey: () => hasProviderKey('selora'),
+  isActive: () => isActiveProvider('selora'),
+  render: renderSeloraCard,
+});
 
 function renderSeloraWindow(w, prefix) {
   const $value = $id(prefix + '-value');
@@ -659,266 +491,13 @@ function renderSeloraWindow(w, prefix) {
       'aria-valuetext',
       w.cap_usd
         ? `${fmtUsd(w.spent_usd)} из ${fmtUsd(w.cap_usd)}`
-        : `${fmtUsd(w.spent_usd)} без лимита`,
+        : `${fmtUsd(w.spent_usd)} без лимита`
     );
   }
 
   const reset = $id(prefix + '-reset');
   if (reset) {
-    reset.textContent =
-      (w.resets_in_sec || 0) > 0 ? dur(w.resets_in_sec) : 'обновляется…';
-  }
-}
-
-/* ---------- Antigravity: квоты Google AI Pro ---------- */
-
-async function loadAntigravityQuota() {
-  if (!$agSection) return null;
-  try {
-    // Токен-эндпоинт — после квот: сервер в этот момент может успеть
-    // восстановить email (backfill из Google userinfo после перезапуска)
-    const [quota, token] = await Promise.all([
-      fetchAntigravityQuota(),
-      fetchGoogleTokenStatusSafe(),
-    ]);
-    antigravityEmail = (token && token.email) || '';
-    if (!quota.ok) {
-      antigravityQuota = { error: quota.data.error || 'provider_error' };
-    } else {
-      antigravityQuota = quota.data;
-    }
-  } catch {
-    antigravityQuota = { error: 'network' };
-  }
-  renderAntigravityQuota();
-  checkNotifications();
-  return antigravityQuota;
-}
-
-async function fetchGoogleTokenStatusSafe() {
-  try {
-    const res = await fetch('/api/settings/google-token');
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-// Цвет прогресса остатка: зелёный → жёлтый → красный при снижении остатка
-function agRemClass(rem) {
-  if (rem >= 0.5) return '';
-  if (rem >= 0.25) return 'warn';
-  return 'danger';
-}
-
-function agCard(model) {
-  const card = document.createElement('article');
-  card.className = 'stat compact';
-
-  const main = document.createElement('div');
-  main.className = 'ag-model';
-
-  const head = document.createElement('span');
-  head.className = 'stat-head';
-  const label = document.createElement('span');
-  label.className = 'stat-label';
-  label.textContent = model.displayName || model.id;
-  head.appendChild(label);
-  if (model.supportsThinking) {
-    const meta = document.createElement('span');
-    meta.className = 'stat-meta ag-thinking';
-    meta.setAttribute('role', 'img');
-    meta.setAttribute('aria-label', 'режим размышлений');
-    meta.title = 'Режим размышлений (thinking)';
-    setIcon(meta, 'star', { class: 'ag-thinking-icon' });
-    head.appendChild(meta);
-  }
-  main.appendChild(head);
-
-  // Компактный прогресс остатка: полный и зелёный, при использовании
-  // убывает и меняет цвет (remainingFraction → ширина).
-  const rem = model.remainingFraction;
-
-  // Проценты — сразу у прогресс-бара
-  const barRow = document.createElement('div');
-  barRow.className = 'ag-bar-row';
-
-  const hasRem = Number.isFinite(rem);
-  const exhausted = hasRem && rem <= 0;
-
-  // Сколько осталось до восстановления квоты модели
-  const remainSec = model.resetTime
-    ? Math.floor((new Date(model.resetTime) - Date.now()) / 1000)
-    : null;
-  const resetText = remainSec !== null && remainSec > 0
-    ? dur(remainSec)
-    : 'обновляется…';
-
-  const bar = document.createElement('div');
-  bar.className = 'bar-track ag-bar' + (exhausted ? ' exhausted' : '');
-  bar.setAttribute('role', 'progressbar');
-  bar.setAttribute('aria-label', `Остаток квоты ${model.name || model.id || ''}`.trim());
-  bar.setAttribute('aria-valuemin', '0');
-  bar.setAttribute('aria-valuemax', '100');
-  const fill = document.createElement('div');
-  fill.className = 'bar-fill';
-  if (exhausted) {
-    fill.style.width = '0%';
-    bar.setAttribute('aria-valuenow', '0');
-    bar.setAttribute('aria-valuetext', 'Квота истрачена');
-  } else if (hasRem) {
-    const remainingPct = Math.round(Math.min(100, Math.max(0, rem * 100)));
-    fill.style.width = remainingPct + '%';
-    bar.setAttribute('aria-valuenow', String(remainingPct));
-    bar.setAttribute('aria-valuetext', `Осталось ${remainingPct}%`);
-    const cls = agRemClass(rem);
-    if (cls) fill.classList.add(cls);
-  } else {
-    // Нет данных от Google — трактуем как 0%, но без красного акцента
-    fill.style.width = '0%';
-    bar.setAttribute('aria-valuenow', '0');
-    bar.setAttribute('aria-valuetext', 'Нет данных');
-  }
-  bar.appendChild(fill);
-  barRow.appendChild(bar);
-
-  const pctLabel = document.createElement('span');
-  pctLabel.className = 'ag-pct' + (exhausted ? ' exhausted' : '');
-  pctLabel.textContent = exhausted ? 'истрачено' : Math.round((hasRem ? rem : 0) * 100) + '%';
-  barRow.appendChild(pctLabel);
-
-  main.appendChild(barRow);
-
-  // Когда квота кончилась или почти кончилась — время восстановления
-  // прямо в карточке (группа при этом может быть свёрнута)
-  if (remainSec !== null && (exhausted || rem < 0.25)) {
-    const resetLine = document.createElement('div');
-    resetLine.className = 'ag-card-reset' + (exhausted ? ' exhausted' : '');
-    resetLine.appendChild(document.createTextNode('Сброс: '));
-    const resetVal = document.createElement('span');
-    resetVal.textContent = resetText;
-    if (exhausted) resetVal.setAttribute('aria-label', 'Квота истрачена, восстановление через ' + resetText);
-    resetLine.appendChild(resetVal);
-    main.appendChild(resetLine);
-  }
-
-  card.appendChild(main);
-  return card;
-}
-
-// Порядок и состояние свёрнутости групп моделей Antigravity
-const AG_GROUPS = [
-  { key: 'claude', label: 'Claude', collapsed: true },
-  { key: 'gemini', label: 'Gemini', collapsed: true },
-  { key: 'other', label: 'Прочие', collapsed: true },
-];
-
-// К какой группе отнести модель по id / displayName
-function agGroupOf(model) {
-  const s = ((model.id || '') + ' ' + (model.displayName || '')).toLowerCase();
-  if (s.includes('claude')) return 'claude';
-  if (s.includes('gemini')) return 'gemini';
-  return 'other';
-}
-
-// Контейнер группы со сворачиваемой шапкой
-function agGroupContainer(group, models) {
-  const wrap = document.createElement('div');
-  wrap.className = 'ag-group' + (group.collapsed ? ' collapsed' : '');
-  wrap.dataset.group = group.key;
-
-  const head = document.createElement('button');
-  head.type = 'button';
-  head.className = 'ag-group-head';
-  head.setAttribute('aria-expanded', String(!group.collapsed));
-  const title = document.createElement('span');
-  title.className = 'ag-group-title';
-  title.textContent = group.label;
-  const count = document.createElement('span');
-  count.className = 'ag-group-count';
-  count.textContent = String(models.length);
-  head.append(title, count);
-  // Время сброса у моделей группы одинаковое (Google AI Pro) — показываем один раз
-  const firstReset = models.find((m) => m.resetTime);
-  if (firstReset) {
-    const reset = document.createElement('span');
-    reset.className = 'ag-group-reset';
-    const remainSec = Math.floor((new Date(firstReset.resetTime) - Date.now()) / 1000);
-    reset.appendChild(document.createTextNode('Сброс: '));
-    const resetVal = document.createElement('span');
-    resetVal.textContent = dur(remainSec);
-    reset.appendChild(resetVal);
-    head.appendChild(reset);
-  }
-  if (group.key === 'claude') {
-    const remaining = models.map((m) => m.remainingFraction).filter(Number.isFinite);
-    if (remaining.length) {
-      const min = Math.min(...remaining);
-      const percent = document.createElement('span');
-      percent.className = 'ag-group-remaining' + (min >= 1 ? ' full' : '');
-      percent.textContent = Math.round(min * 100) + '%';
-      percent.title = 'Минимальный остаток квоты среди моделей Claude';
-      head.appendChild(percent);
-    }
-  }
-  const chev = document.createElement('span');
-  chev.className = 'ag-chevron';
-  chev.setAttribute('aria-hidden', 'true');
-  setIcon(chev, 'chevron-down');
-  head.append(chev);
-  head.addEventListener('click', () => {
-    const collapsed = wrap.classList.toggle('collapsed');
-    head.setAttribute('aria-expanded', String(!collapsed));
-  });
-
-  const body = document.createElement('div');
-  body.className = 'ag-group-body stats-row';
-  for (const m of models) body.appendChild(agCard(m));
-
-  wrap.append(head, body);
-  return wrap;
-}
-
-function renderAntigravityQuota() {
-  if (!$agSection) return;
-  const q = antigravityQuota;
-  $agCards.replaceChildren();
-  $agHint.hidden = true;
-  if ($agBadge) $agBadge.textContent = '';
-
-  // Email аккаунта — приходит с сервера после входа через Google
-  if ($agEmail) {
-    const email = antigravityEmail || '';
-    if (email) { $agEmail.textContent = email; $agEmail.hidden = false; }
-    else $agEmail.hidden = true;
-  }
-
-  if (!q) { $agSection.hidden = true; return; }
-  $agSection.hidden = false;
-
-  if (q.error) {
-    if (q.error === 'no_token') { $agSection.hidden = true; return; }
-    $agHint.textContent = AG_ERROR_MESSAGES[q.error] || 'Ошибка загрузки квот.';
-    $agHint.hidden = false;
-    if ($agBadge) $agBadge.textContent = 'нет данных';
-    return;
-  }
-
-  const models = Array.isArray(q.models) ? q.models : [];
-
-  if (!models.length) {
-    $agHint.textContent = 'Google не вернул данные по моделям.';
-    $agHint.hidden = false;
-    return;
-  }
-
-  const grouped = {};
-  for (const m of models) (grouped[agGroupOf(m)] ||= []).push(m);
-
-  for (const g of AG_GROUPS) {
-    const list = grouped[g.key];
-    if (!list || !list.length) continue;
-    $agCards.appendChild(agGroupContainer(g, list));
+    reset.textContent = (w.resets_in_sec || 0) > 0 ? dur(w.resets_in_sec) : 'обновляется…';
   }
 }
 
@@ -935,8 +514,7 @@ async function loadIndexComboFirst() {
   }
   $sec.hidden = false;
   try {
-    const data = await omniFetch(COMBO_LIST_PATH);
-    const combos = combosFromResponse(data);
+    const combos = await loadComboList();
     if ($count) {
       $count.textContent = String(combos.length);
       $count.hidden = false;
@@ -944,7 +522,8 @@ async function loadIndexComboFirst() {
     if (!combos.length) {
       if ($st) {
         $st.className = 'index-combo-status is-empty';
-        $st.textContent = 'Маршрутов пока нет. Создайте первый маршрут, чтобы выбрать порядок моделей.';
+        $st.textContent =
+          'Маршрутов пока нет. Создайте первый маршрут, чтобы выбрать порядок моделей.';
       }
       $list.replaceChildren();
       return;
@@ -956,11 +535,7 @@ async function loadIndexComboFirst() {
     $list.replaceChildren();
     // Для каждого combo показываем первую модель, которая примет запрос.
     for (const c of combos) {
-      let targets = extractComboTargets(c);
-      if (!targets.length) {
-        try { const detail = await omniFetch(COMBO_PATH(c.id)); targets = extractComboTargets(detail); } catch { /* нет деталей */ }
-      }
-      const first = targets[0] || null;
+      const first = comboTargets(c)[0] || null;
       const row = document.createElement('article');
       row.className = 'index-combo-row';
       const name = document.createElement('h3');
@@ -976,7 +551,8 @@ async function loadIndexComboFirst() {
   } catch {
     if ($st) {
       $st.className = 'index-combo-status is-error';
-      $st.textContent = 'Не удалось загрузить маршруты. Откройте настройки маршрутов и проверьте подключение.';
+      $st.textContent =
+        'Не удалось загрузить маршруты. Откройте настройки маршрутов и проверьте подключение.';
     }
   }
 }
@@ -985,13 +561,14 @@ async function loadIndexComboFirst() {
 
 export async function init() {
   renderProviderLabel();
+  initStatsProviderSelect();
   renderAgentRouterRelease();
   // Экран «Нужен ключ» — только если ключей нет ни у одного провайдера:
   // иначе селектор провайдера скрыт вместе с карточками и не переключиться
   const hasAnyKey =
     Boolean(keyForProvider(session.activeProvider.id)) ||
     session.activeProvider.hasKey ||
-    session.providers.some((p) => keyForProvider(p.id) || p.hasKey);
+    session.providers.some(p => keyForProvider(p.id) || p.hasKey);
   if (!hasAnyKey) {
     $cards.hidden = true;
     $setup.hidden = false;
@@ -1009,7 +586,13 @@ export async function init() {
   // Полосу статистики показываем сразу (селектор провайдера должен быть
   // доступен и когда загрузка упала — например, у активного нет ключа)
   $cards.hidden = false;
-  await loadUsage();
+  // Страница не ждёт провайдеров: карточка помечается «загружается» и
+  // догружается сама (P3-1) — иначе самый медленный ответ держал весь
+  // экран в is-booting на 20–30 секунд.
+  $cards.classList.add('is-loading');
+  void Promise.resolve()
+    .then(loadUsage)
+    .finally(() => $cards.classList.remove('is-loading'));
   loadAntigravityQuota();
   loadAgentRouterCard();
   loadOpenRouterCard();
@@ -1031,14 +614,44 @@ function refreshAll() {
 
 // Кнопка «Обновить» создаётся при инъекции topbar (на eval модуля
 // её ещё нет), поэтому клик ловим делегированием
-document.addEventListener('click', (e) => {
+document.addEventListener('click', e => {
   if (e.target instanceof Element && e.target.closest('#btn-refresh')) refreshAll();
 });
 
-// Обновление при возврате на вкладку
+// Обновление при возврате на вкладку — не чаще раза в минуту и не
+// поверх уже идущей загрузки: иначе быстрые переключения вкладок
+// давали до семи запросов к провайдерам подряд (P3-3)
+const FOCUS_REFRESH_MIN_MS = 60000;
+let lastFocusRefresh = 0;
+let refreshInFlight = false;
+
+function refreshOnFocus() {
+  if (refreshInFlight) return;
+  const now = Date.now();
+  if (now - lastFocusRefresh < FOCUS_REFRESH_MIN_MS) return;
+  lastFocusRefresh = now;
+  refreshInFlight = true;
+  // refreshAll не возвращает промис — ждём паузу кадра, чтобы новые
+  // вызовы не наложились на текущий веер запросов
+  setTimeout(() => {
+    refreshInFlight = false;
+  }, 0);
+  refreshAll();
+}
+
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) refreshAll();
+  if (!document.hidden) refreshOnFocus();
 });
+
+// Тикер обратных отсчётов: окна расхода, квоты Antigravity и таймер
+// пула AgentRouter показывают время до сброса — раз в минуту (P3-3)
+setInterval(() => {
+  tickWindow('short');
+  tickWindow('long');
+  tickFree();
+  tickAntigravity();
+  renderAgentRouterRelease();
+}, 60000);
 
 // После привязки Google в диалоге настроек — перезагрузить квоты
 // (возвращаем результат: диалог показывает его в статусной строке)

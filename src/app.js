@@ -68,7 +68,7 @@ function isPublicPath(pathname) {
   } catch {
     return false;
   }
-  return PUBLIC_PATHS.has(decoded) || PUBLIC_PREFIXES.some((prefix) => decoded.startsWith(prefix));
+  return PUBLIC_PATHS.has(decoded) || PUBLIC_PREFIXES.some(prefix => decoded.startsWith(prefix));
 }
 
 /**
@@ -89,6 +89,8 @@ function createApp({
   requestTimeoutMs = 30000,
   authLoopbackPort = String(config.port),
   providerDebug = config.providerDebug,
+  usageCacheTtlMs = config.usageCacheMs,
+  modelsCacheTtlMs = config.modelsCacheMs,
   agentrouterReleaseHoursUtc = config.agentrouterReleaseHoursUtc,
   codingCachePath = config.codingCachePath,
   authToken = config.authToken,
@@ -102,7 +104,8 @@ function createApp({
   // Не перетираем явно переданный antigravity/googleOauth (тесты передают mock).
   const providerLog = normalizeLog(providerLogger);
   const appLog = normalizeLog(logger);
-  if (!antigravity) antigravity = createAntigravityProvider({ log: providerLog, debug: providerDebug });
+  if (!antigravity)
+    antigravity = createAntigravityProvider({ log: providerLog, debug: providerDebug });
   if (!googleOauth) {
     googleOauth = createGoogleOauth({
       log: providerLog,
@@ -115,7 +118,11 @@ function createApp({
   // createStore — async, поэтому store может прийти Promise; нормализуем
   // лениво в обработчиках запросов (они async).
   if (!store) {
-    store = createStore({ dbPath: config.dbPath, masterKey: config.masterKey || undefined, logger: appLog });
+    store = createStore({
+      dbPath: config.dbPath,
+      masterKey: config.masterKey || undefined,
+      logger: appLog,
+    });
   }
   async function getStore() {
     if (store && typeof store.then === 'function') store = await store;
@@ -132,7 +139,8 @@ function createApp({
   });
   const tracker = createAgentRouterTracker({
     getStore,
-    provider: providers.find((p) => p.id === 'agentrouter'),
+    getCredential: async () => (await getStore()).accounts.getActiveCredential('agentrouter'),
+    provider: providers.find(p => p.id === 'agentrouter'),
     storeKey: PROVIDER_STORE_KEYS.agentrouter,
     userField: PROVIDER_STORE_USER_FIELDS.agentrouter,
     balanceKey: AGENTROUTER_DAY_BALANCE_KEY,
@@ -140,7 +148,8 @@ function createApp({
 
   const router = new Router();
   router.add(['GET', 'HEAD'], '/api/health', ({ res }) =>
-    sendJson(res, 200, { ok: true }, { 'cache-control': 'no-store' }));
+    sendJson(res, 200, { ok: true }, { 'cache-control': 'no-store' })
+  );
 
   // Готовность: хранилище открыто, последние изменения легли на диск,
   // трекер AgentRouter запущен (если этот провайдер подключён).
@@ -155,24 +164,37 @@ function createApp({
     sendJson(
       res,
       ready ? 200 : 503,
-      { ready, store: Boolean(storeStatus.open), persisted: Boolean(storeStatus.persisted), tracker: trackerOk },
+      {
+        ready,
+        store: Boolean(storeStatus.open),
+        persisted: Boolean(storeStatus.persisted),
+        tracker: trackerOk,
+      },
       { 'cache-control': 'no-store' }
     );
   });
 
   router.add(['GET', 'HEAD'], '/api/metrics', ({ res }) =>
-    sendJson(res, 200, getMetrics(), { 'cache-control': 'no-store' }));
+    sendJson(res, 200, getMetrics(), { 'cache-control': 'no-store' })
+  );
 
   // ---------- Маршруты (порядок важен: статика — catch-all в конце) ----------
-  registerProviderRoutes(router, {
+  const providerRoutes = registerProviderRoutes(router, {
     providers,
     getStore,
     storeKeys: PROVIDER_STORE_KEYS,
     userFields: PROVIDER_STORE_USER_FIELDS,
     getDayBalanceUsd: tracker.getDayBalanceUsd,
+    usageCacheTtlMs,
+    modelsCacheTtlMs,
     logger: appLog,
   });
-  registerProxyRoutes(router, { providers, activeProvider, logger: providerLog, debug: providerDebug });
+  registerProxyRoutes(router, {
+    providers,
+    activeProvider,
+    logger: providerLog,
+    debug: providerDebug,
+  });
   registerOmnirouteRoutes(router, { getStore, validateUpstreamUrl, logger: appLog });
   registerAntigravityRoutes(router, {
     service: antigravityService,
@@ -186,12 +208,13 @@ function createApp({
     antigravityService,
     storeKeys: PROVIDER_STORE_KEYS,
     validateUpstreamUrl,
+    onCredentialsChanged: providerRoutes.invalidateCache,
     agentrouterReleases: {
       timezone: AGENTROUTER_POOL_RELEASE_TIMEZONE,
       hoursUtc: agentrouterReleaseHoursUtc,
     },
   });
-  registerAccountRoutes(router, { getStore });
+  registerAccountRoutes(router, { getStore, onCredentialsChanged: providerRoutes.invalidateCache });
   registerCodingRatingsRoutes(router, { getStore, logger: appLog, cachePath: codingCachePath });
   registerAuthRoutes(router, { auth, publicOrigin, trustProxy, logger: appLog });
   const serveStatic = createStaticHandler({ publicDir: path.join(__dirname, '..', 'public') });
@@ -233,21 +256,27 @@ function createApp({
       if (res.statusCode >= 500) level = 'error';
       else if (res.statusCode >= 400) level = 'warn';
       // Используем метод *File, чтобы писать только в файл, не дублируя в консоль
-      const fn = typeof logger[level + 'File'] === 'function' ? logger[level + 'File'].bind(logger) : null;
+      const fn =
+        typeof logger[level + 'File'] === 'function' ? logger[level + 'File'].bind(logger) : null;
       const method = req.method || '?';
-      if (fn) fn(`[access] ${method} ${requestPath(req)} → ${res.statusCode} (${Date.now() - startedAt} ms)`);
+      if (fn)
+        fn(
+          `[access] ${method} ${requestPath(req)} → ${res.statusCode} (${Date.now() - startedAt} ms)`
+        );
     });
-    handleRequest(req, res).catch((err) => handleError(err, req, res, context, logger));
+    handleRequest(req, res).catch(err => handleError(err, req, res, context, logger));
   });
 
   // ---------- Lifecycle: трекер, снимок, graceful close ----------
   server.startDailyAgentRouterTracker = () => tracker.start();
   server.snapshotAgentRouterDayBalance = () => tracker.snapshotDayBalance();
+  server.invalidateProviderCache = providerRoutes.invalidateCache;
+  server.providerCacheStats = providerRoutes.stats;
 
   let storeClosing = null;
   function closeStore() {
     if (!storeClosing) {
-      storeClosing = getStore().then((s) => {
+      storeClosing = getStore().then(s => {
         if (s && typeof s.close === 'function') return s.close();
       });
     }
@@ -257,13 +286,13 @@ function createApp({
   // close(cb): перестать принимать соединения, дождаться их закрытия и
   // сброса хранилища на диск; ошибка сохранения уходит в callback.
   const originalClose = server.close.bind(server);
-  server.close = (callback) => {
+  server.close = callback => {
     tracker.stop();
-    originalClose((closeErr) => {
+    originalClose(closeErr => {
       const serverErr = closeErr && closeErr.code !== 'ERR_SERVER_NOT_RUNNING' ? closeErr : null;
       closeStore().then(
         () => callback && callback(serverErr || undefined),
-        (storeErr) => callback && callback(storeErr)
+        storeErr => callback && callback(storeErr)
       );
     });
     return server;
@@ -273,7 +302,7 @@ function createApp({
    * соединений и хранилища; отклоняется, если данные не сохранились. */
   server.shutdown = () =>
     new Promise((resolve, reject) => {
-      server.close((err) => (err ? reject(err) : resolve()));
+      server.close(err => (err ? reject(err) : resolve()));
       server.closeIdleConnections();
     });
 

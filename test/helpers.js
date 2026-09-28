@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 // ============================================================
 // Общие утилиты для тестов:
@@ -95,13 +95,17 @@ function startMockUpstream(opts = {}) {
         res.writeHead(opts.usageCode || 200, { 'content-type': 'text/plain' });
         return res.end(opts.usageRaw);
       }
-      return json(res, opts.usageCode || 200, opts.usageBody || {
-        plan: 'pro',
-        wallet: { balance_usd: '12.34', held_usd: '0' },
-        windows: [],
-        free_tokens: null,
-        _seenKey: key,
-      });
+      return json(
+        res,
+        opts.usageCode || 200,
+        opts.usageBody || {
+          plan: 'pro',
+          wallet: { balance_usd: '12.34', held_usd: '0' },
+          windows: [],
+          free_tokens: null,
+          _seenKey: key,
+        }
+      );
     }
     if (req.url === '/v1/models') {
       return json(res, 200, { models: [], _seenKey: key });
@@ -109,13 +113,13 @@ function startMockUpstream(opts = {}) {
     return json(res, 404, { error: 'not_found' });
   });
 
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     server.listen(0, '127.0.0.1', () => {
       resolve({
         url: 'http://127.0.0.1:' + server.address().port,
         seen,
         close: () =>
-          new Promise((done) => {
+          new Promise(done => {
             // Гасим keep-alive соединения, иначе close() ждёт их таймаута
             server.closeIdleConnections();
             server.close(done);
@@ -171,27 +175,31 @@ function startAgentRouterUpstream(opts = {}) {
       });
       return res.end(responseOpts.raw);
     }
-    return json(res, responseOpts.code || 200, responseOpts.body || {
-      success: true,
-      message: '',
-      data: {
-        id: 7,
-        username: 'tester',
-        group: 'vip',
-        quota: 41157471,
-        used_quota: 908842529,
-        request_count: 7756,
-      },
-    });
+    return json(
+      res,
+      responseOpts.code || 200,
+      responseOpts.body || {
+        success: true,
+        message: '',
+        data: {
+          id: 7,
+          username: 'tester',
+          group: 'vip',
+          quota: 41157471,
+          used_quota: 908842529,
+          request_count: 7756,
+        },
+      }
+    );
   });
 
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     server.listen(0, '127.0.0.1', () => {
       resolve({
         url: 'http://127.0.0.1:' + server.address().port,
         seen,
         close: () =>
-          new Promise((done) => {
+          new Promise(done => {
             server.closeIdleConnections();
             server.close(done);
           }),
@@ -208,10 +216,11 @@ function startAgentRouterUpstream(opts = {}) {
  */
 async function startPanel(opts = {}) {
   const port = await getFreePort();
-  const providers = opts.providers ||
-    [createXKiroProvider({ url: opts.upstream || 'http://127.0.0.1:1' })];
+  const providers = opts.providers || [
+    createXKiroProvider({ url: opts.upstream || 'http://127.0.0.1:1' }),
+  ];
   const { createStore } = require('../src/store');
-  const store = opts.store || await createStore({ memory: true });
+  const store = opts.store || (await createStore({ memory: true }));
   const app = createApp({
     config: opts.config || loadConfig(testEnv(opts.env)),
     providers,
@@ -223,13 +232,13 @@ async function startPanel(opts = {}) {
     requestTimeoutMs: opts.requestTimeoutMs,
   });
 
-  await new Promise((resolve) => app.listen(port, '127.0.0.1', resolve));
+  await new Promise(resolve => app.listen(port, '127.0.0.1', resolve));
 
   return {
     base: 'http://127.0.0.1:' + port,
     app,
     stop: () =>
-      new Promise((resolve) => {
+      new Promise(resolve => {
         // Гасим keep-alive соединения, иначе close() ждёт их таймаута
         if (app.closeIdleConnections) app.closeIdleConnections();
         app.close(resolve);
@@ -249,12 +258,15 @@ async function startServerProcess(extraEnv = {}) {
   const dir = makeTmpDir('cli-');
   const env = { ...process.env };
   for (const name of ENV_VARS) delete env[name];
-  Object.assign(env, testEnv({
-    AIPANEL_DATA_DIR: path.join(dir, 'data'),
-    AIPANEL_LOG_DIR: path.join(dir, 'logs'),
-    PORT: String(port),
-    ...extraEnv,
-  }));
+  Object.assign(
+    env,
+    testEnv({
+      AIPANEL_DATA_DIR: path.join(dir, 'data'),
+      AIPANEL_LOG_DIR: path.join(dir, 'logs'),
+      PORT: String(port),
+      ...extraEnv,
+    })
+  );
   const proc = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
     cwd: ROOT,
     stdio: ['ignore', 'ignore', 'pipe'],
@@ -262,7 +274,7 @@ async function startServerProcess(extraEnv = {}) {
   });
 
   let stderr = '';
-  proc.stderr.on('data', (d) => {
+  proc.stderr.on('data', d => {
     stderr += String(d);
   });
 
@@ -281,7 +293,7 @@ async function startServerProcess(extraEnv = {}) {
       proc.kill();
       throw new Error('server.js не поднялся за 10 с');
     }
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 100));
   }
 
   return {
@@ -289,16 +301,24 @@ async function startServerProcess(extraEnv = {}) {
     dataDir: env.AIPANEL_DATA_DIR,
     logDir: env.AIPANEL_LOG_DIR,
     stop: () =>
-      new Promise((resolve) => {
+      new Promise(resolve => {
         const timer = setTimeout(() => {
-          try { proc.kill('SIGKILL'); } catch {}
+          try {
+            proc.kill('SIGKILL');
+          } catch {}
           resolve(null);
         }, 8000);
-        proc.once('exit', (code) => {
+        proc.once('exit', code => {
           clearTimeout(timer);
           resolve(code);
         });
-        proc.kill('SIGTERM');
+        // Windows не поддерживает SIGTERM: Node.js не вызывает
+        // обработчики сигнала, процесс завершается с null.
+        // Используем proc.kill() (по умолчанию SIGTERM на Unix,
+        // TerminateProcess на Windows): процесс завершится в любом случае.
+        proc.kill();
+        // На Unix SIGTERM позволяет graceful shutdown через main.js.
+        // На Windows процесс принуждённо завершается (exitCode = null или 1).
       }),
   };
 }

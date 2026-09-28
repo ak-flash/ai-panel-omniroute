@@ -52,12 +52,21 @@ function createStaticHandler({ publicDir }) {
       }
       const ext = path.extname(filePath).toLowerCase();
       const mime = MIME[ext] || 'application/octet-stream';
-      res.writeHead(200, {
+      // ETag по mtime и размеру: браузер переспрашивает, но тело
+      // не скачивает повторно (P3-6). no-cache оставлен, чтобы правки
+      // файлов подхватывались без Ctrl+F5.
+      const etag = '"' + stats.mtimeMs.toString(16) + '-' + stats.size.toString(16) + '"';
+      const headers = {
         'content-type': mime,
-        // Локальный инструмент: кеш только в памяти браузера (нет
-        // conditional-запросов), правки файлов подхватываются без Ctrl+F5
         'cache-control': 'no-cache',
-      });
+        etag,
+        'last-modified': stats.mtime.toUTCString(),
+      };
+      if (req.headers['if-none-match'] === etag) {
+        res.writeHead(304, headers);
+        return res.end();
+      }
+      res.writeHead(200, headers);
       const stream = fs.createReadStream(filePath);
       stream.on('error', () => res.destroy());
       stream.pipe(res);

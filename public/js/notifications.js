@@ -47,8 +47,8 @@ function inRangeUsd(v) {
 }
 
 function windowByKind(usage, kind) {
-  const list = (usage && Array.isArray(usage.windows)) ? usage.windows : [];
-  return list.find((w) => w && w.kind === kind) || null;
+  const list = usage && Array.isArray(usage.windows) ? usage.windows : [];
+  return list.find(w => w && w.kind === kind) || null;
 }
 
 /**
@@ -69,8 +69,12 @@ export function evaluateXKiro(usage, thresholds) {
         id: 'xkiro.short_window_pct.' + Math.round(short),
         level: p >= 95 ? 'error' : 'warn',
         message:
-          'xKiro: использовано ' + Math.round(p) + '% короткого окна' +
-          ' (порог ' + Math.round(short) + '%)',
+          'xKiro: использовано ' +
+          Math.round(p) +
+          '% короткого окна' +
+          ' (порог ' +
+          Math.round(short) +
+          '%)',
       });
     }
   }
@@ -84,8 +88,12 @@ export function evaluateXKiro(usage, thresholds) {
         id: 'xkiro.long_window_pct.' + Math.round(long),
         level: p >= 95 ? 'error' : 'warn',
         message:
-          'xKiro: использовано ' + Math.round(p) + '% длинного окна' +
-          ' (порог ' + Math.round(long) + '%)',
+          'xKiro: использовано ' +
+          Math.round(p) +
+          '% длинного окна' +
+          ' (порог ' +
+          Math.round(long) +
+          '%)',
       });
     }
   }
@@ -105,12 +113,14 @@ export function evaluateAgentRouter(usage, thresholds) {
   const balance = toNumber(wallet.balance_usd);
   if (balance == null) return [];
   if (balance < below) {
-    return [{
-      id: 'agentrouter.balance_below_usd.' + (below % 1 === 0 ? below : below.toFixed(2)),
-      level: balance <= 0 ? 'error' : 'warn',
-      message: 'AgentRouter: остаток $' + balance.toFixed(2) +
-        ' ниже порога $' + below.toFixed(2),
-    }];
+    return [
+      {
+        id: 'agentrouter.balance_below_usd.' + (below % 1 === 0 ? below : below.toFixed(2)),
+        level: balance <= 0 ? 'error' : 'warn',
+        message:
+          'AgentRouter: остаток $' + balance.toFixed(2) + ' ниже порога $' + below.toFixed(2),
+      },
+    ];
   }
   return [];
 }
@@ -145,12 +155,18 @@ export function evaluateAntigravity(quota, thresholds) {
   if (minR == null) return [];
   const minPct = minR * 100;
   if (minPct < below) {
-    return [{
-      id: 'antigravity.remaining_below_pct.' + Math.round(below),
-      level: minPct < 10 ? 'error' : 'warn',
-      message: 'Antigravity: осталось ' + Math.round(minPct) +
-        '% квоты (порог ' + Math.round(below) + '%)',
-    }];
+    return [
+      {
+        id: 'antigravity.remaining_below_pct.' + Math.round(below),
+        level: minPct < 10 ? 'error' : 'warn',
+        message:
+          'Antigravity: осталось ' +
+          Math.round(minPct) +
+          '% квоты (порог ' +
+          Math.round(below) +
+          '%)',
+      },
+    ];
   }
   return [];
 }

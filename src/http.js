@@ -29,9 +29,10 @@ function sendJson(res, status, data, headers = {}) {
 }
 
 function sendError(res, error, requestId) {
-  const appError = error instanceof AppError
-    ? error
-    : new AppError(500, 'server_error', 'Внутренняя ошибка сервера', { expose: false });
+  const appError =
+    error instanceof AppError
+      ? error
+      : new AppError(500, 'server_error', 'Внутренняя ошибка сервера', { expose: false });
   const body = {
     error: appError.code,
     message: appError.expose ? appError.message : 'Внутренняя ошибка сервера',
@@ -51,14 +52,21 @@ function readBody(req, { maxBytes = DEFAULT_MAX_BODY } = {}) {
     const chunks = [];
     let size = 0;
     let settled = false;
-    req.on('data', (chunk) => {
+    req.on('data', chunk => {
       if (settled) return;
       size += chunk.length;
       if (size > maxBytes) {
         settled = true;
-        reject(new AppError(413, 'payload_too_large', `Тело запроса превышает лимит ${Math.ceil(maxBytes / 1024 / 1024)} МБ`, {
-          headers: { connection: 'close' },
-        }));
+        reject(
+          new AppError(
+            413,
+            'payload_too_large',
+            `Тело запроса превышает лимит ${Math.ceil(maxBytes / 1024 / 1024)} МБ`,
+            {
+              headers: { connection: 'close' },
+            }
+          )
+        );
         return;
       }
       chunks.push(chunk);
@@ -66,8 +74,11 @@ function readBody(req, { maxBytes = DEFAULT_MAX_BODY } = {}) {
     req.on('end', () => {
       if (!settled) resolve(Buffer.concat(chunks));
     });
-    req.on('error', (error) => {
-      if (!settled) reject(new AppError(400, 'bad_request', 'Не удалось прочитать тело запроса', { cause: error }));
+    req.on('error', error => {
+      if (!settled)
+        reject(
+          new AppError(400, 'bad_request', 'Не удалось прочитать тело запроса', { cause: error })
+        );
     });
   });
 }
@@ -114,11 +125,20 @@ function requestPath(req) {
   }
 }
 
+function serializeError(err) {
+  if (!(err instanceof Error)) return err;
+  return {
+    message: err.message,
+    stack: err.stack,
+    ...(err.cause ? { cause: serializeError(err.cause) } : {}),
+  };
+}
+
 function safeLog(logger, level, event, fields = {}) {
   const output = {};
   for (const [key, value] of Object.entries(fields)) {
     if (/token|secret|key|authorization|cookie/i.test(key)) continue;
-    output[key] = value instanceof Error ? value.name : value;
+    output[key] = value instanceof Error ? serializeError(value) : value;
   }
   const fn = logger && typeof logger[level] === 'function' ? logger[level].bind(logger) : null;
   if (fn) fn(event, output);
@@ -162,4 +182,5 @@ module.exports = {
   sendError,
   sendJson,
   sendNoContent,
+  serializeError,
 };

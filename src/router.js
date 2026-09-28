@@ -7,10 +7,16 @@ function compilePath(path) {
   const keys = [];
   const source = String(path)
     .split('/')
-    .map((part) => {
+    .map(part => {
       if (!part) return '';
-      if (part === '*') { keys.push('wildcard'); return '(.*)'; }
-      if (part.startsWith(':')) { keys.push(part.slice(1)); return '([^/]+)'; }
+      if (part === '*') {
+        keys.push('wildcard');
+        return '(.*)';
+      }
+      if (part.startsWith(':')) {
+        keys.push(part.slice(1));
+        return '([^/]+)';
+      }
       return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     })
     .join('/');
@@ -31,7 +37,9 @@ class Router {
   }
 
   add(methods, path, handler) {
-    const allowed = (Array.isArray(methods) ? methods : [methods]).map((method) => method.toUpperCase());
+    const allowed = (Array.isArray(methods) ? methods : [methods]).map(method =>
+      method.toUpperCase()
+    );
     const compiled = compilePath(path);
     this.routes.push({ allowed, compiled, handler });
     return this;
@@ -56,7 +64,10 @@ class Router {
       }
       return route.handler({ req, res, context, params, url });
     }
-    if (pathMatches.length) throw new AppError(405, 'method_not_allowed', 'Метод не поддерживается', { headers: { allow: [...new Set(pathMatches.flatMap((route) => route.allowed))].join(', ') } });
+    if (pathMatches.length)
+      throw new AppError(405, 'method_not_allowed', 'Метод не поддерживается', {
+        headers: { allow: [...new Set(pathMatches.flatMap(route => route.allowed))].join(', ') },
+      });
     throw new AppError(404, 'not_found', 'Маршрут не найден');
   }
 }

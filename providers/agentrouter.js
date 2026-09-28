@@ -14,15 +14,19 @@
 // в новых версиях new-api). API-ключ (sk-…) не подходит — он
 // авторизует только relay-маршруты /v1/*.
 //
+// Отличие от остальных: CDN здесь периодически отдаёт HTML-заглушку
+// с HTTP 200 вместо JSON, поэтому клиенту разрешены повторы (P2-1).
+//
 // Окружение не используется: адрес API вшит, ключ и ID всегда присылает
 // клиент. config нужен тестам (подмена адреса на mock-upstream).
 // ============================================================
 
-const DEFAULT_NAME = 'AgentRouter';
-const DEFAULT_URL = 'https://agentrouter.org'; // вшит в фабрику — не выносится в настройки
+const { createProviderClient, bearerAuth } = require('../src/provider-client');
+const { getDescriptor } = require('../src/provider-descriptors');
 
-const { fetchJson } = require('../src/fetch-utils');
-const { normalizeLog } = require('../src/file-logger');
+const descriptor = getDescriptor('agentrouter');
+const DEFAULT_NAME = descriptor.name;
+const DEFAULT_URL = 'https://agentrouter.org'; // вшит в фабрику — не выносится в настройки
 
 // $1 = 500000 внутренних единиц (quota_per_unit из /api/status AgentRouter)
 const QUOTA_PER_UNIT = 500000;
@@ -58,7 +62,7 @@ function parsePoolReleaseHours(raw) {
 function getNextPoolReleaseUtc(now = new Date(), hoursUtc = AGENTROUTER_POOL_RELEASE_HOURS_UTC) {
   const nowMs = now instanceof Date ? now.getTime() : Number(now);
   if (!Array.isArray(hoursUtc) || !Number.isFinite(nowMs)) return null;
-  const valid = hoursUtc.filter((h) => Number.isInteger(h) && h >= 0 && h <= 23);
+  const valid = hoursUtc.filter(h => Number.isInteger(h) && h >= 0 && h <= 23);
   if (!valid.length) return null;
   const d = new Date(nowMs);
   const dayStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
@@ -77,6 +81,10 @@ function getNextPoolReleaseUtc(now = new Date(), hoursUtc = AGENTROUTER_POOL_REL
 // на регулярные опросы панели).
 const NON_JSON_RETRY_COUNT = 2;
 const NON_JSON_RETRY_DELAY_MS = 1500;
+
+// Анти-бот WAF (Aliyun) у AgentRouter.org: даём понять пользователю,
+// что это не его токен и что это временно.
+const WAF_CHALLENGE_RE = /aliyun_waf|acw_sc/i;
 
 /**
  * Создаёт адаптер провайдера AgentRouter.
@@ -97,98 +105,48 @@ const NON_JSON_RETRY_DELAY_MS = 1500;
  */
 function createAgentRouterProvider(config = {}) {
   const name = config.name || DEFAULT_NAME;
-  const upstream = String(config.url || DEFAULT_URL).replace(/\/+$/, '');
   const apiKey = config.apiKey || '';
   const configUserId = config.userId || '';
-  // Диагностика уходит в log из config (в CLI — файловый логгер,
-  // см. src/file-logger.js); по умолчанию — консоль (тесты, dev)
-  const log = normalizeLog(config.log);
-  const debug = config.debug === true;
+
+  // Задержка между ретраями настраивается: тесты сразу выходят на 2-ю попытку,
+  // в проде — пауза, чтобы не усугублять CC-блокировку WAF.
+  const retryDelayMs = Number.isFinite(config.retryDelayMs)
+    ? config.retryDelayMs
+    : NON_JSON_RETRY_DELAY_MS;
 
   // Авторизация: Authorization: Bearer <access-токен> + New-Api-User <id>
   const authScheme = 'authorization';
-  const buildHeaders = (key, userId) => {
-    const headers = key ? { authorization: 'Bearer ' + key } : {};
-    const uid = String(userId || configUserId || '').trim();
+  const auth = bearerAuth(cred => {
+    const headers = {};
+    const uid = String(cred.userId || '').trim();
     if (uid) headers['new-api-user'] = uid;
     return headers;
-  };
+  });
+  const buildHeaders = (key, userId) => auth.buildHeaders({ key, userId });
 
-  async function apiGet(pathname, key = '', userId = '') {
-    const headers = {
-      accept: 'application/json',
-      'user-agent': 'AI-Panel/0.1 (+https://agentrouter.org)',
-      ...buildHeaders(key || apiKey, userId),
-    };
-    const startedAt = Date.now();
-    if (debug) {
-      const safeHeaders = { ...headers };
-      if (safeHeaders.authorization) safeHeaders.authorization = 'Bearer ***';
-      if (safeHeaders['new-api-user']) safeHeaders['new-api-user'] = '***';
-      log.info(`[AgentRouter] ${pathname}`, { headers: safeHeaders });
-    }
+  const client = createProviderClient({
+    // В логах — каноническое имя провайдера, а не подпись из config
+    name: descriptor.name,
+    upstream: config.url || DEFAULT_URL,
+    auth,
+    // Свой User-Agent: без него CDN отдаёт HTML-заглушку вместо JSON
+    extraHeaders: { 'user-agent': 'AI-Panel/0.1 (+https://agentrouter.org)' },
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    log: config.log,
+    debug: config.debug === true,
+    fetchImpl: config.fetchImpl,
+    retryNonJson: { count: NON_JSON_RETRY_COUNT, delayMs: retryDelayMs },
+    // Анти-бот WAF (Aliyun) — это не токен пользователя и не навсегда
+    onBadResponse: ({ status, contentType, snippet }) =>
+      WAF_CHALLENGE_RE.test(String(snippet || ''))
+        ? 'Сайт AgentRouter временно отдаёт анти-бот страницу (WAF CDN) вместо API-ответа. Токен ни при чём — обычно это проходит через несколько минут, попробуйте обновить позже.'
+        : `Провайдер вернул не-JSON ответ (HTTP ${status}, ${contentType})`,
+  });
 
-    // Задержка между ретраями настраивается: тесты сразу выходят на 2-ю попытку,
-    // в проде — пауза, чтобы не усугублять CC-блокировку WAF.
-    const retryDelayMs = Number.isFinite(config.retryDelayMs) ? config.retryDelayMs : NON_JSON_RETRY_DELAY_MS;
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-    for (let attempt = 0; attempt <= NON_JSON_RETRY_COUNT; attempt += 1) {
-      try {
-        const { response, data } = await fetchJson(upstream + pathname, { headers }, REQUEST_TIMEOUT_MS);
-        if (debug) {
-          log.info(`[AgentRouter] ${pathname} → ${response.status} (${Date.now() - startedAt} ms)`);
-        }
-        return { status: response.status, data: data || {} };
-      } catch (error) {
-        if (error.code === 'upstream_invalid_json') {
-          const { status, contentType, snippet } = error.details;
-          // Не-JSON с HTTP 200 обычно является временной HTML-заглушкой
-          // CDN/WAF. Повторять HTTP-ошибки нельзя: их статус уже описывает
-          // постоянную для этого запроса проблему.
-          if (status === 200 && attempt < NON_JSON_RETRY_COUNT) {
-            log(
-              `[AgentRouter] ${pathname}: не-JSON ответ (HTTP ${status}, ${contentType}) —` +
-                ` повтор ${attempt + 1} из ${NON_JSON_RETRY_COUNT}`,
-            );
-            if (retryDelayMs > 0) await sleep(retryDelayMs);
-            continue;
-          }
-
-          // Тело заглушки — в консоль сервера (одной строкой, с обрезкой):
-          // по нему видно, кто отвечает (Cloudflare, Aliyun WAF, страница
-          // провайдера, анти-бот проверка), а в интерфейс панели HTML-мусор
-          // не попадает.
-          log(
-            `[AgentRouter] ${pathname}: не-JSON ответ (HTTP ${status}, ${contentType}):`,
-            snippet || '(пустое тело)',
-          );
-          // Анти-бот WAF (Aliyun) у AgentRouter.org: даём понять пользователю,
-          // что это не его токен и что это временно.
-          const isWafChallenge = typeof snippet === 'string' && /aliyun_waf|acw_sc/i.test(snippet);
-          return {
-            status: 502,
-            data: {
-              error: 'bad_response',
-              message: isWafChallenge
-                ? 'Сайт AgentRouter временно отдаёт анти-бот страницу (WAF CDN) вместо API-ответа. Токен ни при чём — обычно это проходит через несколько минут, попробуйте обновить позже.'
-                : `Провайдер вернул не-JSON ответ (HTTP ${status}, ${contentType})`,
-            },
-          };
-        }
-        // Ошибка сети / DNS / таймаут
-        const msg = error.message || 'Ошибка запроса';
-        log(`[AgentRouter] ${pathname}: сеть/таймаут — ${msg}`);
-        return {
-          status: 502,
-          data: {
-            error: 'provider_error',
-            message: msg,
-          },
-        };
-      }
-    }
-  }
+  const apiGet = (pathname, key = '', userId = '') =>
+    client.get(pathname, {
+      credential: { key: key || apiKey, userId: String(userId || configUserId || '').trim() },
+    });
 
   // new-api на неудачной авторизации ведёт себя по-разному: без
   // заголовка — HTTP 401, с невалидным токеном — HTTP 200 +
@@ -200,7 +158,7 @@ function createAgentRouterProvider(config = {}) {
 
   function authFailure(data) {
     const upstreamMsg = data && typeof data.message === 'string' ? data.message : '';
-    if (upstreamMsg) log('[AgentRouter] токен отклонён:', upstreamMsg);
+    if (upstreamMsg) client.log('[AgentRouter] токен отклонён:', upstreamMsg);
     // Разные причины отклонения — разные подсказки (проверено на живом
     // сайте): токен не найден / нет заголовка New-Api-User / ID не совпал
     const message = /New-Api-User/i.test(upstreamMsg)
@@ -239,9 +197,7 @@ function createAgentRouterProvider(config = {}) {
         wallet: { balance_usd: balance },
         windows: [], // окна расхода — только у xKiro
         // Накопительные цифры профиля — для карточки на главной
-        used_usd: Number.isFinite(usedRaw) && usedRaw > 0
-          ? Math.round(usedRaw * 100) / 100
-          : 0,
+        used_usd: Number.isFinite(usedRaw) && usedRaw > 0 ? Math.round(usedRaw * 100) / 100 : 0,
         requests: Number(user.request_count) || 0,
       },
     };
@@ -259,11 +215,7 @@ function createAgentRouterProvider(config = {}) {
 
     // new-api отдаёт массив строк либо обёртку { data: [...] } —
     // нормализуем оба формата в единый каталог панели
-    const raw = Array.isArray(data)
-      ? data
-      : data && Array.isArray(data.data)
-        ? data.data
-        : null;
+    const raw = Array.isArray(data) ? data : data && Array.isArray(data.data) ? data.data : null;
     if (!raw) {
       return {
         status: 502,
@@ -274,19 +226,19 @@ function createAgentRouterProvider(config = {}) {
       };
     }
     const ids = raw
-      .map((item) => (typeof item === 'string' ? item : item && item.id))
-      .filter((id) => typeof id === 'string' && id);
+      .map(item => (typeof item === 'string' ? item : item && item.id))
+      .filter(id => typeof id === 'string' && id);
     return {
       status: 200,
-      data: { data: ids.map((id) => ({ id, access_tier: 'paid' })) },
+      data: { data: ids.map(id => ({ id, access_tier: 'paid' })) },
     };
   }
 
   return {
     id: 'agentrouter',
     name,
-    site: 'https://agentrouter.org',
-    upstream,
+    site: descriptor.site,
+    upstream: client.upstream,
     apiKey,
     authScheme,
     buildHeaders,
@@ -301,4 +253,6 @@ module.exports = {
   AGENTROUTER_POOL_RELEASE_TIMEZONE,
   parsePoolReleaseHours,
   getNextPoolReleaseUtc,
+  NON_JSON_RETRY_COUNT,
+  WAF_CHALLENGE_RE,
 };

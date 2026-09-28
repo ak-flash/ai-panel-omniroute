@@ -1,0 +1,85 @@
+/* Стили состояния настройки и общих подсказок страниц. */
+
+/* --------------------------------------------------------------------------
+   Setup card
+   -------------------------------------------------------------------------- */
+.setup-card {
+  max-width: 440px;
+  margin: 80px auto;
+  text-align: center;
+}
+
+.setup-card h2 {
+  font-size: var(--fs-3xl);
+  margin-bottom: 8px;
+}
+
+.setup-card p {
+  color: var(--text-muted);
+}
+
+.setup-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.setup-form input {
+  flex: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: var(--radius-m);
+  font-family: inherit;
+  font-size: var(--fs-base);
+}
+
+.setup-form input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.hint {
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+  margin-top: 12px;
+}
+
+/* Варианты подсказок без лишних отступов (вместо inline-стилей) */
+.hint-flush {
+  margin: 0;
+}
+
+.hint-top-flush {
+  margin-top: 0;
+}
+
+/* Отступ карточек Antigravity внутри блока (был inline-стилем) */
+.ag-cards {
+  padding-top: 4px;
+}
+
+/* Строки статуса и сводки над таблицей combo-запросов */
+#combo-recent-status {
+  margin: 0 0 8px;
+}
+
+#combo-recent-summary {
+  margin: 8px 0 0;
+}
+
+/* Кнопка входа Antigravity и пояснение — на одной строке */
+.dlg-ag-login-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+
+  margin-bottom: 16px;
+}
+
+.dlg-ag-login-line .hint {
+  margin: 0;
+  flex: 1;
+}

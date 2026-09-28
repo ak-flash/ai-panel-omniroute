@@ -1,0 +1,813 @@
+﻿'use strict';
+
+// Интеграционные тесты server.js: панель поднимается in-process
+// (createApp), адаптеры смотрят на mock-upstream. Реальный API xKiro
+// не вызывается; ключ всегда присылает клиент (env не используется).
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const net = require('net');
+const path = require('path');
+const {
+  startMockUpstream,
+  startAgentRouterUpstream,
+  startPanel,
+  startServerProcess,
+  makeTmpDir,
+} = require('../helpers');
+const { createAgentRouterProvider } = require('../../providers/agentrouter');
+const { readCookie } = require('../../src/auth');
+
+const AUTH_TOKEN = 'test-auth-token-0123456789';
+const { createStore } = require('../../src/store');
+const { WRITABLE_KEYS } = require('../../src/routes/config');
+const { STORE_KEYS } = require('../../src/store');
+
+const CLIENT_KEY = 'client-key-456';
+const STORED_TOKEN = 'stored-agentrouter-token';
+const STORED_USER_ID = '49521';
+
+test('WRITABLE_KEYS маршрута — подмножество STORE_KEYS хранилища', () => {
+  // Дрейф этих двух списков ломает PUT /api/config: ключ проходит
+  // route-allowlist, но отвергается хранилищем (unknown_key → 500).
+  for (const key of WRITABLE_KEYS) {
+    assert.ok(
+      STORE_KEYS.includes(key),
+      `ключ «${key}» есть в WRITABLE_KEYS, но отсутствует в STORE_KEYS`
+    );
+  }
+});
+
+test('agentrouterReleases в /api/config: дефолт графика и переопределение env', async () => {
+  // Дефолт: график провайдера — Пекин 10:00/19:00 = UTC 02:00/11:00
+  const panel = await startPanel();
+  try {
+    const cfg = await (await fetch(panel.base + '/api/config')).json();
+    assert.deepEqual(cfg.data.agentrouterReleases, {
+      timezone: 'Asia/Shanghai',
+      hoursUtc: [2, 11],
+    });
+  } finally {
+    await panel.stop();
+  }
+
+  // Переопределение через env (как в проде): часы меняются, якорь тот же
+  const panel2 = await startPanel({ env: { AGENTROUTER_RELEASE_HOURS_UTC: '4,12' } });
+  try {
+    const cfg = await (await fetch(panel2.base + '/api/config')).json();
+    assert.deepEqual(cfg.data.agentrouterReleases, {
+      timezone: 'Asia/Shanghai',
+      hoursUtc: [4, 12],
+    });
+  } finally {
+    await panel2.stop();
+  }
+});
+
+test('PUT /api/config: частичная запись ключей и чтение назад', async () => {
+  const panel = await startPanel();
+  try {
+    const put = await fetch(panel.base + '/api/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        dlgTab: 'dlg-tab-notifications',
+        notificationThresholds: '{"xkiro":{"short_window_pct":80}}',
+        agentrouterUserId: '49521',
+      }),
+    });
+    assert.equal(put.status, 200);
+    assert.deepEqual(await put.json(), { ok: true });
+
+    const cfg = await (await fetch(panel.base + '/api/config')).json();
+    assert.equal(cfg.data.dlgTab, 'dlg-tab-notifications');
+    assert.equal(cfg.data.notificationThresholds, '{"xkiro":{"short_window_pct":80}}');
+    assert.equal(cfg.data.agentrouterUserId, '49521');
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('HTTP boundary: request ID, malformed JSON и безопасные ошибки', async () => {
+  const logs = [];
+  const panel = await startPanel({
+    logger: { error: (event, fields) => logs.push({ event, fields }) },
+  });
+  try {
+    const badJson = await fetch(panel.base + '/api/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: '{',
+    });
+    assert.equal(badJson.status, 400);
+    assert.ok(badJson.headers.get('x-request-id'));
+    const badBody = await badJson.json();
+    assert.equal(badBody.error, 'bad_json');
+    assert.equal(badBody.requestId, badJson.headers.get('x-request-id'));
+
+    const wrongMethod = await fetch(panel.base + '/api/health', { method: 'POST' });
+    assert.equal(wrongMethod.status, 405);
+    assert.equal((await wrongMethod.json()).error, 'method_not_allowed');
+
+    const oversized = await fetch(panel.base + '/api/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: 'x'.repeat(2 * 1024 * 1024 + 1),
+    });
+    assert.equal(oversized.status, 413);
+    assert.equal((await oversized.json()).error, 'payload_too_large');
+
+    assert.ok(logs.every(({ fields }) => !JSON.stringify(fields).includes('Unexpected token')));
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('security: same-origin, headers и write-only config', async () => {
+  const store = await createStore({ memory: true });
+  await store.set('xkiroKey', 'secret-xkiro');
+  await store.set('omniKey', 'secret-omni');
+  await store.set('omniUrl', 'https://omniroute.example/api');
+  const panel = await startPanel({ store });
+  try {
+    const forbidden = await fetch(panel.base + '/api/config', {
+      headers: { origin: 'https://evil.example' },
+    });
+    assert.equal(forbidden.status, 403);
+    assert.equal(forbidden.headers.get('access-control-allow-origin'), null);
+
+    const response = await fetch(panel.base + '/api/config');
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(response.headers.get('x-frame-options'), 'DENY');
+    assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+    assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+    const text = await response.text();
+    assert.ok(!text.includes('secret-xkiro'));
+    assert.ok(!text.includes('secret-omni'));
+    const config = JSON.parse(text);
+    assert.equal(config.data.hasXkiroKey, true);
+    assert.equal(config.data.hasOmniKey, true);
+    assert.equal(config.data.omniUrl, 'https://omniroute.example/api');
+
+    const oldVault = await fetch(panel.base + '/api/settings/vault');
+    assert.equal(oldVault.status, 404);
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('security: OmniRoute URL берётся с сервера, клиентский URL игнорируется', async () => {
+  const mock = await startMockUpstream({ requireKey: false });
+  const store = await createStore({ memory: true });
+  await store.set('omniUrl', mock.url);
+  await store.set('omniKey', 'server-omni-key');
+  const panel = await startPanel({ store });
+  try {
+    const response = await fetch(panel.base + '/omniroute/v1/usage', {
+      headers: { 'x-omniroute-url': 'http://169.254.169.254', authorization: 'Bearer client-key' },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.plan, 'pro');
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('omniroute: несколько адресов — выбирается первый доступный', async () => {
+  const mock = await startMockUpstream({ requireKey: false });
+  const store = await createStore({ memory: true });
+  // Первый адрес — «мёртвый» порт, второй — живой mock
+  await store.set('omniUrls', 'http://127.0.0.1:1\n' + mock.url);
+  await store.set('omniKey', 'server-omni-key');
+  const panel = await startPanel({ store });
+  try {
+    const response = await fetch(panel.base + '/omniroute/v1/usage');
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.plan, 'pro');
+    const usage = mock.seen.find(r => r.url === '/v1/usage');
+    assert.ok(usage, 'запрос дошёл до живого upstream');
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('omniroute: одиночный недоступный адрес → 502 proxy_error', async () => {
+  const store = await createStore({ memory: true });
+  await store.set('omniUrl', 'http://127.0.0.1:1');
+  const panel = await startPanel({ store });
+  try {
+    const response = await fetch(panel.base + '/omniroute/v1/usage');
+    assert.equal(response.status, 502);
+    assert.equal((await response.json()).error, 'proxy_error');
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('PUT /api/config: omniUrls валидируется и нормализуется', async () => {
+  const panel = await startPanel();
+  try {
+    const put = await fetch(panel.base + '/api/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        omniUrls: 'http://192.168.1.30:20128/\nhttps://omni.example.com/api/',
+      }),
+    });
+    assert.equal(put.status, 200);
+
+    const cfg = await (await fetch(panel.base + '/api/config')).json();
+    assert.equal(cfg.data.omniUrls, 'http://192.168.1.30:20128\nhttps://omni.example.com/api');
+    assert.equal(cfg.data.hasOmniRoute, true);
+
+    const bad = await fetch(panel.base + '/api/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ omniUrls: 'http://192.168.1.30:20128\nnot a url' }),
+    });
+    assert.equal(bad.status, 400);
+    assert.equal((await bad.json()).error, 'invalid_omniroute_url');
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('security: PUT через /omniroute с loopback Origin проходит при настроенном PUBLIC_ORIGIN', async () => {
+  // Регрессия: панель за reverse proxy (PUBLIC_ORIGIN), но локальный
+  // браузер шлёт PUT с Origin http://127.0.0.1:<port> — раньше это
+  // отбивалось 403 origin_forbidden (combo drag-and-drop не сохранялся)
+  const mock = await startMockUpstream({ requireKey: false });
+  const store = await createStore({ memory: true });
+  await store.set('omniUrl', mock.url);
+  await store.set('omniKey', 'server-omni-key');
+  const panel = await startPanel({ store, publicOrigin: 'https://panel.example' });
+  try {
+    const response = await fetch(panel.base + '/omniroute/v1/usage', {
+      method: 'PUT',
+      headers: { origin: panel.base, 'content-type': 'application/json' },
+      body: JSON.stringify({ models: [] }),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.plan, 'pro');
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('сохранение с пустыми полями секретов не затирает сохранённые ключи', async () => {
+  const panel = await startPanel();
+  try {
+    const put = body =>
+      fetch(panel.base + '/api/config', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+    // Пользователь установил ключи
+    const setup = await put({
+      xkiroKey: 'sk-live-1',
+      agentrouterKey: 'ar-live-1',
+      agentrouterUserId: '49521',
+      omniKey: 'omni-live-1',
+      omniUrl: 'http://127.0.0.1:1',
+    });
+    assert.equal(setup.status, 200);
+
+    // Диалог при пустых полях секретов шлёт только несекретные поля
+    // (agentrouterUserId/omniUrl заполняются из хранилища при открытии)
+    const res = await put({ agentrouterUserId: '49521', omniUrl: 'http://127.0.0.1:1' });
+    assert.equal(res.status, 200);
+
+    const cfg = await (await fetch(panel.base + '/api/config')).json();
+    assert.equal(cfg.data.hasXkiroKey, true);
+    assert.equal(cfg.data.hasAgentrouterKey, true);
+    assert.equal(cfg.data.hasOmniKey, true);
+    assert.equal(cfg.data.hasOmniRoute, true);
+    assert.equal(cfg.data.agentrouterUserId, '49521');
+
+    // Явная очистка пустой строкой продолжает работать («Удалить ключ»)
+    assert.equal((await put({ xkiroKey: '' })).status, 200);
+    const after = await (await fetch(panel.base + '/api/config')).json();
+    assert.equal(after.data.hasXkiroKey, false);
+    assert.equal(after.data.hasAgentrouterKey, true);
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('интеграция: /api/config, адаптеры, статика', async () => {
+  const mock = await startMockUpstream();
+  const panel = await startPanel({ upstream: mock.url });
+  try {
+    // Конфиг: список провайдеров, активный — первый
+    const cfg = await (await fetch(panel.base + '/api/config')).json();
+    assert.equal(cfg.ok, true);
+    assert.equal(cfg.activeProvider, 'xkiro');
+    assert.deepEqual(cfg.providers, [
+      { id: 'xkiro', name: 'xKiro', site: 'https://xkiro.com/dashboard', hasKey: false },
+    ]);
+
+    // usage: ключ присылает клиент
+    const u = await (
+      await fetch(panel.base + '/api/providers/xkiro/usage', {
+        headers: { 'x-api-key': CLIENT_KEY },
+      })
+    ).json();
+    assert.equal(u.plan, 'pro');
+    assert.equal(u._seenKey, CLIENT_KEY);
+
+    // models через адаптер
+    const m = await (
+      await fetch(panel.base + '/api/providers/xkiro/models', {
+        headers: { 'x-api-key': CLIENT_KEY },
+      })
+    ).json();
+    assert.deepEqual(m.models, []);
+
+    // Статика
+    const html = await (await fetch(panel.base + '/')).text();
+    assert.ok(html.includes('stats-provider'));
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('кеш ответов провайдера: повтор и всплеск запросов не доходят до upstream (P3-3)', async () => {
+  const mock = await startMockUpstream();
+  const panel = await startPanel({ upstream: mock.url, env: { AIPANEL_USAGE_CACHE_MS: '60000' } });
+  const usage = () =>
+    fetch(panel.base + '/api/providers/xkiro/usage', { headers: { 'x-api-key': CLIENT_KEY } });
+  try {
+    // Пять одинаковых запросов подряд — один поход в upstream
+    for (let i = 0; i < 5; i += 1) {
+      const res = await usage();
+      assert.equal(res.status, 200);
+      assert.equal((await res.json()).plan, 'pro');
+    }
+    const usageCalls = mock.seen.filter(entry => entry.url === '/v1/usage');
+    assert.equal(usageCalls.length, 1, 'второй-третий запрос отдаётся из кеша');
+
+    // Параллельный всплеск — тоже один запрос вверх
+    await Promise.all([usage(), usage(), usage(), usage()]);
+    assert.equal(mock.seen.filter(entry => entry.url === '/v1/usage').length, 1);
+
+    // Другой ключ клиента — другая запись кеша
+    await fetch(panel.base + '/api/providers/xkiro/usage', { headers: { 'x-api-key': 'other' } });
+    assert.equal(mock.seen.filter(entry => entry.url === '/v1/usage').length, 2);
+
+    // usage и models кешируются раздельно
+    await fetch(panel.base + '/api/providers/xkiro/models', {
+      headers: { 'x-api-key': CLIENT_KEY },
+    });
+    assert.equal(mock.seen.filter(entry => entry.url === '/v1/models').length, 1);
+    await fetch(panel.base + '/api/providers/xkiro/models', {
+      headers: { 'x-api-key': CLIENT_KEY },
+    });
+    assert.equal(mock.seen.filter(entry => entry.url === '/v1/models').length, 1);
+
+    // Диагностика кеша доступна серверу и не содержит секретов
+    const stats = panel.app.providerCacheStats();
+    assert.equal(stats.usage.entries, 2, 'по записи на каждый отпечаток ключа');
+    assert.equal(stats.models.entries, 1);
+    assert.ok(!JSON.stringify(stats).includes(CLIENT_KEY));
+
+    // Смена ключа через /api/config сбрасывает кеш этого провайдера
+    await fetch(panel.base + '/api/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ xkiroKey: 'brand-new-key' }),
+    });
+    assert.equal(panel.app.providerCacheStats().usage.entries, 0, 'кеш сброшен');
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('кеш ответов провайдера выключается AIPANEL_USAGE_CACHE_MS=0', async () => {
+  const mock = await startMockUpstream();
+  const panel = await startPanel({ upstream: mock.url, env: { AIPANEL_USAGE_CACHE_MS: '0' } });
+  try {
+    for (let i = 0; i < 3; i += 1) {
+      await fetch(panel.base + '/api/providers/xkiro/usage', {
+        headers: { 'x-api-key': CLIENT_KEY },
+      });
+    }
+    assert.equal(mock.seen.filter(entry => entry.url === '/v1/usage').length, 3);
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('неизвестный провайдер в URL → 404', async () => {
+  // Upstream не нужен: запрос отсекается до обращения к API
+  const panel = await startPanel();
+  try {
+    const res = await fetch(panel.base + '/api/providers/nope/usage');
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.equal(body.error, 'unknown_provider');
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('нет ключа у клиента → 401 от upstream доходит до клиента', async () => {
+  const mock = await startMockUpstream({ requireKey: true });
+  const panel = await startPanel({ upstream: mock.url });
+  try {
+    const res = await fetch(panel.base + '/api/providers/xkiro/usage');
+    assert.equal(res.status, 401);
+    assert.equal((await res.json()).error, 'unauthorized');
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('agentrouter: ключ и User ID из хранилища уходят адаптеру, hasKey в /api/config', async () => {
+  const { createAgentRouterProvider } = require('../../providers/agentrouter');
+  const { createStore } = require('../../src/store');
+  const mock = await startAgentRouterUpstream();
+  const store = await createStore({ memory: true });
+  await store.set('agentrouterKey', STORED_TOKEN);
+  await store.set('agentrouterUserId', STORED_USER_ID);
+  const panel = await startPanel({
+    providers: [createAgentRouterProvider({ url: mock.url })],
+    store,
+  });
+  try {
+    // hasKey — по полю хранилища (STORE_KEYS), не по apiKey адаптера
+    const cfg = await (await fetch(panel.base + '/api/config')).json();
+    assert.deepEqual(cfg.providers, [
+      { id: 'agentrouter', name: 'AgentRouter', site: 'https://agentrouter.org', hasKey: true },
+    ]);
+
+    // usage без x-api-key: сервер подставляет ключ из хранилища и
+    // адаптер шлёт его upstream как Authorization: Bearer + New-Api-User
+    const res = await fetch(panel.base + '/api/providers/agentrouter/usage');
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.equal(data.wallet.balance_usd, 82.31);
+    assert.equal(mock.seen[0].auth, 'Bearer ' + STORED_TOKEN);
+    assert.equal(mock.seen[0].uid, STORED_USER_ID);
+
+    // Заголовки клиента приоритетнее хранилища
+    const res2 = await fetch(panel.base + '/api/providers/agentrouter/usage', {
+      headers: { 'x-api-key': 'client-token', 'x-agentrouter-user-id': '999' },
+    });
+    assert.equal(res2.status, 200);
+    assert.equal(mock.seen[1].auth, 'Bearer client-token');
+    assert.equal(mock.seen[1].uid, '999');
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('agentrouter: разовый снимок баланса дня сохраняется и уходит в usage', async () => {
+  const { createAgentRouterProvider } = require('../../providers/agentrouter');
+  const { createStore } = require('../../src/store');
+  const mock = await startAgentRouterUpstream();
+  const store = await createStore({ memory: true });
+  await store.set('agentrouterKey', STORED_TOKEN);
+  await store.set('agentrouterUserId', STORED_USER_ID);
+  const panel = await startPanel({
+    providers: [createAgentRouterProvider({ url: mock.url })],
+    store,
+  });
+  try {
+    // Снимок ещё не снят — usage без day_balance_usd
+    let data = await (await fetch(panel.base + '/api/providers/agentrouter/usage')).json();
+    assert.equal('day_balance_usd' in data, false);
+
+    // Ручной разовый снимок (как это делает планировщик в 00:00)
+    await panel.app.snapshotAgentRouterDayBalance();
+    const now = new Date();
+    const saved = JSON.parse(await store.get('agentrouterDayBalance'));
+    assert.equal(
+      saved.date,
+      now.getFullYear() +
+        '-' +
+        String(now.getMonth() + 1).padStart(2, '0') +
+        '-' +
+        String(now.getDate()).padStart(2, '0')
+    );
+    assert.equal(saved.balance_usd, 82.31);
+
+    // Теперь usage отдаёт стартовый баланс дня
+    data = await (await fetch(panel.base + '/api/providers/agentrouter/usage')).json();
+    assert.equal(data.day_balance_usd, 82.31);
+    assert.equal(data.wallet.balance_usd, 82.31);
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('прокси: /proxy/<id>/… и легаси /proxy/…', async () => {
+  const mock = await startMockUpstream();
+  const panel = await startPanel({ upstream: mock.url });
+  try {
+    // Прокси с указанием провайдера: префикс /proxy/xkiro отрезается,
+    // клиентский x-api-key пробрасывается upstream как есть
+    const p1 = await fetch(panel.base + '/proxy/xkiro/v1/usage', {
+      headers: { 'x-api-key': CLIENT_KEY },
+    });
+    assert.equal(p1.status, 200);
+    assert.equal((await p1.json())._seenKey, CLIENT_KEY);
+
+    // Легаси-путь без id → активный провайдер
+    const p2 = await fetch(panel.base + '/proxy/v1/usage', {
+      headers: { 'x-api-key': CLIENT_KEY },
+    });
+    assert.equal(p2.status, 200);
+    assert.equal((await p2.json())._seenKey, CLIENT_KEY);
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('CLI: node server.js поднимается, отдаёт /api/config и корректно останавливается', async () => {
+  const fs = require('fs');
+  const path = require('path');
+  const panel = await startServerProcess();
+  let exitCode;
+  try {
+    const cfg = await (await fetch(panel.base + '/api/config')).json();
+    assert.equal(cfg.ok, true);
+    assert.equal(cfg.activeProvider, 'xkiro');
+    assert.deepEqual(
+      cfg.providers.map(p => ({ id: p.id, name: p.name })),
+      [
+        { id: 'xkiro', name: 'xKiro' },
+        { id: 'agentrouter', name: 'AgentRouter' },
+        { id: 'openrouter', name: 'OpenRouter' },
+        { id: 'selora', name: 'Selora' },
+        { id: 'experiential', name: 'Experiential Labs' },
+      ]
+    );
+    // Хранилище свежее и изолированное: ключей нет ни у одного провайдера
+    assert.ok(cfg.providers.every(p => p.hasKey === false));
+  } finally {
+    exitCode = await panel.stop();
+  }
+  // SIGTERM → graceful shutdown с кодом 0 (на Unix);
+  // на Windows proc.kill() завершает процесс принуждённо, exitCode = null
+  if (process.platform !== 'win32') {
+    assert.equal(exitCode, 0);
+  }
+  // База, ключ и лог — во временных каталогах, а не в репозитории
+  assert.ok(fs.existsSync(path.join(panel.dataDir, 'store.db')));
+  assert.ok(fs.existsSync(path.join(panel.dataDir, 'store.db.key')));
+  assert.ok(fs.existsSync(path.join(panel.logDir, 'ai-panel.log')));
+  // Права 0600 не применяются на Windows
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(path.join(panel.dataDir, 'store.db')).mode & 0o777, 0o600);
+  }
+});
+
+test('CLI: неверная конфигурация — выход с кодом 1 и запись в лог', async () => {
+  await assert.rejects(startServerProcess({ PORT: 'not-a-port' }), /упал при запуске/);
+});
+
+/** Сырой HTTP-запрос через сокет: fetch не отправит некорректную строку запроса. */
+function rawRequest(base, payload) {
+  const { port } = new URL(base);
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(Number(port), '127.0.0.1');
+    let data = '';
+    socket.setEncoding('utf8');
+    socket.on('data', chunk => {
+      data += chunk;
+    });
+    socket.on('close', () => resolve(data));
+    socket.on('error', reject);
+    socket.write(payload);
+  });
+}
+
+test('HTTP: некорректный URL в строке запроса → 400, процесс продолжает работать', async () => {
+  const panel = await startPanel();
+  try {
+    const response = await rawRequest(
+      panel.base,
+      'GET http://[ HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n'
+    );
+    assert.match(response, /^HTTP\/1\.1 400 /);
+    const health = await fetch(panel.base + '/api/health');
+    assert.equal(health.status, 200);
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('HTTP: битая %-последовательность в параметре пути → 400 bad_request', async () => {
+  const panel = await startPanel();
+  try {
+    const res = await fetch(panel.base + '/api/providers/%E0%A4%A/usage');
+    assert.equal(res.status, 400);
+    assert.equal((await res.json()).error, 'bad_request');
+    const statics = await fetch(panel.base + '/%E0%A4%A.js');
+    assert.equal(statics.status, 400);
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('/api/ready: 200 при рабочем хранилище и трекере, 503 при сбое записи', async () => {
+  const dbPath = path.join(makeTmpDir('ready-'), 'store.db');
+  const store = await createStore({
+    dbPath,
+    masterKey: 'c'.repeat(64),
+    persistRetryDelaysMs: [],
+    logger: { warn() {} },
+  });
+  const panel = await startPanel({
+    store,
+    providers: [createAgentRouterProvider({ url: 'http://127.0.0.1:1' })],
+  });
+  try {
+    let res = await fetch(panel.base + '/api/ready');
+    assert.equal(res.status, 503);
+    assert.deepEqual(await res.json(), {
+      ready: false,
+      store: true,
+      persisted: true,
+      tracker: false,
+    });
+
+    await panel.app.startDailyAgentRouterTracker();
+    res = await fetch(panel.base + '/api/ready');
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), {
+      ready: true,
+      store: true,
+      persisted: true,
+      tracker: true,
+    });
+
+    // Запись на диск сломана: изменения только в памяти → не готов
+    const fs = require('fs');
+    fs.rmSync(dbPath);
+    fs.mkdirSync(dbPath);
+    fs.writeFileSync(path.join(dbPath, 'blocker'), 'x');
+    await assert.rejects(store.set('omniKey', 'x'));
+    res = await fetch(panel.base + '/api/ready');
+    assert.equal(res.status, 503);
+    assert.equal((await res.json()).persisted, false);
+    fs.rmSync(dbPath, { recursive: true });
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('/api/ready без AgentRouter не ждёт трекер; /api/metrics считает запросы', async () => {
+  const panel = await startPanel();
+  try {
+    const ready = await fetch(panel.base + '/api/ready');
+    assert.equal(ready.status, 200);
+    await fetch(panel.base + '/api/nope');
+    const metrics = await (await fetch(panel.base + '/api/metrics')).json();
+    assert.ok(metrics.requests >= 2);
+    assert.equal(typeof metrics.errors, 'number');
+    assert.equal(typeof metrics.avgDurationMs, 'number');
+  } finally {
+    await panel.stop();
+  }
+});
+
+/* ---------- Вход в remote-режиме (P0-6), allowlist Host (P0-7) ---------- */
+
+test('auth: без сессии API — 401, страницы — на /login.html', async () => {
+  const panel = await startPanel({ env: { AIPANEL_AUTH_TOKEN: AUTH_TOKEN } });
+  try {
+    const api = await fetch(panel.base + '/api/config');
+    assert.equal(api.status, 401);
+    assert.equal((await api.json()).error, 'auth_required');
+
+    const page = await fetch(panel.base + '/', { redirect: 'manual' });
+    assert.equal(page.status, 302);
+    assert.match(page.headers.get('location'), /^\/login\.html\?next=%2F$/);
+
+    // Страница входа и её ресурсы доступны без сессии
+    const login = await fetch(panel.base + '/login.html');
+    assert.equal(login.status, 200);
+    const loginJs = await fetch(panel.base + '/js/login.js');
+    assert.equal(loginJs.status, 200);
+    const css = await fetch(panel.base + '/css/base.css');
+    assert.equal(css.status, 200);
+
+    const status = await (await fetch(panel.base + '/api/auth/status')).json();
+    assert.deepEqual(status, { authEnabled: true, authenticated: false });
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('auth: неверный токен → 401, верный → cookie открывает API', async () => {
+  const panel = await startPanel({ env: { AIPANEL_AUTH_TOKEN: AUTH_TOKEN } });
+  try {
+    const bad = await fetch(panel.base + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'nope' }),
+    });
+    assert.equal(bad.status, 401);
+    assert.equal((await bad.json()).error, 'invalid_token');
+
+    const good = await fetch(panel.base + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: AUTH_TOKEN }),
+    });
+    assert.equal(good.status, 200);
+    const cookie = good.headers.get('set-cookie');
+    assert.match(cookie, /HttpOnly/);
+    assert.match(cookie, /SameSite=Strict/);
+    // Локальный http — без Secure, иначе cookie бы не отправилась
+    assert.ok(!/; Secure/.test(cookie));
+
+    const sessionCookie = readCookie({ headers: { cookie } });
+    const withSession = await fetch(panel.base + '/api/config', {
+      headers: { cookie: `aipanel_session=${sessionCookie}` },
+    });
+    assert.equal(withSession.status, 200);
+    const status = await (
+      await fetch(panel.base + '/api/auth/status', {
+        headers: { cookie: `aipanel_session=${sessionCookie}` },
+      })
+    ).json();
+    assert.equal(status.authenticated, true);
+
+    // Выход очищает cookie
+    const out = await fetch(panel.base + '/api/auth/logout', { method: 'POST' });
+    assert.match(out.headers.get('set-cookie'), /Max-Age=0/);
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('auth: подделанная подпись cookie не пускает', async () => {
+  const panel = await startPanel({ env: { AIPANEL_AUTH_TOKEN: AUTH_TOKEN } });
+  try {
+    const forged = 'aipanel_session=v1.9999999999999.abc.forged';
+    const res = await fetch(panel.base + '/api/config', { headers: { cookie: forged } });
+    assert.equal(res.status, 401);
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('без AIPANEL_AUTH_TOKEN вход не требуется (локальный режим)', async () => {
+  const panel = await startPanel();
+  try {
+    assert.equal((await fetch(panel.base + '/api/config')).status, 200);
+    const status = await (await fetch(panel.base + '/api/auth/status')).json();
+    assert.deepEqual(status, { authEnabled: false, authenticated: true });
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('чужой Host → 421 (DNS rebinding), SECURITY_HEADERS без unsafe-inline', async () => {
+  const panel = await startPanel({ env: { ALLOWED_HOSTS: 'panel.example' } });
+  try {
+    const response = await rawRequest(
+      panel.base,
+      'GET /api/config HTTP/1.1\r\nHost: evil.example\r\nConnection: close\r\n\r\n'
+    );
+    assert.match(response, /^HTTP\/1\.1 421 /);
+
+    const own = await fetch(panel.base + '/api/config');
+    assert.equal(own.status, 200);
+    const csp = own.headers.get('content-security-policy');
+    assert.ok(!csp.includes('unsafe-inline'), csp);
+    assert.match(csp, /style-src 'self'/);
+  } finally {
+    await panel.stop();
+  }
+});
+
+test('X-Forwarded-Host не доверяется без TRUST_PROXY', async () => {
+  const panel = await startPanel({ env: { ALLOWED_HOSTS: 'panel.example' } });
+  try {
+    const response = await rawRequest(
+      panel.base,
+      'GET /api/config HTTP/1.1\r\nHost: evil.example\r\nX-Forwarded-Host: panel.example\r\nConnection: close\r\n\r\n'
+    );
+    assert.match(response, /^HTTP\/1\.1 421 /);
+  } finally {
+    await panel.stop();
+  }
+});
