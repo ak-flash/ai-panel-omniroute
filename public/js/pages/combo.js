@@ -17,8 +17,9 @@ import { matchModel } from '../model-match.js';
 import { showToast } from '../toast.js';
 import { reorderItems, toComboIndex as mapComboIndex } from '../combo-order.js';
 import { buildComboRow } from '../combo-row.js';
-import { comboTestModelId, testComboModel } from '../combo-test.js';
 import { renderComboRecentTable } from '../combo-recent-view.js';
+import { createComboModelCheck } from '../combo-model-check.js';
+import { formatErrorDetail } from '../error-detail.js';
 
 const COMBO_DISABLED_CONFIG_KEY = 'comboDisabled';
 
@@ -53,10 +54,14 @@ let activeComboData = null; // полный объект combo с сервера
 let disabledComboTargets = new Set();
 let disabledComboRaw = new Map();
 let disabledComboModels = [];
-// Результаты проверки моделей: key -> { state: 'loading'|'ok'|'err', ms, detail }
-let comboTestResults = new Map();
 let comboLoadVersion = 0;
 let comboWrites = Promise.resolve();
+
+// Проверка моделей тестовым запросом: состояние и запуск — в модуле (P2-2)
+const comboModelCheck = createComboModelCheck({
+  onUpdate: () => renderComboList(),
+  notify: showToast,
+});
 
 function queueComboWrite(task) {
   const write = comboWrites.then(task);
@@ -418,24 +423,6 @@ function saveReorderedCombo(successMessage = 'Порядок сохранён') 
     });
 }
 
-/* ---------- проверка модели мини-запросом через OmniRoute ---------- */
-
-async function checkComboModel(target, key) {
-  const prev = comboTestResults.get(key);
-  if (prev && prev.state === 'loading') return; // проверка уже идёт
-  comboTestResults.set(key, { state: 'loading' });
-  renderComboList();
-  try {
-    const res = await testComboModel(comboTestModelId(target));
-    comboTestResults.set(key, { state: 'ok', ms: res.ms });
-    showToast('Модель отвечает: ' + res.ms + ' мс');
-  } catch (err) {
-    comboTestResults.set(key, { state: 'err', ms: err.ms, detail: err.message });
-    showToast('Проверка не удалась: ' + err.message, { type: 'error', timeout: 6000 });
-  }
-  renderComboList();
-}
-
 /** «targets: N, выключено: M» — считается по актуальным спискам. */
 function updateTargetsCount() {
   if (!$comboTargetsCount) return;
@@ -462,9 +449,9 @@ function renderComboList() {
       enabledCount: comboModels.length,
       disabled: isDisabled,
       model: findTargetModel(t),
-      testState: comboTestResults.get(key),
+      testState: comboModelCheck.get(key),
       handlers: {
-        onCheck: () => checkComboModel(t, key),
+        onCheck: () => comboModelCheck.run(t, key),
         onMove: (from, to) => moveModel(from, to),
         onToggle: () => toggleComboModel(t),
       },
@@ -639,29 +626,6 @@ function selectCombo(id) {
 /* ---------- последние combo-запросы → реальная модель ---------- */
 
 /** Загружает последние combo-запросы и рендерит таблицу «combo → модель» */
-function formatErrorDetail(err) {
-  let msg = err && err.message ? err.message : String(err);
-  // Пытаемся извлечь статус и тело, если есть Response-подобный объект
-  if (err && err.status !== undefined) {
-    const statusText = err.statusText ? ' ' + err.statusText : '';
-    msg += ' (статус: ' + err.status + statusText + ')';
-  }
-  if (err && err.body) {
-    const bodyStr = typeof err.body === 'string' ? err.body : JSON.stringify(err.body);
-    msg += ' Тело: ' + bodyStr;
-  }
-  // Если есть response и он ещё не обработан
-  if (err && err.response && typeof err.response === 'object') {
-    const resp = err.response;
-    if (resp.status !== undefined) {
-      const statusText = resp.statusText ? ' ' + resp.statusText : '';
-      msg += ' (статус ответа: ' + resp.status + statusText + ')';
-    }
-    // Если тело не было извлечено, но есть promise, не пытаемся его читать здесь
-  }
-  return msg;
-}
-
 async function loadComboRecent() {
   if (!$comboRecent || !$comboRecentBody) return;
   if ($comboRecentStatus) $comboRecentStatus.textContent = 'Загружаю последние запросы…';
