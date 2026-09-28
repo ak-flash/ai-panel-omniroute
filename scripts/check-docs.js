@@ -15,7 +15,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const CODE_DIRS = ['src', 'providers', 'public', 'scripts'];
 const CODE_FILES = ['server.js'];
-const MARKDOWN_FILES = ['README.md', 'IMPROVEMENT_PLAN.md'];
+const MARKDOWN_FILES = ['README.md'];
 
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
