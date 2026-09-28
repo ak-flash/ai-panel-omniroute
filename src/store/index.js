@@ -56,7 +56,6 @@ const STORE_KEYS = [
   'dlgProvider',
   'dlgTab',
   'modelsProvider',
-  'statsProvider',
   'agentrouterDayBalance',
   'agentrouterReleaseHoursUtc',
   'notificationThresholds',

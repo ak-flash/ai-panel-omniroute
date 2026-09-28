@@ -366,26 +366,6 @@
   background: var(--surface);
 }
 
-/* Селектор провайдера статистики в шапке карточки */
-.stats-provider-select {
-  display: inline-flex;
-}
-
-.stats-provider-select select {
-  font: inherit;
-  font-size: var(--fs-sm);
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 3px 8px;
-  cursor: pointer;
-}
-
-.stats-provider-select select:hover {
-  border-color: var(--border-strong, var(--border));
-}
-
 /* Имя провайдера как ссылка на его сайт — без подчёркивания, в цвете ссылки */
 .provider-site-link {
   color: inherit;

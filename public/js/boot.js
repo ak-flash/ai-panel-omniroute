@@ -79,15 +79,8 @@ async function boot() {
     const cfg = await loadAppConfig();
     if (cfg) {
       session.providers = Array.isArray(cfg.providers) ? cfg.providers : [];
-      // Провайдер статистики: сохранённый выбор → активный от сервера → первый
-      let savedStatsProviderId = '';
-      try {
-        savedStatsProviderId = vaultGet('statsProvider') || '';
-      } catch {
-        /* нет хранилища */
-      }
+      // Провайдер статистики: активный от сервера → первый доступный
       session.activeProvider =
-        session.providers.find(p => p.id === savedStatsProviderId) ||
         session.providers.find(p => p.id === cfg.activeProvider) ||
         session.providers[0] ||
         PROVIDER_FALLBACK;

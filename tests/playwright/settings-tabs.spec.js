@@ -17,7 +17,6 @@ const EMPTY_CONFIG = {
     dlgProvider: 'xkiro',
     dlgTab: '',
     modelsProvider: '',
-    statsProvider: '',
     notificationThresholds: '',
     agentrouterUserId: '',
     agentrouterReleaseHoursUtc: '',

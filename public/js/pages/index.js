@@ -9,9 +9,9 @@ import { $id, span, GAP } from '../dom.js';
 import { setStatus, touchUpdated } from '../topbar.js';
 import { showBanner, hideBanner } from '../banner.js';
 import { providerRequest } from '../api.js';
-import { keyForProvider, vaultGetJson, vaultSet } from '../settings.js';
+import { keyForProvider, vaultGetJson } from '../settings.js';
 import { onEvent } from '../events.js';
-import { rebootPage, start } from '../boot.js';
+import { start } from '../boot.js';
 import { fmtUsd, compact, dur, num, pct, barClass } from '../formatters.js';
 import { loadComboList, comboTargets } from '../combos.js';
 import { createWalletCard } from '../cards/wallet-card.js';
@@ -27,7 +27,6 @@ import { evaluateAll } from '../notifications.js';
 // Статичные элементы страницы — доступны на момент eval модуля
 const $cards = $id('cards');
 const $statsProvider = $id('stats-provider');
-const $statsProviderSelect = $id('stats-provider-select');
 const $setup = $id('setup');
 const $planBadge = $id('plan-badge');
 const $walletBalance = $id('wallet-balance');
@@ -104,8 +103,8 @@ function checkNotifications() {
   }
 }
 
-// Бейдж имени провайдера в шапке карточки статистики. Сам выбор
-// провайдера выполняется в boot() по сохранённому значению (statsProvider).
+// Бейдж имени провайдера в шапке карточки статистики. Активный провайдер
+// выбирается в boot() по серверному activeProvider (или первый доступный).
 function renderProviderLabel() {
   if (!$statsProvider) return;
   const p = session.activeProvider || PROVIDER_FALLBACK;
@@ -122,41 +121,6 @@ function renderProviderLabel() {
   } else {
     $statsProvider.textContent = name;
   }
-  renderStatsProviderSelect();
-}
-
-/**
- * Селектор провайдера статистики (P3-2). Показываем только тех, у кого
- * есть ключ: выбор без ключа давал бы вечный баннер «проверьте ключ».
- */
-function renderStatsProviderSelect() {
-  if (!$statsProviderSelect) return;
-  const list = session.providers.filter(p => keyForProvider(p.id) || p.hasKey);
-  if (list.length < 2) {
-    $statsProviderSelect.hidden = true;
-    $statsProviderSelect.replaceChildren();
-    return;
-  }
-  $statsProviderSelect.hidden = false;
-  $statsProviderSelect.replaceChildren();
-  for (const p of list) {
-    const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.name || p.id;
-    opt.selected = p.id === (session.activeProvider || {}).id;
-    $statsProviderSelect.appendChild(opt);
-  }
-}
-
-function initStatsProviderSelect() {
-  if (!$statsProviderSelect) return;
-  $statsProviderSelect.addEventListener('change', () => {
-    const id = $statsProviderSelect.value;
-    const p = session.providers.find(item => item.id === id);
-    if (!p || (session.activeProvider && session.activeProvider.id === id)) return;
-    session.activeProvider = p;
-    void vaultSet('statsProvider', id).then(rebootPage);
-  });
 }
 
 // Окна последнего ответа usage (используются setWindow)
@@ -561,10 +525,8 @@ async function loadIndexComboFirst() {
 
 export async function init() {
   renderProviderLabel();
-  initStatsProviderSelect();
   renderAgentRouterRelease();
-  // Экран «Нужен ключ» — только если ключей нет ни у одного провайдера:
-  // иначе селектор провайдера скрыт вместе с карточками и не переключиться
+  // Экран «Нужен ключ» — только если ключей нет ни у одного провайдера
   const hasAnyKey =
     Boolean(keyForProvider(session.activeProvider.id)) ||
     session.activeProvider.hasKey ||
@@ -583,8 +545,8 @@ export async function init() {
   }
 
   $setup.hidden = true;
-  // Полосу статистики показываем сразу (селектор провайдера должен быть
-  // доступен и когда загрузка упала — например, у активного нет ключа)
+  // Полосу статистики показываем сразу — даже если загрузка упала
+  // (например, у активного провайдера нет ключа)
   $cards.hidden = false;
   // Страница не ждёт провайдеров: карточка помечается «загружается» и
   // догружается сама (P3-1) — иначе самый медленный ответ держал весь

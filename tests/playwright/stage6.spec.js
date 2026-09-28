@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { mockProviders, mockCombos, XKIRO_USAGE, configResponse } from './mock-api.js';
 
-// Сценарии этапа 6 плана улучшений: быстрый показ страницы, селектор
-// провайдера статистики, счётчик моделей, клавиатурная перестановка combo.
+// Сценарии этапа 6 плана улучшений: быстрый показ страницы, счётчик
+// моделей, клавиатурная перестановка combo.
 
 /** Ответ провайдера, который «думает» дольше таймаута теста. */
 async function mockSlowProvider(page, body) {
@@ -23,7 +23,7 @@ async function mockSlowProvider(page, body) {
   });
 }
 
-test.describe('Главная: быстрый показ и выбор провайдера', () => {
+test.describe('Главная: быстрый показ карточки', () => {
   test('страница видна до ответа провайдера (P3-1)', async ({ page }) => {
     await mockSlowProvider(page, XKIRO_USAGE);
     await page.goto('/');
@@ -38,53 +38,6 @@ test.describe('Главная: быстрый показ и выбор пров�
     await page.goto('/');
     await expect(page.locator('#wallet-balance')).toHaveText('$82.31');
     await expect(page.locator('#cards')).not.toHaveClass(/is-loading/);
-  });
-
-  test('селектор провайдера статистики виден при двух ключах (P3-2)', async ({ page }) => {
-    await mockProviders(page);
-    await page.goto('/');
-    const select = page.locator('#stats-provider-select');
-    await expect(select).toBeVisible();
-    await expect(select.locator('option')).toHaveCount(2);
-  });
-
-  test('выбор провайдера сохраняется и переключает карточку (P3-2)', async ({ page }) => {
-    const puts = [];
-    await page.route('**/api/config', route => {
-      if (route.request().method() === 'PUT') {
-        puts.push(JSON.parse(route.request().postData() || '{}'));
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(configResponse()),
-        });
-      }
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(configResponse()),
-      });
-    });
-    await page.route('**/api/providers/xkiro/usage', route =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(XKIRO_USAGE),
-      })
-    );
-    await page.route('**/api/providers/openrouter/usage', route =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ plan: 'free', wallet: { balance_usd: 5 }, today_usd: 0 }),
-      })
-    );
-    await page.goto('/');
-    await expect(page.locator('#stats-provider')).toHaveText('xKiro');
-    await page.locator('#stats-provider-select').selectOption('openrouter');
-    await expect(page.locator('#stats-provider')).toHaveText('OpenRouter');
-    await expect.poll(() => puts.length).toBeGreaterThan(0);
-    expect(puts.some(p => p.statsProvider === 'openrouter')).toBe(true);
   });
 });
 

@@ -66,7 +66,6 @@ const WRITABLE_KEYS = [
   'dlgProvider',
   'dlgTab',
   'modelsProvider',
-  'statsProvider',
   'notificationThresholds',
   'comboDisabled',
   'agentrouterReleaseHoursUtc',
@@ -260,7 +259,6 @@ function registerConfigRoutes(
       dlgProvider: s.dlgProvider || '',
       dlgTab: s.dlgTab || '',
       modelsProvider: s.modelsProvider || '',
-      statsProvider: s.statsProvider || '',
       notificationThresholds: s.notificationThresholds || '',
       comboDisabled: s.comboDisabled || '',
       agentrouterUserId:
