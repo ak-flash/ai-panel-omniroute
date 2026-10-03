@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true
+  },
+  "include": [
+    "src/store/persistence.js",
+    "src/store/rotate-key.js",
+    "src/store/master-key.js",
+    "src/store/crypto.js",
+    "src/ttl-cache.js",
+    "src/provider-descriptors.js",
+    "src/security.js",
+    "src/auth.js",
+    "src/http.js",
+    "src/router.js",
+    "src/proxy.js",
+    "src/file-logger.js",
+    "src/coding-ratings.js",
+    "src/routes/coding-ratings.js",
+    "src/metrics.js",
+    "src/provider-client.js",
+    "src/fetch-utils.js"
+  ]
+}
