@@ -67,6 +67,10 @@ export async function providerRequest(resource, opts = {}) {
   if (!response.ok) {
     const err = new Error((data && (data.message || data.error)) || 'HTTP ' + response.status);
     err.status = response.status;
+    // Стабильный код ошибки сервера и время до повтора (circuit breaker)
+    if (data && data.code) err.code = data.code;
+    if (data && data.error) err.code = err.code || data.error;
+    if (data && data.retry_after_ms) err.retryAfterMs = data.retry_after_ms;
     throw err;
   }
   return data;

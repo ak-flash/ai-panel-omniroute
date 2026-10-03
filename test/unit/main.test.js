@@ -40,7 +40,7 @@ test('bootstrap поднимает сервер, печатает баннер �
     // Логгер пишет в каталог из окружения
     const logFile = path.join(env.AIPANEL_LOG_DIR, 'ai-panel.log');
     assert.ok(fs.existsSync(logFile), 'логгер создал файл лога');
-    assert.match(fs.readFileSync(logFile, 'utf8'), /\[boot\] конфигурация: HOST=/);
+    assert.match(fs.readFileSync(logFile, 'utf8'), /"event":"startup_config"/);
   } finally {
     await running.shutdown();
   }

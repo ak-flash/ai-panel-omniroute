@@ -103,3 +103,42 @@ test('без ключа снимок не делается; без адапте�
   await disabled.start();
   assert.equal(disabled.isRunning(), false);
 });
+
+test('сбой снимка при переданном logger пишет событие tracker_snapshot_failed', async () => {
+  const events = [];
+  const logger = () => {};
+  logger.warn = (...args) => events.push(args[args.length - 1]);
+  const store = fakeStore();
+  store.set = async () => {
+    throw new Error('disk full');
+  };
+  const t = createAgentRouterTracker({
+    getStore: async () => store,
+    provider: fakeProvider(5),
+    getCredential: async () => null,
+    ...KEYS,
+    now: () => new Date('2026-09-25T10:00:00Z'),
+    logger,
+  });
+  await t.start();
+  t.stop();
+  const event = events.find(e => e && e.event === 'tracker_snapshot_failed');
+  assert.ok(event, 'событие tracker_snapshot_failed записано');
+  assert.equal(event.reason, 'disk full');
+});
+
+test('без logger события не пишутся и не падают', async () => {
+  const store = fakeStore();
+  store.set = async () => {
+    throw new Error('disk full');
+  };
+  const t = createAgentRouterTracker({
+    getStore: async () => store,
+    provider: fakeProvider(5),
+    getCredential: async () => null,
+    ...KEYS,
+    now: () => new Date('2026-09-25T10:00:00Z'),
+  });
+  await t.start();
+  t.stop();
+});

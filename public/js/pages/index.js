@@ -7,8 +7,9 @@
 import { session, PROVIDER_FALLBACK } from '../session.js';
 import { $id, span, GAP } from '../dom.js';
 import { setStatus, touchUpdated } from '../topbar.js';
-import { showBanner, hideBanner } from '../banner.js';
+import { hideBanner } from '../banner.js';
 import { providerRequest } from '../api.js';
+import { markSuccess, markFailure, withRetry } from '../page-state.js';
 import { keyForProvider, vaultGetJson } from '../settings.js';
 import { onEvent } from '../events.js';
 import { start } from '../boot.js';
@@ -269,15 +270,18 @@ async function loadUsage() {
     btn.classList.add('spinning');
   }
   try {
-    const data = await providerRequest('usage');
+    // Сетевые сбои и transient-статусы повторяем с backoff: временный
+    // сбой провайдера не должен сразу показывать пользователю ошибку
+    const data = await withRetry(() => providerRequest('usage'));
     renderUsage(data);
     checkNotifications();
     hideBanner();
+    markSuccess();
+    touchUpdated();
   } catch (err) {
-    setStatus('err', 'Ошибка');
-    let msg = err && err.message ? err.message : String(err);
-    if (err && err.status === 401) msg += ' — проверьте ключ';
-    showBanner(msg);
+    // Данные, загруженные раньше, помечаются как stale с временем
+    // последнего успеха; без данных — «Ошибка» с причиной в баннере
+    markFailure(err);
   } finally {
     if (btn) {
       btn.disabled = false;

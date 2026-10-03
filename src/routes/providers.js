@@ -15,6 +15,7 @@
 // ============================================================
 
 const { AppError, sendJson } = require('../http');
+const { recordCache, recordProvider } = require('../metrics');
 const { createTtlCache, fingerprint } = require('../ttl-cache');
 
 function registerProviderRoutes(
@@ -34,6 +35,10 @@ function registerProviderRoutes(
   const usageCache = createTtlCache({ ttlMs: usageCacheTtlMs, now });
   const modelsCache = createTtlCache({ ttlMs: modelsCacheTtlMs, now });
 
+  /**
+   * @param {string} action
+   * @param {{req: import('http').IncomingMessage, res: import('http').ServerResponse, params: Record<string, string>}} ctx
+   */
   async function handle(action, { req, res, params }) {
     const provider = providers.find(p => p.id === params.id);
     if (!provider) throw new AppError(404, 'unknown_provider', 'Провайдер не найден');
@@ -55,7 +60,16 @@ function registerProviderRoutes(
           if (!clientKey && storeField) clientKey = s[storeField] || '';
           if (!clientUserId && userField) clientUserId = s[userField] || '';
         }
-      } catch {}
+      } catch (e) {
+        // Фолбэк учётных данных не сработал — запрос уйдёт без ключа или 401
+        try {
+          logger.warn('[providers] фолбэк ключа из хранилища не удался', {
+            event: 'provider_store_fallback_failed',
+            provider: params.id,
+            reason: e && /** @type {Error} */ (e).message ? /** @type {Error} */ (e).message : 'unknown',
+          });
+        } catch {}
+      }
     }
 
     const fn = action === 'usage' ? provider.getUsage : provider.getModels;
@@ -63,6 +77,9 @@ function registerProviderRoutes(
     // Ключ кеша — отпечаток учётных данных: смена ключа или аккаунта
     // даёт другую запись, а сам секрет в памяти не хранится.
     const cacheKey = `${params.id}:${fingerprint(clientKey)}:${fingerprint(clientUserId)}`;
+    recordProvider(params.id);
+    // Чтение без записи: если запись уже в кеше — это hit, иначе miss.
+    recordCache(cache.peek(cacheKey) !== undefined ? 'hit' : 'miss');
     let result = await cache.get(
       cacheKey,
       () => fn(clientKey, clientUserId),

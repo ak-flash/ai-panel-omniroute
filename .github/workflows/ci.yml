@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: '0 6 * * 1'
 
 permissions:
   contents: read
@@ -50,8 +52,44 @@ jobs:
       # Порог покрытия — на основной версии (.nvmrc), на остальных — обычный прогон
       - if: matrix.node == 24
         run: npm run test:ci
+      - if: matrix.node == 24
+        name: Upload coverage summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-node-${{ matrix.node }}
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 7
       - if: matrix.node != 24
         run: npm test
+
+  smoke:
+    name: Production startup smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run test:smoke
+        env:
+          AIPANEL_ENV_FILE: none
+
+  security:
+    name: Security regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run test:security
 
   playwright:
     name: Playwright
@@ -64,6 +102,13 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
       - run: npx playwright install --with-deps chromium
       - run: npm run test:playwright
       - if: failure()
@@ -74,6 +119,19 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+
+  dependencies:
+    name: Dependency freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm outdated --long || true
 
   audit:
     name: npm audit

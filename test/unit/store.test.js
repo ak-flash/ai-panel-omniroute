@@ -476,3 +476,58 @@ test('AES-GCM тег всегда 16 байт (authTagLength)', async () => {
   assert.ok(match, 'в базе есть зашифрованная запись v1');
   assert.equal(Buffer.from(match[1], 'base64').length, 16);
 });
+
+test('сбой записи → структурное событие, восстановление → store_flush_recovered', async () => {
+  const { dir } = tmpDb();
+  const events = [];
+  const logger = () => {};
+  logger.warn = (...args) => {
+    const fields = args.find(a => a && typeof a === 'object' && a.event);
+    if (fields) events.push(fields);
+  };
+  // Пишем в путь, который можно «сломать»: делаем dbPath каталогом
+  const blocker = path.join(dir, 'blocker.db');
+
+  // 1) сбой записи: dbPath — каталог, запись невозможна.
+  // Каталог создаём ПОСЛЕ открытия хранилища (иначе openDatabase упадёт на чтении)
+  const failing = await createStore({ dbPath: blocker, masterKey: KEY_A, logger });
+  fs.rmSync(blocker); // store создал файл при открытии — убираем
+  fs.mkdirSync(blocker);
+  await failing.set('omniUrl', 'https://fail.example').catch(() => {});
+  await failing.flush().catch(() => {});
+  assert.ok(
+    events.some(e => e.event === 'store_flush_failed' && typeof e.reason === 'string'),
+    'событие store_flush_failed записано'
+  );
+  assert.equal(failing.status().persisted, false);
+  await failing.close().catch(() => {});
+});
+
+test('createPersistQueue: после серии сбоев успешная запись вызывает onRecover', async () => {
+  const { createPersistQueue } = require('../../src/store/persistence');
+  const SQL = await require('sql.js')();
+  const { dir } = tmpDb();
+  // dbPath — каталог: первая запись падает, потом путь «чинится»
+  const dbPath = path.join(dir, 'store.db');
+  fs.mkdirSync(dbPath);
+  const events = { failed: 0, recovered: 0 };
+  const queue = createPersistQueue({
+    db: new SQL.Database(),
+    dbPath,
+    inMemory: false,
+    onError: () => {
+      events.failed += 1;
+    },
+    onRecover: () => {
+      events.recovered += 1;
+    },
+    retryDelaysMs: [10],
+  });
+  await queue.persist().catch(() => {});
+  assert.ok(events.failed >= 1, 'сбой записи зафиксирован');
+  fs.rmdirSync(dbPath);
+  await queue.persist();
+  await queue.flush();
+  assert.equal(events.recovered, 1, 'восстановление отмечено один раз');
+  await queue.close();
+});

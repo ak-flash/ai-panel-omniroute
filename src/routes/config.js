@@ -85,7 +85,7 @@ async function credentialFlags(snapshot, st) {
   const flags = {};
   for (const id of ADAPTER_PROVIDER_IDS) {
     const descriptor = getDescriptor(id);
-    const secretField = (descriptor.credentials.find(c => c.field === 'api_key') || {}).storeKey;
+    const secretField = (descriptor?.credentials?.find(c => c.field === 'api_key') || {}).storeKey;
     if (!secretField) continue;
     let present = false;
     if (st.accounts && typeof st.accounts.getActiveCredential === 'function') {
@@ -98,6 +98,10 @@ async function credentialFlags(snapshot, st) {
   return flags;
 }
 
+/**
+ * @param {{ add: (methods: string[] | string, path: string, handler: Function) => any }} router
+ * @param {any} options
+ */
 function registerConfigRoutes(
   router,
   {

@@ -11,7 +11,9 @@
 const { createProviderClient, bearerAuth } = require('../src/provider-client');
 const { getDescriptor } = require('../src/provider-descriptors');
 
-const descriptor = getDescriptor('experiential');
+const descriptor = /** @type {import('../src/provider-descriptors').ProviderDescriptor} */ (
+  getDescriptor('experiential')
+);
 const DEFAULT_NAME = descriptor.name;
 const DEFAULT_URL = 'https://api.experientiallabs.ai/v1';
 const REQUEST_TIMEOUT_MS = 20000;

@@ -20,6 +20,11 @@
     "src/provider-store-fields.js",
     "src/fetch-utils.js",
     "src/file-logger.js",
+    "src/security.js",
+    "src/auth.js",
+    "src/http.js",
+    "src/router.js",
+    "src/routes/**/*.js",
     "providers/**/*.js"
   ]
 }

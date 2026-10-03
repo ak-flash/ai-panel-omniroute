@@ -209,7 +209,10 @@ test('редирект upstream не следует и превращается 
     res.writeHead(302, { location: 'http://example.invalid/' });
     res.end();
   });
-  const proxy = await startProxy(upstream.url);
+  // Ожидаемая ошибка fetch — лог заглушаем, чтобы не шуметь в тестовом выводе
+  const proxy = await startProxy(upstream.url, {
+    log: { error() {}, warn() {}, info() {} },
+  });
   try {
     const res = await fetch(proxy.base + '/proxy/v1/usage', { redirect: 'manual' });
     // redirect: 'error' — апстрим с редиректом считается ошибкой

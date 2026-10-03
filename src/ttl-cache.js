@@ -28,6 +28,7 @@ const DEFAULT_ERROR_TTL_MS = 5_000;
 const DEFAULT_MAX_ENTRIES = 256;
 
 /** Прячет секрет: в ключах кеша и в отладке его быть не должно. */
+/** @param {unknown} value */
 function fingerprint(value) {
   if (!value) return '';
   return crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 16);
@@ -47,8 +48,9 @@ function createTtlCache({
   now = () => Date.now(),
 } = {}) {
   // key → { value, expiresAt, ok }
+  /** @type {Map<string, {value: unknown, expiresAt: number, ok: boolean}>} */
   const entries = new Map();
-  // key → Promise: объединение параллельных одинаковых загрузок
+  /** @type {Map<string, Promise<unknown>>} */
   const inFlight = new Map();
 
   function evictIfNeeded() {
@@ -64,6 +66,7 @@ function createTtlCache({
     }
   }
 
+  /** @param {string} key @param {unknown} value @param {boolean} ok */
   function store(key, value, ok) {
     const ttl = ok ? ttlMs : errorTtlMs;
     if (ttl <= 0) return value;
@@ -86,9 +89,9 @@ function createTtlCache({
    */
   function get(key, loader, isOk = () => true) {
     const hit = entries.get(key);
-    if (hit && hit.expiresAt > now()) return Promise.resolve(hit.value);
+    if (hit && hit.expiresAt > now()) return /** @type {Promise<T>} */ (Promise.resolve(hit.value));
     const pending = inFlight.get(key);
-    if (pending) return pending;
+    if (pending) return /** @type {Promise<T>} */ (pending);
     const promise = (async () => {
       try {
         const value = await loader();
@@ -98,13 +101,23 @@ function createTtlCache({
       }
     })();
     inFlight.set(key, promise);
-    return promise;
+    return /** @type {Promise<T>} */ (promise);
   }
 
   /** Сброс одной записи или всего кеша (новые ключи, смена учётных данных). */
-  function invalidate(key) {
+  /** @param {string} [key] */
+  function invalidateKey(key) {
     if (key === undefined) entries.clear();
     else entries.delete(key);
+  }
+
+  /** Чтение без записи и без loader'а: для метрик hit/miss. */
+  /** @param {string} [key] */
+  function peek(key) {
+    if (key === undefined) return undefined;
+    const hit = entries.get(key);
+    if (hit && hit.expiresAt > now()) return hit.value;
+    return undefined;
   }
 
   /** Диагностика для /api/ready и логов; секретов не содержит. */
@@ -115,7 +128,14 @@ function createTtlCache({
     return { entries: entries.size, fresh, inFlight: inFlight.size, ttlMs };
   }
 
-  return { get, invalidate, keys: () => [...entries.keys()], stats, fingerprint };
+  return {
+    get,
+    peek,
+    invalidate: invalidateKey,
+    keys: () => [...entries.keys()],
+    stats,
+    fingerprint,
+  };
 }
 
 module.exports = {

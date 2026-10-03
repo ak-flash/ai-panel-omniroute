@@ -58,6 +58,38 @@ test('все адаптеры отдают единый контракт', () =>
   }
 });
 
+test('все адаптеры сохраняют единый контракт rate limit upstream', async () => {
+  const fetchImpl = async () => ({ response: { status: 429 }, data: { error: 'rate_limited' } });
+  for (const provider of loadProviders({ fetchImpl })) {
+    const usage = await provider.getUsage('test-key');
+    assert.equal(usage.status, 429, provider.id + ': getUsage status');
+    assert.equal(usage.data.error, 'rate_limited', provider.id + ': getUsage error');
+
+    const models = await provider.getModels('test-key');
+    assert.equal(models.status, 429, provider.id + ': getModels status');
+    assert.equal(models.data.error, 'rate_limited', provider.id + ': getModels error');
+  }
+});
+
+test('все адаптеры скрывают malformed JSON общего клиента', async () => {
+  const fetchImpl = async () => {
+    throw Object.assign(new Error('invalid upstream JSON'), {
+      code: 'upstream_invalid_json',
+      details: { status: 502, contentType: 'text/html', snippet: '<secret-upstream-body>' },
+    });
+  };
+  for (const provider of loadProviders({
+    fetchImpl,
+    log: () => {},
+    retryNonJson: { count: 0, delayMs: 0 },
+  })) {
+    const result = await provider.getModels('test-key');
+    assert.equal(result.status, 502, provider.id + ': status');
+    assert.equal(result.data.error, 'bad_response', provider.id + ': error code');
+    assert.doesNotMatch(JSON.stringify(result.data), /secret-upstream-body/, provider.id);
+  }
+});
+
 test('PROVIDER_STORE_KEYS покрывает всех провайдеров-адаптеров', () => {
   for (const id of ADAPTER_PROVIDER_IDS) {
     assert.equal(PROVIDER_STORE_KEYS[id], DESCRIPTORS[id].storeKey, id);

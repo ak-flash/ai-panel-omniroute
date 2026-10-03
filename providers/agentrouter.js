@@ -24,7 +24,9 @@
 const { createProviderClient, bearerAuth } = require('../src/provider-client');
 const { getDescriptor } = require('../src/provider-descriptors');
 
-const descriptor = getDescriptor('agentrouter');
+const descriptor = /** @type {import('../src/provider-descriptors').ProviderDescriptor} */ (
+  getDescriptor('agentrouter')
+);
 const DEFAULT_NAME = descriptor.name;
 const DEFAULT_URL = 'https://agentrouter.org'; // вшит в фабрику — не выносится в настройки
 
@@ -46,6 +48,7 @@ const AGENTROUTER_POOL_RELEASE_TIMEZONE = 'Asia/Shanghai';
 /** Разбирает значение env (AGENTROUTER_RELEASE_HOURS_UTC): «0,8,16» → [0,8,16].
  *  Часы 0..23, дубли отбрасываются, порядок сортируется. Пустой или
  *  полностью невалидный ввод → дефолтный график провайдера. */
+/** @param {unknown} raw */
 function parsePoolReleaseHours(raw) {
   if (typeof raw !== 'string' || !raw.trim()) return AGENTROUTER_POOL_RELEASE_HOURS_UTC;
   const seen = new Set();
@@ -66,6 +69,7 @@ function getNextPoolReleaseUtc(now = new Date(), hoursUtc = AGENTROUTER_POOL_REL
   if (!valid.length) return null;
   const d = new Date(nowMs);
   const dayStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  /** @type {number|null} */
   let best = null;
   for (const h of valid) {
     let t = dayStart + h * 3600000;
@@ -103,6 +107,9 @@ const WAF_CHALLENGE_RE = /aliyun_waf|acw_sc/i;
  *   { plan, wallet: { balance_usd }, windows: [], used_usd, requests }
  * Ключ и ID из аргументов приоритетнее значений из config.
  */
+/**
+ * @param {{name?: string, apiKey?: string, userId?: string, url?: string, retryDelayMs?: number, log?: unknown, debug?: boolean, fetchImpl?: Function}} [config]
+ */
 function createAgentRouterProvider(config = {}) {
   const name = config.name || DEFAULT_NAME;
   const apiKey = config.apiKey || '';
@@ -122,6 +129,7 @@ function createAgentRouterProvider(config = {}) {
     if (uid) headers['new-api-user'] = uid;
     return headers;
   });
+  /** @param {string} key @param {string} userId */
   const buildHeaders = (key, userId) => auth.buildHeaders({ key, userId });
 
   const client = createProviderClient({
@@ -136,6 +144,9 @@ function createAgentRouterProvider(config = {}) {
     debug: config.debug === true,
     fetchImpl: config.fetchImpl,
     retryNonJson: { count: NON_JSON_RETRY_COUNT, delayMs: retryDelayMs },
+    // Ограниченный backoff с jitter для сетевых сбоев и 429/5xx —
+    // временная недоступность не должна создавать лавину запросов
+    retryTransient: { count: 2, baseDelayMs: 500, maxDelayMs: 4000 },
     // Анти-бот WAF (Aliyun) — это не токен пользователя и не навсегда
     onBadResponse: ({ status, contentType, snippet }) =>
       WAF_CHALLENGE_RE.test(String(snippet || ''))
@@ -143,6 +154,7 @@ function createAgentRouterProvider(config = {}) {
         : `Провайдер вернул не-JSON ответ (HTTP ${status}, ${contentType})`,
   });
 
+  /** @param {string} pathname @param {string} [key] @param {string} [userId] */
   const apiGet = (pathname, key = '', userId = '') =>
     client.get(pathname, {
       credential: { key: key || apiKey, userId: String(userId || configUserId || '').trim() },
@@ -153,9 +165,11 @@ function createAgentRouterProvider(config = {}) {
   // success:false (проверено на живом сайте). Наружу — понятная
   // подсказка с оригинальным сообщением сайта; причина отклонения
   // (китайский текст) — только в лог.
+  /** @param {number} status @param {any} data */
   const isAuthFailure = (status, data) =>
     status === 401 || (status === 200 && data && data.success === false);
 
+  /** @param {any} data */
   function authFailure(data) {
     const upstreamMsg = data && typeof data.message === 'string' ? data.message : '';
     if (upstreamMsg) client.log('[AgentRouter] токен отклонён:', upstreamMsg);
@@ -225,12 +239,18 @@ function createAgentRouterProvider(config = {}) {
         },
       };
     }
-    const ids = raw
+    const ids = /** @type {any[]} */ (raw)
       .map(item => (typeof item === 'string' ? item : item && item.id))
+      /** @param {any} id */
       .filter(id => typeof id === 'string' && id);
     return {
       status: 200,
-      data: { data: ids.map(id => ({ id, access_tier: 'paid' })) },
+      data: {
+        data: /** @type {string[]} */ (/** @type {unknown} */ (ids)).map(id => ({
+          id,
+          access_tier: 'paid',
+        })),
+      },
     };
   }
 

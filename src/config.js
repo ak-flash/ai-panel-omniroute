@@ -41,6 +41,7 @@ const ENV_VARS = Object.freeze([
 ]);
 
 class ConfigError extends Error {
+  /** @param {string} message */
   constructor(message) {
     super(message);
     this.name = 'ConfigError';
@@ -50,8 +51,10 @@ class ConfigError extends Error {
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const FALSE_VALUES = new Set(['', '0', 'false', 'no', 'off']);
 
+/** @param {unknown} value */
 const text = value => String(value == null ? '' : value).trim();
 
+/** @param {string} name @param {unknown} raw */
 function parseBoolean(name, raw) {
   const value = text(raw).toLowerCase();
   if (TRUE_VALUES.has(value)) return true;
@@ -59,6 +62,7 @@ function parseBoolean(name, raw) {
   throw new ConfigError(`${name}: ожидается true или false, получено «${raw}»`);
 }
 
+/** @param {unknown} raw */
 function parsePort(raw) {
   const value = text(raw);
   if (!value) return DEFAULT_PORT;
@@ -69,6 +73,7 @@ function parsePort(raw) {
   return port;
 }
 
+/** @param {string} name @param {unknown} raw */
 function parseOrigin(name, raw) {
   const value = text(raw);
   if (!value) return '';
@@ -84,6 +89,7 @@ function parseOrigin(name, raw) {
   return url.origin;
 }
 
+/** @param {string} name @param {unknown} raw */
 function parseOriginList(name, raw) {
   return text(raw)
     .split(',')
@@ -93,6 +99,7 @@ function parseOriginList(name, raw) {
 }
 
 /** Hostname в форме URL.hostname (нижний регистр, IPv6 в скобках); порт отбрасывается. */
+/** @param {string} name @param {unknown} raw */
 function parseHostname(name, raw) {
   const value = text(raw);
   try {
@@ -102,6 +109,7 @@ function parseHostname(name, raw) {
   throw new ConfigError(`${name}: некорректное имя хоста «${value}»`);
 }
 
+/** @param {string} name @param {unknown} raw */
 function parseHostList(name, raw) {
   return text(raw)
     .split(',')
@@ -110,6 +118,7 @@ function parseHostList(name, raw) {
     .map(item => parseHostname(name, item));
 }
 
+/** @param {unknown} raw */
 function parseAuthToken(raw) {
   const value = text(raw);
   if (value && value.length < MIN_AUTH_TOKEN_LENGTH) {
@@ -121,6 +130,7 @@ function parseAuthToken(raw) {
 }
 
 /** Время жизни кеша ответов провайдера, мс; 0 — кеш выключен. */
+/** @param {string} name @param {unknown} raw @param {number} fallback */
 function parseDuration(name, raw, fallback) {
   const value = text(raw);
   if (!value) return fallback;
@@ -132,11 +142,13 @@ function parseDuration(name, raw, fallback) {
 }
 
 /** Относительные пути считаются от корня проекта, а не от cwd процесса. */
+/** @param {unknown} raw @param {string} fallback */
 function parsePath(raw, fallback) {
   const value = text(raw);
   return value ? path.resolve(ROOT_DIR, value) : fallback;
 }
 
+/** @param {unknown} raw */
 function parseMasterKey(raw) {
   const value = text(raw);
   if (value && !/^[a-f0-9]{64}$/i.test(value)) {
@@ -146,6 +158,7 @@ function parseMasterKey(raw) {
 }
 
 /** Путь к env-файлу: AIPANEL_ENV_FILE, «none» отключает чтение. */
+/** @param {NodeJS.ProcessEnv} [env] */
 function resolveEnvFile(env = process.env) {
   const value = text(env.AIPANEL_ENV_FILE);
   if (value.toLowerCase() === 'none') return null;
@@ -153,6 +166,7 @@ function resolveEnvFile(env = process.env) {
 }
 
 /** Каталог логов вычисляется отдельно: он нужен и при ошибке конфигурации. */
+/** @param {NodeJS.ProcessEnv} [env] */
 function resolveLogDir(env = process.env) {
   return parsePath(env.AIPANEL_LOG_DIR, path.join(ROOT_DIR, 'logs'));
 }
@@ -162,6 +176,7 @@ function resolveLogDir(env = process.env) {
  * окружение (PM2, docker, системное) приоритетнее файла, как в dotenv.
  * Возвращает имена переменных, взятых из файла; null — файла нет.
  */
+/** @param {string} filePath @param {NodeJS.ProcessEnv} [env] @returns {string[]|null} */
 function loadEnvFile(filePath, env = process.env) {
   if (!filePath || !fs.existsSync(filePath)) return null;
   const applied = [];
@@ -194,12 +209,14 @@ function loadEnvFile(filePath, env = process.env) {
 }
 
 /** Откуда взято значение переменной — для диагностики старта. */
+/** @param {string} name @param {NodeJS.ProcessEnv} env @param {string[]} [fileKeys] */
 function describeEnvSource(name, env, fileKeys = []) {
   if (fileKeys.includes(name)) return 'env-файл';
   return text(env[name]) ? 'окружение' : 'по умолчанию';
 }
 
 /** Разбирает и валидирует окружение; при ошибке бросает ConfigError. */
+/** @param {NodeJS.ProcessEnv} [env] @returns {Record<string, unknown>} */
 function loadConfig(env = process.env) {
   const publicOrigin = parseOrigin('PUBLIC_ORIGIN', env.PUBLIC_ORIGIN);
   const host = text(env.HOST) || (publicOrigin ? '0.0.0.0' : '127.0.0.1');

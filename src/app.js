@@ -136,6 +136,7 @@ function createApp({
     getStore,
     getBuiltinClientId: () => config.googleClientId,
     getBuiltinClientSecret: () => config.googleClientSecret,
+    logger: appLog,
   });
   const tracker = createAgentRouterTracker({
     getStore,
@@ -144,6 +145,7 @@ function createApp({
     storeKey: PROVIDER_STORE_KEYS.agentrouter,
     userField: PROVIDER_STORE_USER_FIELDS.agentrouter,
     balanceKey: AGENTROUTER_DAY_BALANCE_KEY,
+    logger: appLog,
   });
 
   const router = new Router();
@@ -158,7 +160,15 @@ function createApp({
     let storeStatus = { open: false, persisted: false };
     try {
       storeStatus = (await getStore()).status();
-    } catch {}
+    } catch (e) {
+      // /api/ready ответит 503 — причина должна остаться в логе
+      try {
+        appLog('[ready] не удалось получить статус хранилища', {
+          event: 'ready_store_status_failed',
+          reason: e && e.message ? e.message : 'unknown',
+        });
+      } catch {}
+    }
     const trackerOk = !tracker.enabled || tracker.isRunning();
     const ready = Boolean(storeStatus.open && storeStatus.persisted && trackerOk);
     sendJson(

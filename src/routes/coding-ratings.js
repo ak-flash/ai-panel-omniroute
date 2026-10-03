@@ -10,8 +10,15 @@ const { createCodingRatings } = require('../coding-ratings');
  *   3) ключ провайдера OpenRouter из серверного хранилища
  *      (активный аккаунт → legacy-поле openrouterKey).
  */
+/**
+ * @param {{req: import('http').IncomingMessage, getStore: () => Promise<any>}} ctx
+ * @returns {Promise<string>}
+ */
 async function resolveOpenRouterKey({ req, getStore }) {
-  const apiKey = req.headers['x-openrouter-api-key'] || req.headers['x-api-key'] || '';
+  const apiKey =
+    /** @type {string|undefined} */ (req.headers['x-openrouter-api-key']) ||
+    /** @type {string|undefined} */ (req.headers['x-api-key']) ||
+    '';
   if (apiKey) return apiKey;
   if (req.method === 'POST') {
     try {
@@ -37,28 +44,46 @@ async function resolveOpenRouterKey({ req, getStore }) {
   return '';
 }
 
+/**
+ * @param {{ add: (methods: string[] | string, path: string, handler: Function) => any }} router
+ * @param {{ getStore?: () => Promise<any>, logger?: Console, cachePath?: string }} [options]
+ */
 function registerCodingRatingsRoutes(router, { getStore, logger = console, cachePath } = {}) {
   const { getCodingRatings, refreshCodingRatings } = createCodingRatings({ cachePath, logger });
 
-  router.add(['GET', 'HEAD'], '/api/coding-ratings', async ({ res }) => {
-    const data = await getCodingRatings();
-    return sendJson(res, 200, data, { 'cache-control': 'no-store' });
-  });
-
-  router.add(['POST'], '/api/coding-ratings/refresh', async ({ req, res }) => {
-    // Ключ можно прислать с запросом; иначе сервер берёт сохранённый
-    // ключ провайдера OpenRouter из настроек.
-    const apiKey = await resolveOpenRouterKey({ req, getStore });
-    try {
-      const fresh = await refreshCodingRatings({ apiKey });
-      return sendJson(res, 200, fresh, { 'cache-control': 'no-store' });
-    } catch (err) {
-      const status = err.status || 502;
-      const code = err.code || 'refresh_failed';
-      logger.warn && logger.warn('[coding-ratings] refresh failed: ' + err.message);
-      throw new AppError(status, code, err.message);
+  router.add(
+    ['GET', 'HEAD'],
+    '/api/coding-ratings',
+    /** @param {{res: import('http').ServerResponse}} ctx */
+    async ({ res }) => {
+      const data = await getCodingRatings();
+      return sendJson(res, 200, data, { 'cache-control': 'no-store' });
     }
-  });
+  );
+
+  router.add(
+    ['POST'],
+    '/api/coding-ratings/refresh',
+    /** @param {{req: import('http').IncomingMessage, res: import('http').ServerResponse}} ctx */
+    async ({ req, res }) => {
+      // Ключ можно прислать с запросом; иначе сервер берёт сохранённый
+      // ключ провайдера OpenRouter из настроек.
+      const apiKey = await resolveOpenRouterKey({
+        req,
+        getStore: /** @type {() => Promise<any>} */ (getStore),
+      });
+      try {
+        const fresh = await refreshCodingRatings({ apiKey });
+        return sendJson(res, 200, fresh, { 'cache-control': 'no-store' });
+      } catch (err) {
+        const e = /** @type {Error & { code?: string, status?: number, message?: string }} */ (err);
+        const status = e.status || 502;
+        const code = e.code || 'refresh_failed';
+        logger.warn && logger.warn('[coding-ratings] refresh failed: ' + (e.message || ''));
+        throw new AppError(status, code, e.message || 'refresh failed');
+      }
+    }
+  );
 }
 
 module.exports = { registerCodingRatingsRoutes, resolveOpenRouterKey };

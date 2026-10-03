@@ -67,8 +67,8 @@ test('не-JSON ответ даёт 502 bad_response, а не сырое тел�
   assert.doesNotMatch(JSON.stringify(result.data), /заглушка/);
 });
 
-test('сеть и таймаут дают 502 provider_error с причиной', async () => {
-  const err = new Error('таймаут');
+test('сеть и таймаут дают 502 provider_error с кодом классификации', async () => {
+  const err = new Error('сбой соединения');
   err.cause = new Error('socket hang up');
   const lines = [];
   const client = createProviderClient({
@@ -80,11 +80,73 @@ test('сеть и таймаут дают 502 provider_error с причиной
   const result = await client.get('/x');
   assert.equal(result.status, 502);
   assert.equal(result.data.error, 'provider_error');
-  assert.equal(result.data.message, 'таймаут');
+  assert.equal(result.data.code, 'provider_unreachable');
+  assert.equal(result.data.message, 'сбой соединения');
   assert.ok(
     lines.some(line => line.includes('socket hang up')),
     'причина в логе'
   );
+});
+
+test('таймаут классифицируется как provider_timeout', async () => {
+  const err = Object.assign(new Error('Таймаут при запросе'), {
+    code: 'upstream_timeout',
+  });
+  const client = createProviderClient({
+    name: 'P',
+    upstream: 'https://example.test',
+    fetchImpl: stubFetch([err]).impl,
+  });
+  const result = await client.get('/x');
+  assert.equal(result.data.error, 'provider_error');
+  assert.equal(result.data.code, 'provider_timeout');
+});
+
+test('retryTransient: сетевые ошибки повторяются с растущей задержкой', async () => {
+  const err = () => Object.assign(new Error('ECONNRESET'), { code: 'upstream_error' });
+  const fetch = stubFetch([err(), err(), ok(200, { ok: 1 })]);
+  const sleeps = [];
+  const client = createProviderClient({
+    name: 'P',
+    upstream: 'https://example.test',
+    fetchImpl: fetch.impl,
+    retryTransient: {
+      count: 2,
+      baseDelayMs: 100,
+      maxDelayMs: 800,
+      sleep: async ms => sleeps.push(ms),
+    },
+  });
+  const result = await client.get('/x');
+  assert.equal(result.status, 200);
+  assert.equal(fetch.calls.length, 3, 'две неудачи и один успех');
+  assert.equal(sleeps.length, 2);
+  assert.ok(sleeps[0] >= 50 && sleeps[0] <= 100, 'первая задержка в диапазоне jitter');
+  assert.ok(sleeps[1] >= 100 && sleeps[1] <= 200, 'вторая задержка удваивается');
+});
+
+test('retryTransient: 5xx повторяется и после исчерпания возвращается как есть', async () => {
+  const fetch = stubFetch([ok(503, { error: 'up' })]);
+  const client = createProviderClient({
+    name: 'P',
+    upstream: 'https://example.test',
+    fetchImpl: fetch.impl,
+    retryTransient: { count: 2, baseDelayMs: 10, maxDelayMs: 20, sleep: async () => {} },
+  });
+  const result = await client.get('/x');
+  assert.equal(result.status, 503);
+  assert.equal(fetch.calls.length, 3, 'исчерпаны все повторы');
+});
+
+test('retryTransient: без опции transient-ответ не повторяется', async () => {
+  const fetch = stubFetch([ok(500, {})]);
+  const client = createProviderClient({
+    name: 'P',
+    upstream: 'https://example.test',
+    fetchImpl: fetch.impl,
+  });
+  await client.get('/x');
+  assert.equal(fetch.calls.length, 1);
 });
 
 test('повторы не-JSON с HTTP 200: столько попыток, сколько разрешено', async () => {
@@ -151,6 +213,65 @@ test('debug-лог маскирует секреты', async () => {
   await client.get('/x', { credential: { key: 'secret-key' } });
   assert.ok(lines.join('').includes('***'), 'значение замаскировано');
   assert.ok(!lines.join('').includes('secret-key'), 'секрет не утёк');
+});
+
+test('circuit breaker открывается после сетевых ошибок и закрывается после cooldown', async () => {
+  let now = 0;
+  const logs = [];
+  const log = (...a) => logs.push(a);
+  log.info = (...a) => logs.push(['info', ...a]);
+  const fetch = stubFetch([new Error('timeout'), new Error('timeout'), ok(200, { ok: true })]);
+  const client = createProviderClient({
+    name: 'P',
+    upstream: 'https://example.test',
+    log,
+    fetchImpl: fetch.impl,
+    circuitBreaker: { failureThreshold: 2, cooldownMs: 1000, now: () => now },
+  });
+  assert.equal((await client.get('/x')).data.error, 'provider_error');
+  assert.equal((await client.get('/x')).data.error, 'provider_error');
+  // breaker открылся — структурное событие с провайдером и cooldown
+  const opened = logs.find(a => a[1] && a[1].event === 'circuit_breaker_open');
+  assert.ok(opened, 'событие circuit_breaker_open записано');
+  assert.equal(opened[1].provider, 'P');
+  assert.equal(opened[1].cooldownMs, 1000);
+  const blocked = await client.get('/x');
+  assert.equal(blocked.status, 503);
+  assert.equal(blocked.data.error, 'provider_circuit_open');
+  assert.equal(fetch.calls.length, 2);
+  assert.ok(
+    logs.some(a =>
+      a.some(f => f && typeof f === 'object' && f.event === 'circuit_breaker_blocked')
+    ),
+    'заблокированный запрос отмечен событием'
+  );
+  now = 1000;
+  assert.deepEqual(await client.get('/x'), { status: 200, data: { ok: true } });
+  assert.equal(fetch.calls.length, 3);
+  assert.ok(
+    logs.some(a => a[1] && a[1].event === 'circuit_breaker_reset'),
+    'восстановление после cooldown отмечено событием'
+  );
+});
+
+test('circuit breaker учитывает 429 и upstream 5xx, но сбрасывается успешным ответом', async () => {
+  let now = 0;
+  const fetch = stubFetch([
+    ok(429, { error: 'rate_limited' }),
+    ok(502, { error: 'upstream' }),
+    ok(200, { ok: true }),
+  ]);
+  const client = createProviderClient({
+    name: 'P',
+    upstream: 'https://example.test',
+    fetchImpl: fetch.impl,
+    circuitBreaker: { failureThreshold: 2, cooldownMs: 1000, now: () => now },
+  });
+  assert.equal((await client.get('/x')).status, 429);
+  assert.equal((await client.get('/x')).status, 502);
+  assert.equal((await client.get('/x')).data.error, 'provider_circuit_open');
+  now = 1000;
+  assert.equal((await client.get('/x')).status, 200);
 });
 
 test('схемы авторизации', () => {

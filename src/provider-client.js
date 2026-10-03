@@ -11,8 +11,9 @@
 //   { status: 502, data: { error: 'bad_response',   … } }
 //                     — провайдер ответил не-JSON (WAF-заглушка,
 //                       страница ошибки, прокси);
-//   { status: 502, data: { error: 'provider_error', … } }
-//                     — сеть, DNS, таймаут, оборванное тело.
+//   { status: 502, data: { error: 'provider_error', code, … } }
+//                     — сеть, DNS, таймаут, оборванное тело;
+//                       code: provider_timeout | provider_unreachable.
 //
 // Тело HTML-заглушки в интерфейс не попадает: одна строка с
 // обрезкой уходит в лог сервера, по ней видно, кто отвечает.
@@ -28,6 +29,7 @@ const { normalizeLog } = require('./file-logger');
 const DEFAULT_TIMEOUT_MS = 20_000;
 
 /** Маскирует значения секретных заголовков для debug-лога. */
+/** @param {Record<string, string>} headers @param {string[]} secrets */
 function maskHeaders(headers, secrets) {
   const out = { ...headers };
   for (const name of secrets) {
@@ -59,10 +61,15 @@ function maskHeaders(headers, secrets) {
  * @property {*} [log]             логгер (нормализуется через normalizeLog)
  * @property {boolean} [debug]     подробный лог запросов и ответов
  * @property {Function} [fetchImpl] подмена fetchJson (тесты)
+ * @property {{count?: number, baseDelayMs?: number, maxDelayMs?: number, sleep?: (ms: number) => Promise<void>}} [retryTransient]
+ *   exponential backoff с jitter для повторяемых сетевых ошибок и 429/5xx;
+ *   по умолчанию повторов нет
  * @property {{count?: number, delayMs?: number, sleep?: (ms: number) => Promise<void>}} [retryNonJson]
  *   повтор не-JSON с HTTP 200 (CDN-заглушки); по умолчанию повторов нет
  * @property {(info: BadResponseInfo) => string} [onBadResponse]
  *   своё сообщение для панели вместо общего текста (P2-1)
+ * @property {{failureThreshold?: number, cooldownMs?: number, now?: () => number}} [circuitBreaker]
+ *   размыкатель для повторяемых сетевых/5xx/429 сбоев
  */
 
 /**
@@ -75,7 +82,7 @@ function maskHeaders(headers, secrets) {
 /**
  * @typedef {object} ProviderResponse
  * @property {number} status код ответа upstream (502 — наш синтетический код)
- * @property {any} data      JSON провайдера либо { error, message }
+ * @property {any} data      JSON провайдера либо { error, code?, message }
  */
 
 /**
@@ -99,6 +106,9 @@ function maskHeaders(headers, secrets) {
  *   debug        — подробный лог запросов и ответов
  *   fetchImpl    — подмена fetchJson (тесты)
  *   extraHeaders — заголовки поверх стандартных (свой User-Agent)
+ *   retryTransient — { count, baseDelayMs, maxDelayMs, sleep }:
+ *                   ограниченный exponential backoff с jitter для
+ *                   сетевых ошибок и transient-статусов (429/5xx)
  *   retryNonJson — { count, delayMs, sleep }: повтор не-JSON с HTTP 200
  *                   (CDN-заглушки); по умолчанию повторов нет
  *   onBadResponse — ({ status, contentType, snippet }) => сообщение для
@@ -121,8 +131,10 @@ function createProviderClient(
     log,
     debug = false,
     fetchImpl,
-    retryNonJson = null,
-    onBadResponse = null,
+    retryNonJson,
+    retryTransient,
+    onBadResponse,
+    circuitBreaker,
   } = /** @type {ProviderClientOptions} */ ({})
 ) {
   const base = String(upstream || '').replace(/\/+$/, '');
@@ -134,6 +146,61 @@ function createProviderClient(
       : () => /** @type {Record<string, string>} */ ({});
   const maskSecrets = auth.maskSecrets || ['authorization', 'x-api-key', 'new-api-user'];
   const extraHeaders = auth.extraHeaders || {};
+  /** @type {null | {failures: number, openedAt: number|null, threshold: number, cooldownMs: number, now: () => number}} */
+  const breaker = circuitBreaker
+    ? {
+        failures: 0,
+        openedAt: null,
+        threshold: Math.max(1, Number(circuitBreaker.failureThreshold) || 3),
+        cooldownMs: Math.max(0, Number(circuitBreaker.cooldownMs) || 30000),
+        now: circuitBreaker.now || Date.now,
+      }
+    : null;
+  /** @param {number} status */
+  const isTransientStatus = status => status === 429 || status >= 500;
+  const resetBreaker = () => {
+    if (breaker) breaker.failures = 0;
+  };
+  const registerFailure = () => {
+    if (!breaker) return;
+    breaker.failures += 1;
+    if (breaker.failures >= breaker.threshold && breaker.openedAt === null) {
+      breaker.openedAt = breaker.now();
+      write(
+        `[${name}] circuit breaker открыт после ${breaker.failures} сбоев,` +
+          ` пауза ${breaker.cooldownMs} мс`,
+        {
+          event: 'circuit_breaker_open',
+          provider: name,
+          failures: breaker.failures,
+          cooldownMs: breaker.cooldownMs,
+        }
+      );
+    }
+  };
+  const circuitResponse = () => {
+    if (!breaker || breaker.openedAt === null) return null;
+    const elapsed = breaker.now() - breaker.openedAt;
+    if (elapsed >= breaker.cooldownMs) {
+      breaker.openedAt = null;
+      breaker.failures = 0;
+      write(`[${name}] circuit breaker закрыт после паузы, пробую снова`, {
+        event: 'circuit_breaker_reset',
+        provider: name,
+      });
+      return null;
+    }
+    const retryAfterMs = breaker.cooldownMs - elapsed;
+    write.info(`[${name}] запрос заблокирован открытым circuit breaker`, {
+      event: 'circuit_breaker_blocked',
+      provider: name,
+      retry_after_ms: retryAfterMs,
+    });
+    return {
+      status: 503,
+      data: { error: 'provider_circuit_open', retry_after_ms: retryAfterMs },
+    };
+  };
 
   /** @param {ProviderCredential} [credential] */
   const authHeaders = credential => {
@@ -163,6 +230,11 @@ function createProviderClient(
    * GET с авторизацией и стандартной обработкой ошибок.
    * @returns {Promise<ProviderResponse>}
    */
+  /**
+   * @param {string} pathname
+   * @param {{credential?: ProviderCredential, base?: string, query?: Record<string, unknown>}} [options]
+   * @returns {Promise<ProviderResponse>}
+   */
   async function get(
     pathname,
     {
@@ -172,16 +244,37 @@ function createProviderClient(
     } = /** @type {{credential?: ProviderCredential, base?: string, query?: Record<string, unknown>}} */ ({})
   ) {
     const url = buildUrl(pathname, baseOverride, query);
+    const blocked = circuitResponse();
+    if (blocked) return blocked;
     const headers = { accept: 'application/json', ...extraHeaders, ...authHeaders(credential) };
     const startedAt = Date.now();
     if (debug) {
       write.info(`[${name}] ${pathname}`, { headers: maskHeaders(headers, maskSecrets) });
     }
 
-    const retries = retryNonJson && retryNonJson.count > 0 ? retryNonJson.count : 0;
+    const retries =
+      retryNonJson && (retryNonJson.count ?? 0) > 0
+        ? /** @type {number} */ (retryNonJson.count)
+        : 0;
+    const transientRetries =
+      retryTransient && (retryTransient.count ?? 0) > 0
+        ? /** @type {number} */ (retryTransient.count)
+        : 0;
     const sleep =
+      (retryTransient && retryTransient.sleep) ||
       (retryNonJson && retryNonJson.sleep) ||
       (ms => new Promise(resolve => setTimeout(resolve, ms)));
+    // Exponential backoff с «full jitter» на верхней половине: delay = U(exp/2, exp)
+    const baseDelayMs = Math.max(0, Number(retryTransient && retryTransient.baseDelayMs) || 500);
+    const maxDelayMs = Math.max(
+      baseDelayMs,
+      Number(retryTransient && retryTransient.maxDelayMs) || 8000
+    );
+    /** @param {number} attempt */
+    const backoffDelay = attempt => {
+      const exp = Math.min(maxDelayMs, baseDelayMs * 2 ** attempt);
+      return Math.round(exp / 2 + Math.random() * (exp / 2));
+    };
 
     for (let attempt = 0; ; attempt += 1) {
       try {
@@ -189,19 +282,38 @@ function createProviderClient(
         if (debug) {
           write.info(`[${name}] ${pathname} → ${response.status} (${Date.now() - startedAt} ms)`);
         }
-        return { status: response.status, data: data || {} };
+        const result = { status: response.status, data: data || {} };
+        if (isTransientStatus(response.status)) {
+          registerFailure();
+          if (attempt < transientRetries) {
+            const delay = backoffDelay(attempt);
+            write(
+              `[${name}] ${pathname}: HTTP ${response.status} — повтор ${attempt + 1}` +
+                ` из ${transientRetries} через ${delay} мс`
+            );
+            await sleep(delay);
+            continue;
+          }
+        } else if (response.status >= 200 && response.status < 400) resetBreaker();
+        return result;
       } catch (error) {
+        const err =
+          /** @type {Error & {code?: string, details?: {status?: number, contentType?: string, snippet?: string}}} */ (
+            error
+          );
         // Не-JSON вместо JSON: обычно HTML-заглушка защиты (Cloudflare,
         // Aliyun WAF) или страница ошибки. Такое бывает временным, и
         // немедленный повтор бесполезен против WAF с CC-защитой.
-        if (error && error.code === 'upstream_invalid_json') {
-          const { status, contentType, snippet } = error.details || {};
+        if (err && err.code === 'upstream_invalid_json') {
+          const { status, contentType, snippet } = err.details || {};
           if (status === 200 && attempt < retries) {
             write(
               `[${name}] ${pathname}: не-JSON ответ (HTTP ${status}, ${contentType}) —` +
                 ` повтор ${attempt + 1} из ${retries}`
             );
-            const delay = Number.isFinite(retryNonJson.delayMs) ? retryNonJson.delayMs : 1500;
+            const delay = Number.isFinite(retryNonJson?.delayMs)
+              ? /** @type {number} */ (retryNonJson?.delayMs)
+              : 1500;
             if (delay > 0) await sleep(delay);
             continue;
           }
@@ -221,12 +333,28 @@ function createProviderClient(
         }
 
         // Сеть / DNS / таймаут / оборванное тело
-        const msg = (error && error.message) || 'Ошибка запроса';
-        const cause = error && error.cause instanceof Error ? error.cause.message : '';
+        const msg = (err && err.message) || 'Ошибка запроса';
+        const cause =
+          err && /** @type {Error & {cause?: Error}} */ (err).cause instanceof Error
+            ? /** @type {Error & {cause?: Error}} */ (err).cause?.message || ''
+            : '';
+        if (attempt < transientRetries) {
+          const delay = backoffDelay(attempt);
+          write(
+            `[${name}] ${pathname}: сеть/таймаут — ${msg}${cause ? ' (причина: ' + cause + ')' : ''}` +
+              ` — повтор ${attempt + 1} из ${transientRetries} через ${delay} мс`
+          );
+          registerFailure();
+          await sleep(delay);
+          continue;
+        }
         write(
           `[${name}] ${pathname}: сеть/таймаут — ${msg}${cause ? ' (причина: ' + cause + ')' : ''}`
         );
-        return { status: 502, data: { error: 'provider_error', message: msg } };
+        registerFailure();
+        const code =
+          err && err.code === 'upstream_timeout' ? 'provider_timeout' : 'provider_unreachable';
+        return { status: 502, data: { error: 'provider_error', code, message: msg } };
       }
     }
   }
@@ -238,7 +366,8 @@ function createProviderClient(
  *  @returns {ProviderAuth} */
 function apiKeyAuth() {
   return {
-    buildHeaders: ({ key }) => (key ? { 'x-api-key': key } : {}),
+    buildHeaders: ({ key }) =>
+      key ? { 'x-api-key': key } : /** @type {Record<string, string>} */ ({}),
     maskSecrets: ['x-api-key'],
   };
 }
@@ -251,7 +380,9 @@ function apiKeyAuth() {
 function bearerAuth(extraHeadersFn) {
   return {
     buildHeaders: cred => {
-      const headers = cred.key ? { authorization: 'Bearer ' + cred.key } : {};
+      const headers = cred.key
+        ? { authorization: 'Bearer ' + cred.key }
+        : /** @type {Record<string, string>} */ ({});
       const extra = extraHeadersFn ? extraHeadersFn(cred) : null;
       return extra ? { ...headers, ...extra } : headers;
     },

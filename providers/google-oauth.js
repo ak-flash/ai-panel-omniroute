@@ -37,13 +37,13 @@ const REQUEST_TIMEOUT_MS = 15000;
 function buildAuthUrl({ redirectUri, state, clientId = '', authUrl = DEFAULT_AUTH_URL }) {
   const params = new URLSearchParams({
     client_id: clientId,
-    redirect_uri: redirectUri,
+    redirect_uri: redirectUri || '',
     response_type: 'code',
     scope: SCOPES,
     access_type: 'offline',
     prompt: 'consent',
     include_granted_scopes: 'true',
-    state,
+    state: state || '',
   });
   return authUrl + '?' + params.toString();
 }

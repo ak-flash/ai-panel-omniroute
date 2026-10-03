@@ -23,6 +23,8 @@
 // ============================================================
 
 const { StoreError, encryptValue, decryptValue } = require('./crypto');
+
+const STORE_SCHEMA_VERSION = 2;
 const { resolveMasterKey } = require('./master-key');
 const { openDatabase, createPersistQueue } = require('./persistence');
 const { createAccountStore } = require('./accounts');
@@ -117,16 +119,48 @@ async function createStore({
 
   const { db } = await openDatabase({ dbPath: resolvedDbPath, inMemory });
   db.run('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+  db.run(
+    'CREATE TABLE IF NOT EXISTS schema_meta (version INTEGER NOT NULL, updated_at INTEGER NOT NULL)'
+  );
+  const schemaRows = readRows(db, 'SELECT version FROM schema_meta LIMIT 1');
+  if (!schemaRows.length) {
+    db.run('INSERT INTO schema_meta (version, updated_at) VALUES (?, ?)', [
+      STORE_SCHEMA_VERSION,
+      Date.now(),
+    ]);
+  } else if (Number(schemaRows[0][0]) !== STORE_SCHEMA_VERSION) {
+    throw new StoreError(
+      'unsupported_schema',
+      'Неподдерживаемая версия схемы хранилища: ' +
+        schemaRows[0][0] +
+        ' (ожидается ' +
+        STORE_SCHEMA_VERSION +
+        '). Обновите приложение или восстановите совместимый backup.'
+    );
+  }
   const warn = (...args) => {
     if (logger && typeof logger.warn === 'function') logger.warn(...args);
   };
   const queue = createPersistQueue({
     db,
-    dbPath: resolvedDbPath,
+    dbPath: /** @type {string|undefined} */ (resolvedDbPath ?? undefined),
     inMemory,
     retryDelaysMs: persistRetryDelaysMs,
-    onError: err =>
-      warn('[store] не удалось записать базу на диск, повторю позже:', err && err.message),
+    onError: /** @type {(err: unknown) => void} */ (
+      err =>
+        warn('[store] не удалось записать базу на диск, повторю позже', {
+          event: 'store_flush_failed',
+          reason:
+            err && /** @type {Error} */ (err).message
+              ? String(/** @type {Error} */ (err).message)
+              : 'unknown',
+        })
+    ),
+    onRecover: failures =>
+      warn('[store] запись базы на диск восстановлена', {
+        event: 'store_flush_recovered',
+        failures,
+      }),
   });
 
   // ---------- Multi-Account Credentials (RFC-0003) ----------
@@ -195,17 +229,26 @@ async function createStore({
     await accountStore.migrateFromLegacyIfNeeded();
   } catch (err) {
     // Миграция не критична — продолжаем без неё
-    warn('[store] миграция legacy-ключей пропущена:', err && err.message);
+    warn('[store] миграция legacy-ключей пропущена', {
+      event: 'store_legacy_migration_skipped',
+      reason:
+        err && /** @type {Error} */ (err).message
+          ? String(/** @type {Error} */ (err).message)
+          : 'unknown',
+    });
   }
 
   // ---------- Проверка целостности и master-ключа при открытии ----------
   // Неверный ключ не расшифровывает ни одну запись разом; повреждение
   // бьёт по части записей — по этому и различаем wrong_key / corrupted.
   const rows = readRows(db, 'SELECT key, value FROM kv');
+  /** @type {{key: string, reason: string}[]} */
   const failures = [];
   for (const [key, payload] of rows) {
     const res = decryptValue(masterKey, payload);
-    if (!res.ok) failures.push({ key, reason: res.reason });
+    if (res.ok === false) {
+      failures.push({ key: /** @type {string} */ (key), reason: res.reason });
+    }
   }
 
   if (rows.length === 0) {
@@ -261,7 +304,7 @@ async function createStore({
       await queue.persist();
     } else {
       const magic = decryptValue(masterKey, verifyRow[1]);
-      if (magic.value !== VERIFY_MAGIC) {
+      if (!magic.ok || magic.value !== VERIFY_MAGIC) {
         throw new StoreError(
           'corrupted',
           'Проверочная запись не совпадает с ожидаемой — база повреждена ' + SEE_OPERATIONS
@@ -371,4 +414,10 @@ async function createStore({
   };
 }
 
-module.exports = { createStore, STORE_KEYS, StoreError, ACTIVE_ACCOUNT_KEY };
+module.exports = {
+  createStore,
+  STORE_KEYS,
+  STORE_SCHEMA_VERSION,
+  StoreError,
+  ACTIVE_ACCOUNT_KEY,
+};

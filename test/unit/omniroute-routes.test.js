@@ -44,10 +44,13 @@ async function startRouter(store, logger) {
     validateUpstreamUrl,
     logger,
   });
+  const SILENT_LOG = { info() {}, warn() {}, error() {} };
   const server = http.createServer((req, res) => {
     const context = createRequestContext(req, res);
     const url = parseRequestUrl(req.url);
-    router.dispatch(req, res, { url }).catch(err => handleError(err, req, res, context, console));
+    router
+      .dispatch(req, res, { url })
+      .catch(err => handleError(err, req, res, context, SILENT_LOG));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   return {
@@ -115,7 +118,7 @@ test('без адресов → 400 no_omniroute_url', async () => {
 test('недоступный единственный адрес → 502 proxy_error', async () => {
   const store = await createStore({ memory: true });
   await store.set('omniUrl', 'http://127.0.0.1:1');
-  const panel = await startRouter(store);
+  const panel = await startRouter(store, { info() {}, warn() {}, error() {} });
   try {
     const res = await fetch(panel.base + '/omniroute/v1/usage');
     assert.equal(res.status, 502);

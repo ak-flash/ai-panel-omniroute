@@ -21,7 +21,9 @@
 const { createProviderClient, apiKeyAuth } = require('../src/provider-client');
 const { getDescriptor } = require('../src/provider-descriptors');
 
-const descriptor = getDescriptor('selora');
+const descriptor = /** @type {import('../src/provider-descriptors').ProviderDescriptor} */ (
+  getDescriptor('selora')
+);
 const DEFAULT_NAME = descriptor.name;
 const DEFAULT_URL = 'https://api.selora.lol'; // вшит в фабрику — не выносится в настройки
 

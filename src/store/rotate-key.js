@@ -42,20 +42,27 @@ async function rotateKey({ dbPath, oldKey, newKey } = {}) {
     lockHandle = await fs.promises.open(lockPath, 'wx');
     await lockHandle.writeFile(String(process.pid) + '\\n');
   } catch (err) {
-    if (err && err.code === 'EEXIST') {
+    if (/** @type {Error & {code?: string}} */ (err).code === 'EEXIST') {
       throw new StoreError('rotation_locked', 'Ротация уже выполняется: ' + lockPath);
     }
     throw err;
   }
 
   try {
-    return await rotateKeyLocked({ dbPath, oldKey, newKey });
+    return await rotateKeyLocked({
+      dbPath: /** @type {string} */ (dbPath),
+      oldKey: /** @type {string} */ (oldKey),
+      newKey,
+    });
   } finally {
     await lockHandle.close().catch(() => {});
     await fs.promises.unlink(lockPath).catch(() => {});
   }
 }
 
+/**
+ * @param {{dbPath: string, oldKey: string, newKey?: string}} options
+ */
 async function rotateKeyLocked({ dbPath, oldKey, newKey }) {
   assertValidMasterKey(oldKey);
   if (newKey === undefined) newKey = generateMasterKey();
@@ -123,7 +130,9 @@ async function rotateKeyLocked({ dbPath, oldKey, newKey }) {
   }
 }
 
+/** @param {string[]} argv */
 function parseArgs(argv) {
+  /** @type {Record<string, string>} */
   const args = {};
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--new') args.newKey = argv[++i];
@@ -134,23 +143,29 @@ function parseArgs(argv) {
 
 /** Ошибка уровня CLI: печатается как есть и даёт код выхода 1. */
 class RotateKeyCliError extends Error {
+  /** @param {string} message */
   constructor(message) {
     super(message);
     this.name = 'RotateKeyCliError';
   }
 }
 
+/**
+ * @param {string[]} [argv]
+ * @param {{env?: NodeJS.ProcessEnv, print?: (msg: string) => void}} [options]
+ */
 async function main(
   argv = process.argv.slice(2),
   { env = process.env, print = msg => console.log(msg) } = {}
 ) {
   const args = parseArgs(argv);
-  loadEnvFile(resolveEnvFile(env), env);
+  loadEnvFile(/** @type {string} */ (resolveEnvFile(env)), env);
   const config = loadConfig(env);
-  const dbPath = args.dbPath || config.dbPath;
+  const dbPath = /** @type {string} */ (args.dbPath || config.dbPath);
   const keyPath = dbPath + '.key';
 
-  let oldKey = config.masterKey;
+  /** @type {string|undefined} */
+  let oldKey = /** @type {string|undefined} */ (config.masterKey);
   const fromEnv = Boolean(oldKey);
   if (!oldKey && fs.existsSync(keyPath)) {
     oldKey = fs.readFileSync(keyPath, 'utf8').trim();

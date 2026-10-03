@@ -7,6 +7,12 @@ const DEFAULT_MAX_BODY = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 class AppError extends Error {
+  /**
+   * @param {number} status
+   * @param {string} code
+   * @param {string} [message]
+   * @param {{expose?: boolean, headers?: Record<string, string>, details?: unknown, cause?: unknown}} [options]
+   */
   constructor(status, code, message, options = {}) {
     super(message || code, options);
     this.name = 'AppError';
@@ -19,6 +25,7 @@ class AppError extends Error {
   }
 }
 
+/** @param {import('http').ServerResponse} res @param {number} status @param {unknown} data @param {Record<string, string>} [headers] */
 function sendJson(res, status, data, headers = {}) {
   if (res.writableEnded) return;
   res.writeHead(status, {
@@ -28,11 +35,13 @@ function sendJson(res, status, data, headers = {}) {
   res.end(JSON.stringify(data));
 }
 
+/** @param {import('http').ServerResponse} res @param {unknown} error @param {string} [requestId] */
 function sendError(res, error, requestId) {
   const appError =
     error instanceof AppError
       ? error
       : new AppError(500, 'server_error', 'Внутренняя ошибка сервера', { expose: false });
+  /** @type {Record<string, unknown>} */
   const body = {
     error: appError.code,
     message: appError.expose ? appError.message : 'Внутренняя ошибка сервера',
@@ -41,36 +50,42 @@ function sendError(res, error, requestId) {
   sendJson(res, appError.status, body, appError.headers);
 }
 
+/** @param {import('http').ServerResponse} res @param {Record<string, string>} [headers] */
 function sendNoContent(res, headers = {}) {
   if (res.writableEnded) return;
   res.writeHead(204, headers);
   res.end();
 }
 
+/** @param {import('http').IncomingMessage} req @param {{maxBytes?: number}} [options] @returns {Promise<Buffer>} */
 function readBody(req, { maxBytes = DEFAULT_MAX_BODY } = {}) {
   return new Promise((resolve, reject) => {
+    /** @type {Buffer[]} */
     const chunks = [];
     let size = 0;
     let settled = false;
-    req.on('data', chunk => {
-      if (settled) return;
-      size += chunk.length;
-      if (size > maxBytes) {
-        settled = true;
-        reject(
-          new AppError(
-            413,
-            'payload_too_large',
-            `Тело запроса превышает лимит ${Math.ceil(maxBytes / 1024 / 1024)} МБ`,
-            {
-              headers: { connection: 'close' },
-            }
-          )
-        );
-        return;
+    req.on(
+      'data',
+      /** @param {Buffer} chunk */ chunk => {
+        if (settled) return;
+        size += chunk.length;
+        if (size > maxBytes) {
+          settled = true;
+          reject(
+            new AppError(
+              413,
+              'payload_too_large',
+              `Тело запроса превышает лимит ${Math.ceil(maxBytes / 1024 / 1024)} МБ`,
+              {
+                headers: { connection: 'close' },
+              }
+            )
+          );
+          return;
+        }
+        chunks.push(chunk);
       }
-      chunks.push(chunk);
-    });
+    );
     req.on('end', () => {
       if (!settled) resolve(Buffer.concat(chunks));
     });
@@ -83,6 +98,7 @@ function readBody(req, { maxBytes = DEFAULT_MAX_BODY } = {}) {
   });
 }
 
+/** @param {import('http').IncomingMessage} req @param {{maxBytes?: number}} [options] @returns {Promise<any>} */
 async function readJson(req, options) {
   const body = await readBody(req, options);
   if (!body.length) return {};
@@ -93,12 +109,15 @@ async function readJson(req, options) {
   }
 }
 
+/** @param {import('http').IncomingMessage} req @param {import('http').ServerResponse} res @param {{timeoutMs?: number}} [options] */
 function createRequestContext(req, res, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const requestId = crypto.randomUUID();
   const startedAt = Date.now();
   res.setHeader('x-request-id', requestId);
   req.setTimeout(timeoutMs);
-  res.on('finish', () => recordRequest(res.statusCode, Date.now() - startedAt));
+  res.on('finish', () =>
+    recordRequest(res.statusCode, Date.now() - startedAt, { route: requestPath(req) })
+  );
   return { requestId, startedAt, timeoutMs };
 }
 
@@ -107,6 +126,7 @@ function createRequestContext(req, res, { timeoutMs = DEFAULT_TIMEOUT_MS } = {})
  * origin строкой, а не через base-URL: иначе «//host/path» превратился
  * бы в другой хост и другой путь. Некорректный URL — 400, а не исключение.
  */
+/** @param {string} [rawUrl] @returns {URL} */
 function parseRequestUrl(rawUrl) {
   const raw = typeof rawUrl === 'string' && rawUrl ? rawUrl : '/';
   try {
@@ -117,6 +137,7 @@ function parseRequestUrl(rawUrl) {
 }
 
 /** Путь запроса для логов; никогда не бросает. */
+/** @param {import('http').IncomingMessage} req @returns {string} */
 function requestPath(req) {
   try {
     return parseRequestUrl(req.url).pathname;
@@ -125,6 +146,7 @@ function requestPath(req) {
   }
 }
 
+/** @param {unknown} err @returns {unknown} */
 function serializeError(err) {
   if (!(err instanceof Error)) return err;
   return {
@@ -134,7 +156,9 @@ function serializeError(err) {
   };
 }
 
+/** @param {any} logger @param {string} level @param {string} event @param {Record<string, unknown>} [fields] */
 function safeLog(logger, level, event, fields = {}) {
+  /** @type {Record<string, unknown>} */
   const output = {};
   for (const [key, value] of Object.entries(fields)) {
     if (/token|secret|key|authorization|cookie/i.test(key)) continue;
@@ -145,6 +169,7 @@ function safeLog(logger, level, event, fields = {}) {
 }
 
 /** Последний рубеж обработки запроса: сам не бросает никогда. */
+/** @param {unknown} error @param {import('http').IncomingMessage} req @param {import('http').ServerResponse} res @param {{requestId?: string}} context @param {any} [logger] */
 function handleError(error, req, res, context, logger = console) {
   try {
     if (res.headersSent) {

@@ -13,6 +13,12 @@ const { AppError, readBody, sendNoContent } = require('./http');
 
 const PROXY_TIMEOUT_MS = 30000;
 
+/**
+ * @param {import('http').IncomingMessage} req
+ * @param {import('http').ServerResponse} res
+ * @param {URL} url
+ * @param {{ prefix?: string, upstream?: string, logger?: Console, debug?: boolean, body?: Buffer }} [options]
+ */
 async function handleProxy(
   req,
   res,
@@ -26,9 +32,12 @@ async function handleProxy(
   // на другом upstream после обрыва) — иначе читаем из запроса
   const body = preReadBody !== undefined ? preReadBody : await readBody(req);
   const suffix =
-    url.pathname.replace(new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '') +
-    url.search;
+    url.pathname.replace(
+      new RegExp('^' + String(prefix).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+      ''
+    ) + url.search;
   const target = upstream + suffix;
+  /** @type {Record<string, string | string[]>} */
   const fwdHeaders = {};
   for (const name of ['authorization', 'x-api-key', 'content-type', 'accept']) {
     if (req.headers[name]) fwdHeaders[name] = req.headers[name];
@@ -50,11 +59,12 @@ async function handleProxy(
   try {
     const upstreamRes = await fetch(target, {
       method: req.method,
-      headers: fwdHeaders,
-      body: body.length > 0 ? body : undefined,
+      headers: /** @type {Record<string, string>} */ (fwdHeaders),
+      body: body.length > 0 ? new Uint8Array(body) : undefined,
       signal: controller.signal,
       redirect: 'error',
     });
+    /** @type {Record<string, string>} */
     const responseHeaders = {};
     const contentType = upstreamRes.headers.get('content-type');
     if (contentType) responseHeaders['content-type'] = contentType;

@@ -28,12 +28,14 @@ const path = require('path');
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24ч
 
+/** @param {unknown} s */
 function normModelName(s) {
   return String(s || '')
     .toLowerCase()
     .replace(/[^a-z0-9.:/]/g, '');
 }
 
+/** @param {unknown} score */
 function tierFromScore(score) {
   if (score == null || typeof score !== 'number') return 'low';
   if (score >= 70) return 'top';
@@ -41,6 +43,7 @@ function tierFromScore(score) {
   return 'low';
 }
 
+/** @param {string} apiKey @param {{fetch?: typeof fetch}} [options] */
 async function fetchFromOpenRouter(apiKey, { fetch: fetchImpl = fetch } = {}) {
   const url =
     'https://openrouter.ai/api/v1/benchmarks?source=artificial-analysis&task_type=coding&max_results=100';
@@ -50,14 +53,17 @@ async function fetchFromOpenRouter(apiKey, { fetch: fetchImpl = fetch } = {}) {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    const err = new Error(`OpenRouter benchmarks HTTP ${res.status}: ${body.slice(0, 500)}`);
+    const err = /** @type {Error & { status?: number }} */ (
+      new Error(`OpenRouter benchmarks HTTP ${res.status}: ${body.slice(0, 500)}`)
+    );
     err.status = res.status;
     throw err;
   }
-  const json = await res.json();
+  const json = /** @type {any} */ (await res.json());
   const items = Array.isArray(json.data) ? json.data : [];
   if (!items.length) throw new Error('Пустой ответ benchmarks API');
 
+  /** @type {Record<string, any>} */
   const ratings = {};
   const asOf = json.meta && json.meta.as_of ? json.meta.as_of : new Date().toISOString();
   const citation =
@@ -107,8 +113,10 @@ async function fetchFromOpenRouter(apiKey, { fetch: fetchImpl = fetch } = {}) {
 /**
  * Рейтинг с кэшем: в памяти (TTL 24 ч) и в JSON-файле cachePath.
  * Возвращает { getCodingRatings, refreshCodingRatings }.
+ * @param {{ cachePath?: string, logger?: Console, fetch?: typeof fetch }} [options]
  */
 function createCodingRatings({ cachePath, logger = console, fetch: fetchImpl } = {}) {
+  /** @type {null | {updatedAt: string|null, source: string, sourceUrl: string|null, citation: string, ratings: Record<string, unknown>, cachedAt?: string, meta?: unknown}} */
   let memoryCache = null;
   let memoryCacheAt = 0;
 
@@ -128,6 +136,9 @@ function createCodingRatings({ cachePath, logger = console, fetch: fetchImpl } =
     return null;
   }
 
+  /**
+   * @param {{updatedAt: string|null, source: string, sourceUrl: string|null, citation: string, ratings: Record<string, unknown>, cachedAt?: string, meta?: unknown}} data
+   */
   async function saveCache(data) {
     if (!cachePath) return;
     try {
@@ -139,7 +150,7 @@ function createCodingRatings({ cachePath, logger = console, fetch: fetchImpl } =
     } catch (e) {
       // не критично — рейтинг остаётся в памяти
       if (logger && typeof logger.warn === 'function')
-        logger.warn('[coding-ratings] saveCache failed', e.message);
+        logger.warn('[coding-ratings] saveCache failed', /** @type {Error} */ (e).message);
     }
   }
 
@@ -155,6 +166,7 @@ function createCodingRatings({ cachePath, logger = console, fetch: fetchImpl } =
       return data;
     }
     // нет кэша — пустой онлайн-рейтинг (эвристика удалена)
+    /** @type {{updatedAt: string|null, source: string, sourceUrl: string|null, citation: string, ratings: Record<string, unknown>}} */
     const empty = {
       updatedAt: null,
       source: 'none',
@@ -168,17 +180,22 @@ function createCodingRatings({ cachePath, logger = console, fetch: fetchImpl } =
     return empty;
   }
 
+  /**
+   * @param {{ apiKey?: string }} [options]
+   */
   async function refreshCodingRatings({ apiKey } = {}) {
     const key = apiKey || '';
     if (!key) {
-      const err = new Error(
-        'Ключ OpenRouter не задан. Введите его в Настройках → Провайдер → OpenRouter и нажмите «Обновить рейтинг».'
+      const err = /** @type {Error & { code?: string, status?: number }} */ (
+        new Error(
+          'Ключ OpenRouter не задан. Введите его в Настройках → Провайдер → OpenRouter и нажмите «Обновить рейтинг».'
+        )
       );
       err.code = 'missing_api_key';
       err.status = 400;
       throw err;
     }
-    const fresh = await fetchFromOpenRouter(key, { fetch: fetchImpl });
+    const fresh = /** @type {any} */ (await fetchFromOpenRouter(key, { fetch: fetchImpl }));
     fresh.cachedAt = new Date().toISOString();
     await saveCache(fresh);
     memoryCache = fresh;

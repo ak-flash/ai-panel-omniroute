@@ -23,7 +23,9 @@
 const { createProviderClient, bearerAuth } = require('../src/provider-client');
 const { getDescriptor } = require('../src/provider-descriptors');
 
-const descriptor = getDescriptor('openrouter');
+const descriptor = /** @type {import('../src/provider-descriptors').ProviderDescriptor} */ (
+  getDescriptor('openrouter')
+);
 const DEFAULT_NAME = descriptor.name;
 const DEFAULT_URL = 'https://openrouter.ai/api/v1'; // вшит в фабрику — не выносится в настройки
 
@@ -119,7 +121,8 @@ function createOpenRouterProvider(config = {}) {
         const tc = cd.total_credits != null ? Number(cd.total_credits) : null;
         const tu = cd.total_usage != null ? Number(cd.total_usage) : null;
         if (Number.isFinite(tc) && Number.isFinite(tu)) {
-          balance = Math.round((tc - tu) * 100) / 100;
+          balance =
+            Math.round(/** @type {number} */ ((tc) - /** @type {number} */ (tu)) * 100) / 100;
           used = tu;
         }
       }

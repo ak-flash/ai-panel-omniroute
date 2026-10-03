@@ -26,6 +26,7 @@ function createAntigravityService({
   getStore,
   getBuiltinClientId,
   getBuiltinClientSecret,
+  logger = null,
 }) {
   const state = {
     token: '',
@@ -40,6 +41,15 @@ function createAntigravityService({
   let loaded = false; // refresh-связка из хранилища читается один раз
   const oauthStates = new Map(); // state → expiresAt (анти-CSRF/replay)
   let _refreshPromise = null; // дедупликация параллельных вызовов refresh()
+
+  // Логирование опционально: без logger (тесты) события не пишутся
+  const warnEvent = (event, fields = {}) => {
+    if (!logger) return;
+    try {
+      const w = typeof logger.warn === 'function' ? logger.warn : logger;
+      w(`[antigravity] ${event}`, { event, ...fields });
+    } catch {}
+  };
 
   const resetCache = () => {
     cache = { ts: 0, result: null, project: null };
@@ -86,7 +96,12 @@ function createAntigravityService({
       if (s.agProject) entries.push(['agProject', s.agProject]);
       if (s.agEmail) entries.push(['agEmail', s.agEmail]);
       if (entries.length) syncFromStore(entries);
-    } catch {}
+    } catch (e) {
+      // Хранилище недоступно: связка не загрузится, запросы квот дадут no_token
+      warnEvent('antigravity_state_load_failed', {
+        reason: e && e.message ? e.message : 'unknown',
+      });
+    }
   }
 
   /** Внутренняя реализация обновления токена. */

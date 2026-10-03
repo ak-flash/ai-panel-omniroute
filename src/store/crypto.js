@@ -23,6 +23,10 @@ const AUTH_TAG_LENGTH = 16;
 /** Ошибка хранилища: code позволяет обработчику различать случаи
  * (wrong_key, corrupted, unknown_key, store_closed, bad_master_key). */
 class StoreError extends Error {
+  /**
+   * @param {string} code
+   * @param {string} message
+   */
   constructor(code, message) {
     super(message);
     this.name = 'StoreError';
@@ -31,11 +35,13 @@ class StoreError extends Error {
 }
 
 /** Случайный master-ключ (32 байта) в hex. */
+/** @returns {string} */
 function generateMasterKey() {
   return crypto.randomBytes(32).toString('hex');
 }
 
 /** Шифрует строку под данным master-ключом. */
+/** @param {string} masterKeyHex @param {string} plaintext @returns {string} */
 function encryptValue(masterKeyHex, plaintext) {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(masterKeyHex, 'hex'), iv, {
@@ -60,6 +66,7 @@ function encryptValue(masterKeyHex, plaintext) {
  *   { ok: false, reason: 'auth' }   — подпись не сошлась (обычно неверный ключ);
  *   { ok: false, reason: 'format' } — запись не в формате v1 (повреждение).
  */
+/** @param {string} masterKeyHex @param {string} payload @returns {{ok: true, value: string}|{ok: false, reason: 'auth'|'format'}} */
 function decryptValue(masterKeyHex, payload) {
   const parts = String(payload).split(':');
   if (parts.length !== 4 || parts[0] !== FORMAT_VERSION) {

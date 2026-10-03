@@ -20,9 +20,13 @@ const MAX_FAILURES_PER_IP = 10;
 const MAX_FAILURES_GLOBAL = 100;
 const MAX_TRACKED_IPS = 10000;
 
+/** @param {unknown} value */
 const sha256 = value => crypto.createHash('sha256').update(String(value)).digest();
 
-/** Значение cookie по имени из заголовка Cookie (без зависимостей). */
+/**
+ * @param {import('http').IncomingMessage} req
+ * @param {string} [name]
+ */
 function readCookie(req, name = COOKIE_NAME) {
   const header = req.headers.cookie;
   if (typeof header !== 'string') return '';
@@ -37,6 +41,7 @@ function readCookie(req, name = COOKIE_NAME) {
  * token — AIPANEL_AUTH_TOKEN (пусто — вход отключён); now — часы (тесты).
  * Возвращает { enabled, checkToken, issueSession, verifySession,
  * sessionCookie, clearCookie, limiter }.
+ * @param {{token?: string, ttlMs?: number, now?: () => number}} [options]
  */
 function createAuth({ token = '', ttlMs = SESSION_TTL_MS, now = Date.now } = {}) {
   const enabled = Boolean(token);
@@ -45,12 +50,17 @@ function createAuth({ token = '', ttlMs = SESSION_TTL_MS, now = Date.now } = {})
     : null;
   const tokenDigest = enabled ? sha256(token) : null;
 
+  /** @param {string} payload */
   const sign = payload =>
-    crypto.createHmac('sha256', signingKey).update(payload).digest('base64url');
+    crypto
+      .createHmac('sha256', /** @type {import('crypto').BinaryLike} */ (signingKey))
+      .update(payload)
+      .digest('base64url');
 
+  /** @param {string} [candidate] */
   function checkToken(candidate) {
     if (!enabled || typeof candidate !== 'string' || !candidate) return false;
-    return crypto.timingSafeEqual(sha256(candidate), tokenDigest);
+    return crypto.timingSafeEqual(sha256(candidate), /** @type {Buffer} */ (tokenDigest));
   }
 
   function issueSession() {
@@ -60,6 +70,7 @@ function createAuth({ token = '', ttlMs = SESSION_TTL_MS, now = Date.now } = {})
     return { value: `${payload}.${sign(payload)}`, expiresAt };
   }
 
+  /** @param {unknown} value */
   function verifySession(value) {
     if (!enabled || typeof value !== 'string') return false;
     const parts = value.split('.');
@@ -71,25 +82,31 @@ function createAuth({ token = '', ttlMs = SESSION_TTL_MS, now = Date.now } = {})
     return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
   }
 
-  function sessionCookie({ secure }) {
+  /** @param {{secure?: boolean}} options */
+  function sessionCookie({ secure = false } = {}) {
     const { value } = issueSession();
     const maxAge = Math.floor(ttlMs / 1000);
     return `${COOKIE_NAME}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
   }
 
-  function clearCookie({ secure }) {
+  /** @param {{secure?: boolean}} options */
+  function clearCookie({ secure = false } = {}) {
     return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure ? '; Secure' : ''}`;
   }
 
   // ---------- Ограничение перебора ----------
+  /** @type {Map<string, {count: number, resetAt: number}>} */
   const failures = new Map(); // ip → { count, resetAt }
+  /** @type {{count: number, resetAt: number}} */
   let global = { count: 0, resetAt: 0 };
 
+  /** @param {{count: number, resetAt: number}|undefined} entry */
   function windowFor(entry) {
     return entry && entry.resetAt > now() ? entry : { count: 0, resetAt: now() + LOGIN_WINDOW_MS };
   }
 
   /** Секунды до следующей попытки; 0 — попытка разрешена. */
+  /** @param {string} ip */
   function retryAfter(ip) {
     const perIp = windowFor(failures.get(ip));
     global = windowFor(global);
@@ -100,6 +117,7 @@ function createAuth({ token = '', ttlMs = SESSION_TTL_MS, now = Date.now } = {})
     return blockedUntil ? Math.max(1, Math.ceil((blockedUntil - now()) / 1000)) : 0;
   }
 
+  /** @param {string} ip */
   function recordFailure(ip) {
     if (failures.size >= MAX_TRACKED_IPS) failures.clear();
     const perIp = windowFor(failures.get(ip));
@@ -109,6 +127,7 @@ function createAuth({ token = '', ttlMs = SESSION_TTL_MS, now = Date.now } = {})
     global.count += 1;
   }
 
+  /** @param {string} ip */
   function recordSuccess(ip) {
     failures.delete(ip);
   }

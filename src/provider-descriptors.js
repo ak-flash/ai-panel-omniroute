@@ -145,7 +145,7 @@ const PROVIDER_STORE_USER_FIELDS = Object.fromEntries(
   PROVIDER_IDS.filter(id => DESCRIPTORS[id].userField).map(id => [id, DESCRIPTORS[id].userField])
 );
 
-/** Ключ KV → [id провайдера, поле учётных данных]. */
+/** Ключ KV → [id провайдера, поле учётных данных]. @type {Record<string, [string, string]>} */
 const CREDENTIAL_FIELDS = {};
 for (const id of PROVIDER_IDS) {
   for (const { field, storeKey } of DESCRIPTORS[id].credentials || []) {
@@ -154,15 +154,19 @@ for (const id of PROVIDER_IDS) {
 }
 
 /** Ключи KV всех провайдеров (секреты и ID) — часть STORE_KEYS. */
-const PROVIDER_CREDENTIAL_STORE_KEYS = [...new Set(Object.values(PROVIDER_STORE_KEYS))].concat(
-  Object.values(PROVIDER_STORE_USER_FIELDS)
-);
+const PROVIDER_CREDENTIAL_STORE_KEYS = [
+  ...new Set(Object.values(PROVIDER_STORE_KEYS)),
+  ...Object.values(PROVIDER_STORE_USER_FIELDS).filter(
+    /** @param {string|undefined} v */ v => typeof v === 'string'
+  ),
+];
 
-/** Секретные поля не должны попадать в PUT-настройки «пустым» (P1-1). */
+/** Секретные поля не должны попадать в PUT-настройки «пустым» (P1-1). @param {string} storeKey */
 function isSecretStoreKey(storeKey) {
   return Object.hasOwn(CREDENTIAL_FIELDS, storeKey);
 }
 
+/** @param {string} id @returns {import('../src/provider-descriptors').ProviderDescriptor|null} */
 function getDescriptor(id) {
   return DESCRIPTORS[id] || null;
 }

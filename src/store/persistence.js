@@ -19,13 +19,15 @@ const path = require('path');
 const fsp = fs.promises;
 const DEFAULT_RETRY_DELAYS_MS = [1000, 5000, 30000, 60000];
 
+/** @type {Promise<any>|null} */
 let sqlJsInit = null;
 function loadSqlJs() {
-  if (!sqlJsInit) sqlJsInit = require('sql.js')().then(m => m);
+  if (!sqlJsInit) sqlJsInit = require('sql.js')();
   return sqlJsInit;
 }
 
 /** Открывает базу: из файла (если есть) или новую; in-memory — без файла. */
+/** @param {{dbPath?: string, inMemory?: boolean}} options */
 async function openDatabase({ dbPath, inMemory }) {
   const sql = await loadSqlJs();
   if (!inMemory && dbPath && fs.existsSync(dbPath)) {
@@ -36,9 +38,11 @@ async function openDatabase({ dbPath, inMemory }) {
 
 /** Атомарная запись: права 0600, fsync до rename, tmp уникален для процесса. */
 let tmpCounter = 0;
+/** @param {string} filePath @param {Uint8Array} bytes @returns {Promise<void>} */
 async function writeFileAtomic(filePath, bytes) {
   await fsp.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
   const tmp = `${filePath}.${process.pid}.${++tmpCounter}.tmp`;
+  /** @type {import('fs/promises').FileHandle|null} */
   let handle = null;
   try {
     handle = await fsp.open(tmp, 'w', 0o600);
@@ -58,20 +62,29 @@ async function writeFileAtomic(filePath, bytes) {
  * Очередь записи на диск. Для in-memory базы всё — no-op.
  * onError(err) — уведомление о сбое записи (лог); retryDelaysMs — паузы
  * повторов, последняя повторяется, пока запись не пройдёт.
+ * @param {{db: any, dbPath?: string, inMemory?: boolean, onError?: ((err: unknown) => void)|null, onRecover?: ((count: number) => void)|null, retryDelaysMs?: number[]}} options
  */
 function createPersistQueue({
   db,
   dbPath,
   inMemory,
-  onError = null,
+  onError,
+  onRecover,
   retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
 }) {
   let writeChain = Promise.resolve();
   let closing = false;
   let closed = false;
+  /** @type {NodeJS.Timeout|null} */
   let retryTimer = null;
   let retryAttempt = 0;
-  const state = { dirty: false, lastError: null, lastErrorAt: 0, lastSuccessAt: 0, failures: 0 };
+  const state = {
+    dirty: false,
+    lastError: /** @type {unknown} */ (null),
+    lastErrorAt: 0,
+    lastSuccessAt: 0,
+    failures: 0,
+  };
 
   function clearRetry() {
     if (retryTimer) clearTimeout(retryTimer);
@@ -89,10 +102,11 @@ function createPersistQueue({
     retryTimer.unref();
   }
 
+  /** @param {Uint8Array} bytes */
   function enqueue(bytes) {
     const run = writeChain.then(async () => {
       try {
-        await writeFileAtomic(dbPath, bytes);
+        if (dbPath) await writeFileAtomic(dbPath, bytes);
       } catch (err) {
         state.dirty = true;
         state.lastError = err;
@@ -111,6 +125,14 @@ function createPersistQueue({
       state.lastSuccessAt = Date.now();
       retryAttempt = 0;
       clearRetry();
+      // Восстановление после серии сбоев — событие для наблюдаемости
+      if (onRecover && state.failures > 0) {
+        const count = state.failures;
+        state.failures = 0;
+        try {
+          onRecover(count);
+        } catch {}
+      }
     });
     // Звено очереди не должно «запомнить» ошибку: следующие записи идут дальше
     writeChain = run.catch(() => {});

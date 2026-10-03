@@ -83,7 +83,8 @@ function registerAntigravityRoutes(router, { service, googleOauth, defaultPort =
   // из этой ссылки — обмен выполняем с тем же origin+path.
   router.add(['POST'], '/api/antigravity-auth/paste', async ({ req, res }) => {
     const body = await readJson(req);
-    let pasted = '';
+    /** @type {URL | null} */
+    let pasted = null;
     try {
       pasted = new URL(String(body.url || '').trim());
     } catch {}

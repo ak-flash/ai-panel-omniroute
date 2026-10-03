@@ -41,6 +41,7 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
   let broken = false;
 
   function rotateIfNeeded() {
+    if (!file) return;
     try {
       if (fs.statSync(file).size <= maxBytes) return;
       fs.renameSync(file, file + '.old');
@@ -48,6 +49,7 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
   }
 
   // Форматирование аргументов в одну строку — только для mirror (console)
+  /** @param {unknown[]} args @returns {string} */
   function fmtArgs(args) {
     return args
       .map(a => {
@@ -66,6 +68,7 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
   }
 
   // Сериализация Error для JSON-записи (рекурсивная по cause)
+  /** @param {unknown} err @returns {unknown} */
   function serializeError(err) {
     if (!(err instanceof Error)) return err;
     return {
@@ -79,7 +82,9 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
 
   // Строит JSON-запись из level-строки и массива аргументов.
   // Первый строковый аргумент — message; остальное мержится как поля.
+  /** @param {string} level @param {unknown[]} args @returns {Record<string, unknown>} */
   function buildRecord(level, args) {
+    /** @type {Record<string, unknown>} */
     const record = { time: new Date().toISOString(), level };
     let messageSet = false;
     for (const a of args) {
@@ -109,6 +114,7 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
   }
 
   // Запись JSON Lines в файл (без вывода в консоль). levelTag — '[INFO]'/'[WARN]'/''.
+  /** @param {string} levelTag @param {string} body @param {Record<string, unknown>|null} record @returns {void} */
   function writeToFile(levelTag, body, record) {
     if (broken || !file) return;
     try {
@@ -125,6 +131,7 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
   }
 
   // Запись в файл + дублирование в mirror (console)
+  /** @param {string} levelTag @param {unknown[]} args @returns {void} */
   function writeLine(levelTag, args) {
     const body = fmtArgs(args);
     const line = (levelTag ? levelTag + ' ' : '') + body;
@@ -135,16 +142,19 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
     writeToFile(levelTag, body, null);
   }
 
+  /** @param {...unknown} args */
   function log(...args) {
     writeLine('', args);
   }
 
   // Structured-уровни: добавляют тег уровня и дублируют в mirror.
   // .infoFile/.warnFile/.errorFile — пишут ТОЛЬКО в файл (без консоли).
+  /** @type {Record<string, string>} */
   const LEVEL_TAG = { info: '[INFO]', warn: '[WARN]', error: '[ERROR]' };
   for (const level of Object.keys(LEVEL_TAG)) {
     const tag = LEVEL_TAG[level];
-    log[level] = (...args) => {
+    /** @type {(...args: unknown[]) => void} */
+    const write = (...args) => {
       const body = fmtArgs(args);
       if (mirror) {
         const fn = typeof mirror[level] === 'function' ? mirror[level] : mirror.warn;
@@ -152,7 +162,10 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
       }
       writeToFile(tag, body, buildRecord(level, args));
     };
-    log[level + 'File'] = (...args) => writeToFile(tag, fmtArgs(args), buildRecord(level, args));
+    /** @type {(...args: unknown[]) => void} */
+    const writeFileOnly = (...args) => writeToFile(tag, fmtArgs(args), buildRecord(level, args));
+    /** @type {any} */ (log)[level] = write;
+    /** @type {any} */ (log)[level + 'File'] = writeFileOnly;
   }
   // Alias: log.log — сама функция (для случаев, когда ожидают свойство)
   log.log = log;
@@ -166,15 +179,24 @@ function createFileLogger({ file, maxBytes = DEFAULT_MAX_BYTES, mirror = console
  * (в т.ч. связанную через bind — у неё нет методов), объект с методами
  * (console) или ничего — тогда пишет в console.
  */
+/**
+ * @typedef {((...args: unknown[]) => void) & Record<string, (...args: unknown[]) => void>} LogFn
+ */
+
+/** @param {unknown} [logger] @returns {LogFn} */
 function normalizeLog(logger) {
+  /** @type {any} */
   const target = logger || console;
+  /** @param {string} level */
   const method = level =>
-    typeof target[level] === 'function' ? (...args) => target[level](...args) : null;
+    typeof target[level] === 'function'
+      ? /** @param {...unknown} args */ (...args) => target[level](...args)
+      : null;
   const base =
     typeof target === 'function'
-      ? (...args) => target(...args)
-      : method('warn') || ((...args) => console.warn(...args));
-  const log = (...args) => base(...args);
+      ? /** @param {...unknown} args */ (...args) => target(...args)
+      : method('warn') || /** @param {...unknown} args */ ((...args) => console.warn(...args));
+  const log = /** @type {any} */ (/** @param {...unknown} args */ (...args) => base(...args));
   log.info = method('info') || base;
   log.warn = method('warn') || base;
   log.error = method('error') || base;

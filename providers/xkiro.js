@@ -15,7 +15,9 @@
 const { createProviderClient, apiKeyAuth } = require('../src/provider-client');
 const { getDescriptor } = require('../src/provider-descriptors');
 
-const descriptor = getDescriptor('xkiro');
+const descriptor = /** @type {import('../src/provider-descriptors').ProviderDescriptor} */ (
+  getDescriptor('xkiro')
+);
 const DEFAULT_NAME = descriptor.name;
 const DEFAULT_URL = 'https://api.xkiro.com'; // вшит в фабрику — не выносится в настройки
 

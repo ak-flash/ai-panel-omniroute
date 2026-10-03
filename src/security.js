@@ -3,14 +3,17 @@
 const dns = require('dns').promises;
 const net = require('net');
 
-const SECURITY_HEADERS = Object.freeze({
-  'content-security-policy':
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
-  'referrer-policy': 'no-referrer',
-  'x-content-type-options': 'nosniff',
-  'x-frame-options': 'DENY',
-});
+const SECURITY_HEADERS = /** @type {Record<string, string>} */ (
+  Object.freeze({
+    'content-security-policy':
+      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+    'referrer-policy': 'no-referrer',
+    'x-content-type-options': 'nosniff',
+    'x-frame-options': 'DENY',
+  })
+);
 
+/** @param {unknown} value */
 function firstForwardedValue(value) {
   return String(value || '')
     .split(',')[0]
@@ -21,6 +24,12 @@ function firstForwardedValue(value) {
  * Внешний origin панели: PUBLIC_ORIGIN, иначе Host запроса. Заголовки
  * X-Forwarded-Host/Proto учитываются только при TRUST_PROXY: без reverse
  * proxy их может подставить любой клиент.
+ */
+/**
+ * @param {import('http').IncomingMessage} req
+ * @param {string} [publicOrigin]
+ * @param {boolean} [trustProxy]
+ * @returns {string}
  */
 function getExternalOrigin(req, publicOrigin = '', trustProxy = false) {
   if (publicOrigin) {
@@ -49,6 +58,7 @@ function getExternalOrigin(req, publicOrigin = '', trustProxy = false) {
  * чтобы разрешение «Origin совпадает с Host» не открывало дверь
  * DNS rebinding: чужой домен, указывающий на 127.0.0.1, не пройдёт.
  */
+/** @param {string} hostname */
 function isLoopbackHostname(hostname) {
   // WHATWG URL не снимает скобки с IPv6-hostname ([::1])
   if (hostname === 'localhost' || hostname === '::1' || hostname === '[::1]') return true;
@@ -60,6 +70,7 @@ function isLoopbackHostname(hostname) {
  * разрешённые имена (PUBLIC_ORIGIN, HOST, ALLOWED_HOSTS). Чужой домен,
  * перепривязанный на 127.0.0.1 (DNS rebinding), сюда не попадёт.
  */
+/** @param {unknown} hostHeader @param {string[]} [allowedHosts] */
 function isAllowedHost(hostHeader, allowedHosts = []) {
   if (typeof hostHeader !== 'string' || !hostHeader) return false;
   let hostname;
@@ -71,9 +82,10 @@ function isAllowedHost(hostHeader, allowedHosts = []) {
   return isLoopbackHostname(hostname) || allowedHosts.includes(hostname);
 }
 
+/** @param {import('http').IncomingMessage} req @param {import('http').IncomingHttpHeaders['origin']} origin @param {string} [publicOrigin] @param {boolean} [trustProxy] */
 function isSameOrigin(req, origin, publicOrigin = '', trustProxy = false) {
   try {
-    const parsed = new URL(origin);
+    const parsed = new URL(/** @type {string} */ (origin));
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
     // Прямой loopback-доступ: работает и когда панель развёрнута за
     // reverse proxy (задан PUBLIC_ORIGIN), — локальная разработка/админка.
@@ -91,6 +103,7 @@ function isSameOrigin(req, origin, publicOrigin = '', trustProxy = false) {
   }
 }
 
+/** @param {import('http').ServerResponse} res @param {number} status @param {string} error @param {string} message @returns {false} */
 function rejectRequest(res, status, error, message) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify({ error, message }));
@@ -102,6 +115,12 @@ function rejectRequest(res, status, error, message) {
  * (421 для остальных) и Origin (403 для чужих). true — запрос можно
  * обрабатывать дальше.
  */
+/**
+ * @param {import('http').IncomingMessage} req
+ * @param {import('http').ServerResponse} res
+ * @param {{allowedOrigins?: string[], publicOrigin?: string, allowedHosts?: string[], trustProxy?: boolean}} [options]
+ * @returns {boolean}
+ */
 function applyRequestSecurity(
   req,
   res,
@@ -111,17 +130,20 @@ function applyRequestSecurity(
   const corsOrigin = origin && allowedOrigins.includes(origin) ? origin : null;
   const originalWriteHead = res.writeHead.bind(res);
 
-  res.writeHead = function securedWriteHead(statusCode, headers = {}) {
-    const merged = { ...SECURITY_HEADERS, ...headers };
-    if (corsOrigin) {
-      merged['access-control-allow-origin'] = corsOrigin;
-      merged.vary = merged.vary ? merged.vary + ', Origin' : 'Origin';
-      merged['access-control-allow-methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
-      merged['access-control-allow-headers'] =
-        'authorization, x-api-key, x-agentrouter-user-id, content-type, accept';
+  res.writeHead = /** @type {typeof res.writeHead} */ (
+    function securedWriteHead(statusCode, headers) {
+      /** @type {Record<string, string>} */
+      const merged = { ...SECURITY_HEADERS, .../** @type {Record<string, string>} */ (headers) };
+      if (corsOrigin) {
+        merged['access-control-allow-origin'] = /** @type {string} */ (corsOrigin);
+        merged.vary = merged.vary ? merged.vary + ', Origin' : 'Origin';
+        merged['access-control-allow-methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
+        merged['access-control-allow-headers'] =
+          'authorization, x-api-key, x-agentrouter-user-id, content-type, accept';
+      }
+      return originalWriteHead(statusCode, merged);
     }
-    return originalWriteHead(statusCode, merged);
-  };
+  );
 
   const forwardedHost = trustProxy ? firstForwardedValue(req.headers['x-forwarded-host']) : '';
   if (
@@ -138,6 +160,7 @@ function applyRequestSecurity(
   return true;
 }
 
+/** @param {string} address */
 function isPrivateAddress(address) {
   if (net.isIPv4(address)) {
     const parts = address.split('.').map(Number);
@@ -166,6 +189,7 @@ function isPrivateAddress(address) {
   return true;
 }
 
+/** @param {unknown} value @param {{allowPrivate?: boolean}} [options] @returns {Promise<string>} */
 async function validateUpstreamUrl(value, { allowPrivate = true } = {}) {
   let parsed;
   try {

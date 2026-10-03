@@ -70,7 +70,7 @@ function registerAuthRoutes(
     const token = body && typeof body.token === 'string' ? body.token.trim() : '';
     if (!auth.checkToken(token)) {
       auth.limiter.recordFailure(ip);
-      logger.warn(`[auth] неудачная попытка входа с ${ip}`);
+      logger.warn('[auth] неудачная попытка входа', { event: 'auth_login_failed', ip });
       throw new AppError(401, 'invalid_token', 'Неверный токен доступа');
     }
     auth.limiter.recordSuccess(ip);

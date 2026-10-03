@@ -177,9 +177,10 @@ function readRows(db, sql, params) {
   return res.length ? res[0].values : [];
 }
 
+/** @param {string} masterKey @param {string} encrypted @returns {string} */
 function decryptField(masterKey, encrypted) {
   const res = decryptValue(masterKey, encrypted);
-  if (!res.ok) {
+  if (res.ok === false) {
     throw new StoreError('corrupted', 'Credential повреждён: ' + res.reason);
   }
   return res.value;

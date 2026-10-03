@@ -154,13 +154,26 @@ test('runProviderKeyCheck: AgentRouter получает userId в запросе
 
 test('runProviderKeyCheck: ошибка помечается как ошибка', async () => {
   const lines = [];
-  await runProviderKeyCheck({
-    id: 'xkiro',
-    candidate: 'bad',
-    request: () => Promise.reject(Object.assign(new Error('unauthorized'), { status: 401 })),
-    readFlag: () => false,
-    setLine: (line, isErr) => lines.push([line, isErr]),
-  });
+  const infos = [];
+  const warns = [];
+  const origInfo = console.info;
+  const origWarn = console.warn;
+  console.info = msg => infos.push(msg);
+  console.warn = (...a) => warns.push(a.join(' '));
+  try {
+    await runProviderKeyCheck({
+      id: 'xkiro',
+      candidate: 'bad',
+      request: () => Promise.reject(Object.assign(new Error('unauthorized'), { status: 401 })),
+      readFlag: () => false,
+      setLine: (line, isErr) => lines.push([line, isErr]),
+    });
+  } finally {
+    console.info = origInfo;
+    console.warn = origWarn;
+  }
   assert.equal(lines.at(-1)[1], true);
   assert.match(lines.at(-1)[0], /— проверьте ключ$/);
+  assert.ok(warns.some(line => /проверка не прошла/.test(line)));
+  assert.ok(infos.length > 0);
 });

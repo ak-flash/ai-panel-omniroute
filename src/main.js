@@ -67,9 +67,15 @@ async function bootstrap({ env = process.env, print = msg => console.log(msg) } 
   // `pm2 restart ai-panel --update-env`.
   const hostSource = describeEnvSource('HOST', env, fileKeys);
   const portSource = describeEnvSource('PORT', env, fileKeys);
-  bootLog.warnFile(
-    `[boot] конфигурация: HOST=${config.host} (${hostSource}), PORT=${config.port} (${portSource})`
-  );
+  bootLog.warnFile('[boot] конфигурация прочитана', {
+    event: 'startup_config',
+    host: config.host,
+    hostSource,
+    port: config.port,
+    portSource,
+    authEnabled: Boolean(config.authToken),
+    remoteMode: Boolean(config.remoteMode),
+  });
 
   // Панель не в состоянии проверить, что порт закрыт снаружи, поэтому
   // без токена входа в remote-режиме предупреждаем явно.
@@ -77,7 +83,8 @@ async function bootstrap({ env = process.env, print = msg => console.log(msg) } 
     bootLog.warn(
       '[boot] AIPANEL_AUTH_TOKEN пуст: вход отключён, любой, кто достучится до порта, ' +
         'получит доступ к ключам провайдеров. Закройте порт firewall/reverse proxy ' +
-        'или задайте AIPANEL_AUTH_TOKEN.'
+        'или задайте AIPANEL_AUTH_TOKEN.',
+      { event: 'config_warning_remote_without_auth' }
     );
   }
 
@@ -105,7 +112,12 @@ async function bootstrap({ env = process.env, print = msg => console.log(msg) } 
     app.listen(config.port, config.host, () => {
       const msg = `AI Панель · http://${config.host}:${app.address().port}`;
       print(msg);
-      bootLog.infoFile(msg);
+      bootLog.infoFile(msg, {
+        event: 'startup_listening',
+        host: config.host,
+        port: app.address().port,
+        providers: providers.map(p => p.id),
+      });
       for (const p of providers) {
         const line = '  провайдер ' + p.name + ' (' + p.id + '): ' + p.upstream;
         print(line);

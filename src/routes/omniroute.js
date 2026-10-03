@@ -26,6 +26,7 @@ const PROBE_TIMEOUT_MS = 3000;
 const CACHE_TTL_MS = 30000;
 
 // Последний рабочий адрес мульти-режима: { raw, url, ts }
+/** @type {null | {raw: string, url: string, ts: number}} */
 let lastGood = null;
 
 // Последнее записанное в лог состояние каждого адреса:
@@ -86,7 +87,10 @@ async function validateCandidate(candidate, validateUpstreamUrl) {
 
 /**
  * Выбирает upstream для запроса.
- * @returns {{ raw: string, url: string } | null} — null, когда кандидатов нет
+ * @param {string[]} candidates
+ * @param {(url: string) => Promise<boolean>} validateUpstreamUrl
+ * @param {Console} log
+ * @returns {Promise<{ raw: string, url: string } | null>} — null, когда кандидатов нет
  */
 async function resolveUpstream(candidates, validateUpstreamUrl, log) {
   if (!candidates.length) return null;
@@ -136,6 +140,9 @@ function registerOmnirouteRoutes(router, { getStore, validateUpstreamUrl, logger
     req.headers = headers;
 
     const log = logger || console;
+    /**
+     * @param {string} upstream
+     */
     const attempt = upstream =>
       handleProxy(req, res, url, { prefix: '/omniroute', upstream, logger, body });
 

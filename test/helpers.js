@@ -221,13 +221,15 @@ async function startPanel(opts = {}) {
   ];
   const { createStore } = require('../src/store');
   const store = opts.store || (await createStore({ memory: true }));
+  const SILENT_LOG = { info() {}, warn() {}, error() {} };
   const app = createApp({
     config: opts.config || loadConfig(testEnv(opts.env)),
     providers,
     antigravity: opts.antigravity,
     googleOauth: opts.googleOauth,
     store,
-    logger: opts.logger,
+    logger: opts.logger || SILENT_LOG,
+    providerLogger: opts.providerLogger || SILENT_LOG,
     publicOrigin: opts.publicOrigin,
     requestTimeoutMs: opts.requestTimeoutMs,
   });

@@ -17,7 +17,7 @@ const { StoreError, generateMasterKey } = require('./crypto');
 
 const HEX_KEY_RE = /^[0-9a-f]{64}$/i;
 
-/** Валидирует master-ключ: 32 байта в hex (64 символа). */
+/** Валидирует master-ключ: 32 байта в hex (64 символа). @param {unknown} key */
 function assertValidMasterKey(key) {
   if (!HEX_KEY_RE.test(String(key || ''))) {
     throw new StoreError(
@@ -30,7 +30,7 @@ function assertValidMasterKey(key) {
 
 /**
  * Возвращает master-ключ по приоритету выше; формат валидируется.
- * @param {{keyPath?: string, inMemory?: boolean, masterKey?: string}} [opts]
+ * @param {{keyPath?: string|null, inMemory?: boolean, masterKey?: string}} [opts]
  * @returns {string}
  */
 function resolveMasterKey({ keyPath, inMemory, masterKey } = {}) {

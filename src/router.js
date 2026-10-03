@@ -2,8 +2,10 @@
 
 const { AppError, parseRequestUrl, sendNoContent } = require('./http');
 
+/** @param {string|RegExp} path @returns {RegExp | {regex: RegExp, keys: string[]}} */
 function compilePath(path) {
   if (path instanceof RegExp) return path;
+  /** @type {string[]} */
   const keys = [];
   const source = String(path)
     .split('/')
@@ -23,6 +25,7 @@ function compilePath(path) {
   return { regex: new RegExp('^' + source + '$'), keys };
 }
 
+/** @param {string} value */
 function decodeParam(value) {
   try {
     return decodeURIComponent(value);
@@ -33,9 +36,15 @@ function decodeParam(value) {
 
 class Router {
   constructor() {
+    /** @type {{allowed: string[], compiled: RegExp | {regex: RegExp, keys: string[]}, handler: Function}[]} */
     this.routes = [];
   }
 
+  /**
+   * @param {string|string[]} methods
+   * @param {string|RegExp} path
+   * @param {Function} handler
+   */
   add(methods, path, handler) {
     const allowed = (Array.isArray(methods) ? methods : [methods]).map(method =>
       method.toUpperCase()
@@ -45,6 +54,11 @@ class Router {
     return this;
   }
 
+  /**
+   * @param {import('http').IncomingMessage} req
+   * @param {import('http').ServerResponse} res
+   * @param {Record<string, unknown>} context
+   */
   async dispatch(req, res, context) {
     const url = parseRequestUrl(req.url);
     const pathname = url.pathname;
@@ -55,11 +69,14 @@ class Router {
       if (!match) continue;
       pathMatches.push(route);
       if (req.method === 'OPTIONS') return sendNoContent(res);
-      if (!route.allowed.includes(req.method)) continue;
+      if (!route.allowed.includes(/** @type {string} */ (req.method))) continue;
+      /** @type {Record<string, string>} */
       const params = {};
       if (!(route.compiled instanceof RegExp)) {
         route.compiled.keys.forEach((key, index) => {
-          params[key] = decodeParam(match[index + 1]);
+          params[/** @type {string} */ (key)] = decodeParam(
+            /** @type {string} */ (match[index + 1])
+          );
         });
       }
       return route.handler({ req, res, context, params, url });

@@ -27,8 +27,18 @@ function createAgentRouterTracker({
   balanceKey = AGENTROUTER_DAY_BALANCE_KEY,
   now = () => new Date(),
   intervalMs = 60000,
+  logger = null,
 }) {
   let interval = null;
+  // Логирование опционально: без logger (тесты) события не пишутся
+  const warnEvent = logger
+    ? (event, fields = {}) => {
+        try {
+          const w = typeof logger.warn === 'function' ? logger.warn : logger;
+          w(`[tracker] снимок баланса: сбой`, { event, ...fields });
+        } catch {}
+      }
+    : () => {};
 
   const todayStr = () => now().toISOString().slice(0, 10);
 
@@ -48,7 +58,12 @@ function createAgentRouterTracker({
       await (
         await getStore()
       ).set(balanceKey, JSON.stringify({ date: todayStr(), balance_usd: bal }));
-    } catch {}
+    } catch (e) {
+      // Снимок дня не состоялся: карточка «за сутки» останется пустой до завтра
+      warnEvent('tracker_snapshot_failed', {
+        reason: e && e.message ? e.message : 'unknown',
+      });
+    }
   }
 
   /** Снимок, только если за сегодня его ещё нет. */
@@ -62,7 +77,12 @@ function createAgentRouterTracker({
         } catch {}
       }
       if (savedDate !== todayStr()) await snapshotDayBalance();
-    } catch {}
+    } catch (e) {
+      // Нет доступа к хранилищу — снимок сегодня не сделать
+      warnEvent('tracker_store_unavailable', {
+        reason: e && e.message ? e.message : 'unknown',
+      });
+    }
   }
 
   /**
