@@ -42,12 +42,22 @@ let modelsLoading = false;
 
 function isModelInCombo(model) {
   const targets = session.comboTargetIds;
-  if (!targets || !targets.length) return false;
+  const provider = session.modelsProvider;
+  if (!targets || !targets.length || !provider) return false;
   if (comboMarks.src !== targets) comboMarks = { src: targets, map: new Map() };
   let hit = comboMarks.map.get(model.id);
   if (hit === undefined) {
-    // matchModel ожидает массив каталога и id из combo — проверяем каждым target'ом
-    hit = targets.some(tid => Boolean(matchModel([model], tid)));
+    const providerNames = new Set([String(provider.id || ''), String(provider.name || '')]
+      .map(value => value.toLowerCase()).filter(Boolean));
+    hit = targets.some(target => {
+      const raw = target && target._raw;
+      const targetProvider = String(raw && (raw.providerId || raw.provider) || '').toLowerCase();
+      const modelId = String(target && (target.modelId || target.key || target.display) || '');
+      const modelProvider = modelId.includes('/') ? modelId.slice(0, modelId.indexOf('/')).toLowerCase() : '';
+      if (targetProvider && !providerNames.has(targetProvider)) return false;
+      if (!targetProvider && modelProvider && !providerNames.has(modelProvider)) return false;
+      return Boolean(matchModel([model], modelId));
+    });
     comboMarks.map.set(model.id, hit);
   }
   return hit;
@@ -375,16 +385,15 @@ async function loadModels() {
 async function loadModelsComboMarks() {
   try {
     const combos = await loadComboList();
-    const ids = new Set();
+    const targets = [];
     for (const c of combos) {
       for (const t of comboTargets(c)) {
-        if (t.modelId) ids.add(t.modelId);
-        if (t.key && t.key !== t.modelId) ids.add(t.key);
-        if (t.display && t.display !== t.modelId) ids.add(t.display);
+        if (t && typeof t === 'object') targets.push(t);
+        else if (t) targets.push({ modelId: t });
       }
     }
-    session.comboTargetIds = [...ids];
-    console.debug('[Combo] marks', ids.size, [...ids].slice(0, 3));
+    session.comboTargetIds = targets;
+    console.debug('[Combo] marks', targets.length, targets.slice(0, 3).map(t => t.modelId));
     if (session.models) filterModels();
   } catch (e) {
     console.warn('[Combo] loadModelsComboMarks failed', e);
