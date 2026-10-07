@@ -51,26 +51,32 @@ export function buildComboRow(opts) {
   rank.className = 'combo-rank num';
   rank.textContent = String(i + 1);
 
+  const rowContent = document.createElement('div');
+  rowContent.className = 'combo-row-content';
+
   const name = document.createElement('code');
   name.className = 'combo-model-id';
   name.textContent = t.display;
   if (m && m.display_name) name.title = m.display_name;
 
-  li.append(dragHandle, rank, name);
+  const rowMeta = document.createElement('div');
+  rowMeta.className = 'combo-row-meta';
+  rowContent.append(name, rowMeta);
+  li.append(dragHandle, rank, rowContent);
 
   if (m) {
     const tier = m.access_tier || 'paid';
     const tierBadge = document.createElement('span');
     tierBadge.className = 'badge ' + tier;
     tierBadge.textContent = tier;
-    li.appendChild(tierBadge);
+    rowMeta.appendChild(tierBadge);
   }
 
   if (t.weight != null && t.weight !== 0) {
     const wBadge = document.createElement('span');
     wBadge.className = 'badge';
     wBadge.textContent = 'w:' + t.weight;
-    li.appendChild(wBadge);
+    rowMeta.appendChild(wBadge);
   }
 
   // Кнопка проверки (иконка check-circle) всегда в DOM — иначе
@@ -97,20 +103,20 @@ export function buildComboRow(opts) {
     }
     testBtn.addEventListener('click', () => handlers.onCheck());
   }
-  li.appendChild(testBtn);
+  rowMeta.appendChild(testBtn);
 
   if (testState && testState.state === 'loading') {
     const testBadge = document.createElement('span');
     testBadge.className = 'badge combo-test-badge combo-test-loading';
     testBadge.textContent = 'проверяю…';
     testBadge.title = 'Идёт проверка модели…';
-    li.appendChild(testBadge);
+    rowMeta.appendChild(testBadge);
   } else if (testState && testState.state === 'ok') {
     const msSpan = document.createElement('span');
     msSpan.className = 'combo-test-ms num combo-test-ok';
     msSpan.textContent = testState.ms + ' мс';
     msSpan.title = 'Модель ответила за ' + testState.ms + ' мс';
-    li.appendChild(msSpan);
+    rowMeta.appendChild(msSpan);
   }
 
   // У первой включённой модели переключателя нет — она всегда активна
@@ -126,7 +132,7 @@ export function buildComboRow(opts) {
     );
     toggle.title = isDisabled ? 'Включить модель' : 'Выключить модель';
     toggle.addEventListener('click', () => handlers.onToggle());
-    li.appendChild(toggle);
+    rowMeta.appendChild(toggle);
   }
 
   if (isDisabled) {

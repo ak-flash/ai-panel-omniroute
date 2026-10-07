@@ -159,6 +159,14 @@
   align-self: center;
 }
 
+.combo-row-content {
+  display: contents;
+}
+
+.combo-row-meta {
+  display: contents;
+}
+
 .combo-list li.top {
   background: var(--surface-2);
 }

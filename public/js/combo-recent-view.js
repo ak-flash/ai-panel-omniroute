@@ -60,6 +60,7 @@ export function renderComboRecentTable(rows, els) {
     const tr = document.createElement('tr');
 
     const tdTime = document.createElement('td');
+    tdTime.dataset.label = 'Время';
     const time = document.createElement('span');
     time.className = 'num';
     time.textContent = formatCallLogTime(row.timestamp);
@@ -67,21 +68,25 @@ export function renderComboRecentTable(rows, els) {
     tdTime.appendChild(time);
 
     const tdCombo = document.createElement('td');
+    tdCombo.dataset.label = 'Combo';
     const comboName = document.createElement('span');
     comboName.textContent = requestedOf(row) || '—';
     tdCombo.appendChild(comboName);
 
     const tdModel = document.createElement('td');
+    tdModel.dataset.label = 'Модель';
     const model = document.createElement('code');
     model.className = 'combo-model-id';
     model.textContent = realModelOf(row) || '—';
     tdModel.appendChild(model);
 
     const tdProvider = document.createElement('td');
+    tdProvider.dataset.label = 'Провайдер';
     tdProvider.textContent = row.providerDisplay || row.provider || '—';
 
     const tdTokens = document.createElement('td');
     tdTokens.className = 'num-col';
+    tdTokens.dataset.label = 'Токены';
     const tokens = document.createElement('span');
     tokens.className = 'num';
     tokens.textContent = formatTokensOf(row) || '—';
@@ -91,6 +96,7 @@ export function renderComboRecentTable(rows, els) {
 
     const tdStatus = document.createElement('td');
     tdStatus.className = 'num-col';
+    tdStatus.dataset.label = 'Статус';
     const badge = document.createElement('span');
     badge.className = 'badge ' + statusClass(row.status, Boolean(row.error));
     badge.textContent = statusText(row);

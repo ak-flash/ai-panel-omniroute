@@ -215,6 +215,26 @@
     text-align: start;
   }
 
+  #cards > .provider-card-head {
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 12px 16px;
+  }
+
+  #cards .provider-balance {
+    width: auto;
+    min-width: 0;
+    flex-shrink: 0;
+    justify-items: end;
+    margin-inline-start: auto;
+    text-align: end;
+  }
+
+  #cards .provider-balance .stat-value {
+    font-size: var(--fs-2xl);
+    white-space: nowrap;
+  }
+
   .stats-row {
     gap: 12px 20px;
   }
@@ -268,11 +288,126 @@
   }
 
   .combo-list li {
+    display: grid;
+    grid-template-columns: 32px 2ch minmax(0, 1fr);
+    align-items: start;
     gap: 8px;
-    padding-inline: 10px;
+    padding: 12px 10px;
+  }
+
+  .combo-list .combo-row-content {
+    display: block;
+    min-width: 0;
+  }
+
+  .combo-list .combo-model-id {
+    display: block;
+    line-height: 1.35;
+  }
+
+  .combo-list .combo-row-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .combo-list .combo-row-meta .combo-test-btn,
+  .combo-list .combo-row-meta .combo-test-badge,
+  .combo-list .combo-row-meta .combo-test-ms {
+    order: 1;
+  }
+
+  .combo-list .combo-row-meta .combo-switch {
+    order: 2;
+    margin-inline-start: auto;
+  }
+
+  .combo-list .combo-drag-handle,
+  .combo-list .combo-rank {
+    align-self: start;
+    margin-top: 2px;
   }
 
   #combo-recent {
     padding: 16px;
+  }
+
+  #combo-recent .table-wrap {
+    overflow: visible;
+  }
+
+  #combo-recent table,
+  #combo-recent tbody,
+  #combo-recent tr,
+  #combo-recent td {
+    display: block;
+    width: 100%;
+  }
+
+  #combo-recent thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  #combo-recent tr {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #combo-recent tr:last-child {
+    border-bottom: none;
+  }
+
+  #combo-recent td {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 12px;
+    align-items: baseline;
+    padding: 5px 0;
+    border: 0;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    text-align: start;
+  }
+
+  #combo-recent td::before {
+    content: attr(data-label);
+    color: var(--text-faint);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+  }
+
+  #combo-recent td > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  #combo-recent td.num-col {
+    text-align: start;
+  }
+
+  #combo-recent td:nth-child(5) {
+    overflow: visible;
+    white-space: normal;
+  }
+
+  #combo-recent td .badge {
+    justify-self: start;
+  }
+
+  #combo-recent td .combo-model-id,
+  #combo-recent td .badge {
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 }

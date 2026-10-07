@@ -43,7 +43,7 @@ export function topbarHTML(page) {
       : '';
 
   return `<header class="topbar">
-  <div class="brand"><span class="logo" aria-hidden="true">${icon('sparkles')}</span> AI Панель</div>
+  <a class="brand" href="index.html"><span class="logo" aria-hidden="true">${icon('sparkles')}</span> AI Панель</a>
   <div class="topbar-collapse" id="topbar-collapse">
     <nav class="topnav" aria-label="Разделы панели">
       ${nav}
