@@ -13,6 +13,7 @@ import { setIcon } from './dom.js';
  * @property {() => void} onCheck  запустить проверку модели
 
  * @property {() => void} onToggle  включить/выключить модель
+ * @property {() => void} [onDelete]  удалить выключенную модель
  */
 
 /**
@@ -137,6 +138,16 @@ export function buildComboRow(opts) {
 
   if (isDisabled) {
     dragHandle.hidden = true;
+    if (handlers.onDelete) {
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn-icon combo-delete-btn';
+      del.setAttribute('aria-label', 'Удалить модель ' + t.display);
+      del.title = 'Удалить модель из combo';
+      del.addEventListener('click', () => handlers.onDelete());
+      setIcon(del, 'trash');
+      rowMeta.appendChild(del);
+    }
   }
 
   return { el: li, dragHandle };

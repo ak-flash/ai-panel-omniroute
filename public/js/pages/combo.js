@@ -368,6 +368,48 @@ async function toggleComboModel(target) {
   }
 }
 
+async function deleteComboModel(target) {
+  const key = comboTargetKey(target);
+  if (!disabledComboTargets.has(key)) return;
+  disabledComboTargets.delete(key);
+  disabledComboRaw.delete(key);
+  disabledComboModels = disabledComboModels.filter(item => comboTargetKey(item) !== key);
+
+  renderComboDetails();
+  const arr = comboTargetArray();
+  if (arr) {
+    // У выключенных моделей _raw может отсутствовать — их и так нет в arr,
+  // поэтому фильтруем только совпадающие по ссылке элементы.
+    for (let i = arr.length - 1; i >= 0; i--) {
+      if (arr[i] === target._raw) arr.splice(i, 1);
+    }
+  }
+  const comboId = activeComboId;
+  const version = comboLoadVersion;
+  const body = structuredClone(activeComboData);
+  const disabledTargets = new Set(disabledComboTargets);
+  const disabledRaw = new Map(disabledComboRaw);
+  try {
+    await queueComboWrite(async () => {
+      await saveDisabledComboTargets(comboId, disabledTargets, disabledRaw);
+      await omniFetch(COMBO_PATH(comboId), { method: 'PUT', body });
+    });
+    if (version === comboLoadVersion) {
+      showToast('Модель удалена');
+      $comboStatus.textContent = '';
+    }
+  } catch (err) {
+    console.error('[Combo] delete model failed:', err);
+    if (version === comboLoadVersion) {
+      showToast(
+        'Не удалось удалить модель: ' + formatErrorDetail(err),
+        { type: 'error', timeout: 6000 }
+      );
+      loadComboModels();
+    }
+  }
+}
+
 function comboTargetArray() {
   if (Array.isArray(activeComboData.models)) return activeComboData.models;
   if (Array.isArray(activeComboData.targets)) return activeComboData.targets;
@@ -452,6 +494,7 @@ function renderComboList() {
       handlers: {
         onCheck: () => comboModelCheck.run(t, key),
         onToggle: () => toggleComboModel(t),
+        onDelete: () => deleteComboModel(t),
       },
     });
 
