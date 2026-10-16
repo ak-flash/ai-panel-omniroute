@@ -23,6 +23,9 @@ const DEFAULT_URL = 'https://api.xkiro.com'; // вшит в фабрику — �
 
 // Таймаут запросов к API провайдера
 const REQUEST_TIMEOUT_MS = 20000;
+const RETRY_COUNT = 2;
+const RETRY_BASE_DELAY_MS = 500;
+const RETRY_MAX_DELAY_MS = 4000;
 
 /**
  * Создаёт адаптер провайдера xKiro.
@@ -52,6 +55,11 @@ function createXKiroProvider(config = {}) {
     upstream: config.url || DEFAULT_URL,
     auth: apiKeyAuth(),
     timeoutMs: REQUEST_TIMEOUT_MS,
+    retryTransient: {
+      count: RETRY_COUNT,
+      baseDelayMs: RETRY_BASE_DELAY_MS,
+      maxDelayMs: RETRY_MAX_DELAY_MS,
+    },
     log: config.log,
     debug: config.debug === true,
     fetchImpl: config.fetchImpl,
