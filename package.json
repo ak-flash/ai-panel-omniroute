@@ -36,7 +36,7 @@
     }
   },
   "dependencies": {
-    "sql.js": "^1.14.2"
+    "sql.js": "^1.15.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
