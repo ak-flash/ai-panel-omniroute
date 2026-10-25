@@ -315,16 +315,26 @@ function renderAgentRouterCard(data) {
 
   const todayEl = $id('ar-today');
 
-  // Потребление за текущие сутки: стартовый баланс дня (снимок в 00:00) минус текущий.
-  const dayBal = Number(data.day_balance_usd);
-  const bal = Number((data.wallet || {}).balance_usd);
-  const hasDay = Number.isFinite(dayBal) && Number.isFinite(bal) && dayBal > 0;
-  const today = hasDay ? Math.max(0, dayBal - bal) : null;
+  const [todayUsd, dayBal, bal] = [
+    data.today_usd,
+    data.day_balance_usd,
+    (data.wallet || {}).balance_usd,
+  ].map(value =>
+    typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')
+      ? Number(value)
+      : NaN
+  );
+  const hasDay = Number.isFinite(dayBal) && Number.isFinite(bal);
+  const today = Object.hasOwn(data, 'today_usd')
+    ? Number.isFinite(todayUsd) && todayUsd >= 0
+      ? todayUsd
+      : null
+    : hasDay
+      ? Math.max(0, dayBal - bal)
+      : null;
   if (todayEl) {
-    todayEl.textContent = today !== null && today > 0 ? fmtUsd(today) : '—';
-    if (today !== null) {
-      todayEl.classList.toggle('val-used', today > 0);
-    }
+    todayEl.textContent = today !== null ? fmtUsd(today) : '—';
+    todayEl.classList.toggle('val-used', today !== null && today > 0);
   }
 }
 

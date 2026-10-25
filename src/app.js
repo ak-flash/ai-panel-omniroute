@@ -194,7 +194,7 @@ function createApp({
     getStore,
     storeKeys: PROVIDER_STORE_KEYS,
     userFields: PROVIDER_STORE_USER_FIELDS,
-    getDayBalanceUsd: tracker.getDayBalanceUsd,
+    recordAgentRouterUsage: tracker.recordUsage,
     usageCacheTtlMs,
     modelsCacheTtlMs,
     logger: appLog,

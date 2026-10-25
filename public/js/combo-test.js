@@ -11,7 +11,7 @@ export function comboTestModelId(target) {
   return String(target.display || '');
 }
 
-/** Мини-запрос к конкретной модели через OmniRoute: max_tokens 1,
+/** Мини-запрос к конкретной модели через OmniRoute: max_tokens 16,
  * без кеша и памяти. Возвращает время ответа или кидает ошибку. */
 export async function testComboModel(modelId) {
   const startedAt = performance.now();
@@ -23,7 +23,7 @@ export async function testComboModel(modelId) {
       body: JSON.stringify({
         model: modelId,
         messages: [{ role: 'user', content: 'ping' }],
-        max_tokens: 1,
+        max_tokens: 16,
         stream: false,
       }),
       signal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),

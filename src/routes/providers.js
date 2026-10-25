@@ -25,7 +25,7 @@ function registerProviderRoutes(
     getStore,
     storeKeys,
     userFields,
-    getDayBalanceUsd,
+    recordAgentRouterUsage,
     usageCacheTtlMs = 30_000,
     modelsCacheTtlMs = 10 * 60_000,
     now = () => Date.now(),
@@ -66,7 +66,8 @@ function registerProviderRoutes(
           logger.warn('[providers] фолбэк ключа из хранилища не удался', {
             event: 'provider_store_fallback_failed',
             provider: params.id,
-            reason: e && /** @type {Error} */ (e).message ? /** @type {Error} */ (e).message : 'unknown',
+            reason:
+              e && /** @type {Error} */ (e).message ? /** @type {Error} */ (e).message : 'unknown',
           });
         } catch {}
       }
@@ -76,7 +77,11 @@ function registerProviderRoutes(
     const cache = action === 'usage' ? usageCache : modelsCache;
     // Ключ кеша — отпечаток учётных данных: смена ключа или аккаунта
     // даёт другую запись, а сам секрет в памяти не хранится.
-    const cacheKey = `${params.id}:${fingerprint(clientKey)}:${fingerprint(clientUserId)}`;
+    const usageDate =
+      action === 'usage' && params.id === 'agentrouter'
+        ? new Date(now()).toISOString().slice(0, 10)
+        : '';
+    const cacheKey = `${params.id}:${fingerprint(clientKey)}:${fingerprint(clientUserId)}:${usageDate}`;
     recordProvider(params.id);
     // Чтение без записи: если запись уже в кеше — это hit, иначе miss.
     recordCache(cache.peek(cacheKey) !== undefined ? 'hit' : 'miss');
@@ -94,11 +99,11 @@ function registerProviderRoutes(
           (result.data && result.data.message ? ` — ${result.data.message}` : '')
       );
     }
-    if (result.status === 200 && params.id === 'agentrouter' && result.data) {
-      const dayBal = await getDayBalanceUsd();
-      if (dayBal !== null) {
+    if (action === 'usage' && result.status === 200 && params.id === 'agentrouter' && result.data) {
+      const daily = await recordAgentRouterUsage(result.data, clientKey, clientUserId, usageDate);
+      if (daily) {
         // Копия: запись в кеше не должна зависеть от баланса дня
-        result = { status: result.status, data: { ...result.data, day_balance_usd: dayBal } };
+        result = { status: result.status, data: { ...result.data, ...daily } };
       }
     }
     return sendJson(res, result.status, result.data, { 'cache-control': 'no-store' });

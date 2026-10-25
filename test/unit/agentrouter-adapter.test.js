@@ -25,8 +25,7 @@ test('getUsage: GET /api/user/self, Authorization, квота → баланс',
     assert.equal(data.wallet.balance_usd, 82.31);
     assert.equal(data.plan, 'vip');
     assert.deepEqual(data.windows, []);
-    // 908842529 / 500000 = 1817.685058 → 1817.69
-    assert.equal(data.used_usd, 1817.69);
+    assert.equal(data.used_usd, 1817.685058);
     assert.equal(data.requests, 7756);
     assert.equal(mock.seen.length, 1);
     assert.equal(mock.seen[0].url, '/api/user/self');
@@ -36,9 +35,37 @@ test('getUsage: GET /api/user/self, Authorization, квота → баланс',
   }
 });
 
-// В профиле нет used_quota/request_count — поля просто нули
-// (карточка на главной скроет их, а не покажет «NaN»)
-test('нет used_quota/request_count → used_usd: 0, requests: 0', async () => {
+test('used_quota сохраняет ноль, дробные расходы и неизвестные значения', async () => {
+  const cases = [
+    [0, 0],
+    ['0', 0],
+    [1, 0.000002],
+    ['500', 0.001],
+    [null, null],
+    ['', null],
+    [' ', null],
+    [false, null],
+    ['invalid', null],
+    [-1, null],
+  ];
+  const mock = await startAgentRouterUpstream({
+    responses: cases.map(([used_quota]) => ({
+      body: { success: true, data: { quota: 500000, used_quota } },
+    })),
+  });
+  try {
+    const provider = createAgentRouterProvider({ url: mock.url, apiKey: TOKEN });
+    for (const [, expected] of cases) {
+      const { status, data } = await provider.getUsage();
+      assert.equal(status, 200);
+      assert.equal(data.used_usd, expected);
+    }
+  } finally {
+    await mock.close();
+  }
+});
+
+test('нет used_quota/request_count → used_usd: null, requests: 0', async () => {
   const mock = await startAgentRouterUpstream({
     body: {
       success: true,
@@ -51,7 +78,7 @@ test('нет used_quota/request_count → used_usd: 0, requests: 0', async () =>
     const { status, data } = await provider.getUsage();
     assert.equal(status, 200);
     assert.equal(data.wallet.balance_usd, 1);
-    assert.equal(data.used_usd, 0);
+    assert.equal(data.used_usd, null);
     assert.equal(data.requests, 0);
   } finally {
     await mock.close();

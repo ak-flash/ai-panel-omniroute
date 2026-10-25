@@ -3,19 +3,12 @@
 // ============================================================
 // Ежедневный снимок баланса AgentRouter.
 //
-// Раз в сутки (как только наступили новые сутки по UTC — той же
-// границей считают «сегодня» OpenRouter и Experiential) берём баланс
-// ключом из хранилища и сохраняем его как стартовый баланс
-// дня. Карточка вычитает из него текущий баланс и показывает
-// «потребление за сутки». Храним только последний снимок — при
-// смене суток он перезаписывается. Перезапуск сервера днём снимок
-// не переснимает.
-//
 // Зависимости приходят параметрами (store через getStore, адаптер
 // провайдера, поля хранилища, часы now) — модуль не трогает env и fs.
 // ============================================================
 
-/** Ключ снимка в хранилище: JSON { date: 'YYYY-MM-DD', balance_usd }. */
+const { fingerprint } = require('./ttl-cache');
+
 const AGENTROUTER_DAY_BALANCE_KEY = 'agentrouterDayBalance';
 
 function createAgentRouterTracker({
@@ -41,44 +34,139 @@ function createAgentRouterTracker({
     : () => {};
 
   const todayStr = () => now().toISOString().slice(0, 10);
+  let pendingSave = Promise.resolve();
 
-  /** Разовый снимок: баланс ключом из хранилища → JSON в хранилище. */
+  function finiteNumber(value) {
+    if (typeof value !== 'number' && (typeof value !== 'string' || value.trim() === '')) {
+      return null;
+    }
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function spentUsd(value) {
+    const number = finiteNumber(value);
+    return number !== null && number >= 0 ? number : null;
+  }
+
+  function readSnapshots(value, date) {
+    try {
+      const parsed = JSON.parse(value);
+      if (!parsed || parsed.date !== date) return {};
+      if (parsed.snapshots && typeof parsed.snapshots === 'object') return parsed.snapshots;
+      return { [parsed.owner || '']: parsed };
+    } catch {
+      return {};
+    }
+  }
+
+  function validSnapshot(snapshot) {
+    if (!snapshot) return null;
+    const balance = finiteNumber(snapshot.balance_usd);
+    if (balance === null) return null;
+    return { balance_usd: balance, used_usd: spentUsd(snapshot.used_usd) };
+  }
+
+  async function credentials() {
+    const active = getCredential ? await getCredential() : null;
+    const s = await (await getStore()).snapshot();
+    return {
+      key: String((active && (active.api_key || active.key)) || s[storeKey] || '').trim(),
+      uid: String((active && active.user_id) || s[userField] || '').trim(),
+    };
+  }
+
+  function serializeSave(operation) {
+    const save = pendingSave.then(operation);
+    pendingSave = save.then(
+      () => {},
+      () => {}
+    );
+    return save;
+  }
+
+  function recordUsage(data, key, uid, date = todayStr()) {
+    const save = serializeSave(async () => {
+      const balance = finiteNumber(data && data.wallet && data.wallet.balance_usd);
+      if (balance === null || !key || !uid || date !== todayStr()) return null;
+      const owner = fingerprint(`${key}:${uid}`);
+      const st = await getStore();
+      const s = await st.snapshot();
+      const snapshots = readSnapshots(s[balanceKey], date);
+      let changed = false;
+      const legacy = validSnapshot(snapshots['']);
+      if (legacy) {
+        const configured = await credentials();
+        if (configured.key && configured.uid) {
+          const configuredOwner = fingerprint(`${configured.key}:${configured.uid}`);
+          if (!validSnapshot(snapshots[configuredOwner])) snapshots[configuredOwner] = legacy;
+          delete snapshots[''];
+          changed = true;
+        }
+      }
+      const used = spentUsd(data.used_usd);
+      let snapshot = validSnapshot(snapshots[owner]);
+      if (!snapshot) {
+        snapshot = { balance_usd: balance, used_usd: used };
+        snapshots[owner] = snapshot;
+        changed = true;
+      }
+      if (changed) await st.set(balanceKey, JSON.stringify({ date, snapshots }));
+
+      const dayUsed = spentUsd(snapshot.used_usd);
+      const today =
+        dayUsed !== null
+          ? used !== null && used >= dayUsed
+            ? used - dayUsed
+            : null
+          : Math.max(0, snapshot.balance_usd - balance);
+      return {
+        day_balance_usd: snapshot.balance_usd,
+        today_usd: today === null ? null : Math.round(today * 1e6) / 1e6,
+      };
+    });
+    return save.catch(e => {
+      warnEvent('tracker_snapshot_failed', {
+        reason: e && e.message ? e.message : 'unknown',
+      });
+      return null;
+    });
+  }
+
   async function snapshotDayBalance() {
     try {
-      const st = await getStore();
-      const active = getCredential ? await getCredential() : null;
-      const s = await st.snapshot();
-      const key = String((active ? active.api_key || active.key : s[storeKey]) || '').trim();
-      const uid = String((active ? active.user_id : s[userField]) || '').trim();
+      const { key, uid } = await credentials();
       if (!key || !uid || !provider) return;
+      const date = todayStr();
       const result = await provider.getUsage(key, uid);
-      if (result.status !== 200) return;
-      const bal = Number(((result.data && result.data.wallet) || {}).balance_usd);
-      if (!Number.isFinite(bal)) return;
-      await (
-        await getStore()
-      ).set(balanceKey, JSON.stringify({ date: todayStr(), balance_usd: bal }));
+      if (result.status === 200) await recordUsage(result.data, key, uid, date);
     } catch (e) {
-      // Снимок дня не состоялся: карточка «за сутки» останется пустой до завтра
       warnEvent('tracker_snapshot_failed', {
         reason: e && e.message ? e.message : 'unknown',
       });
     }
   }
 
-  /** Снимок, только если за сегодня его ещё нет. */
   async function ensureTodaySnapshot() {
     try {
-      const s = await (await getStore()).snapshot();
-      let savedDate = null;
-      if (s[balanceKey]) {
-        try {
-          savedDate = JSON.parse(s[balanceKey]).date;
-        } catch {}
-      }
-      if (savedDate !== todayStr()) await snapshotDayBalance();
+      const { key, uid } = await credentials();
+      if (!key || !uid) return;
+      const date = todayStr();
+      const owner = fingerprint(`${key}:${uid}`);
+      const hasSnapshot = await serializeSave(async () => {
+        const st = await getStore();
+        const s = await st.snapshot();
+        const snapshots = readSnapshots(s[balanceKey], date);
+        const legacy = validSnapshot(snapshots['']);
+        if (legacy && date === todayStr()) {
+          if (!validSnapshot(snapshots[owner])) snapshots[owner] = legacy;
+          delete snapshots[''];
+          await st.set(balanceKey, JSON.stringify({ date, snapshots }));
+        }
+        return validSnapshot(snapshots[owner]) !== null;
+      });
+      if (!hasSnapshot) await snapshotDayBalance();
     } catch (e) {
-      // Нет доступа к хранилищу — снимок сегодня не сделать
       warnEvent('tracker_store_unavailable', {
         reason: e && e.message ? e.message : 'unknown',
       });
@@ -118,13 +206,12 @@ function createAgentRouterTracker({
   /** Стартовый баланс для карточки (только если он за сегодня). */
   async function getDayBalanceUsd() {
     try {
+      const { key, uid } = await credentials();
       const s = await (await getStore()).snapshot();
-      const saved = s[balanceKey];
-      if (!saved) return null;
-      const parsed = JSON.parse(saved);
-      if (parsed.date !== todayStr()) return null;
-      const bal = Number(parsed.balance_usd);
-      return Number.isFinite(bal) ? bal : null;
+      const snapshots = readSnapshots(s[balanceKey], todayStr());
+      const snapshot =
+        validSnapshot(snapshots[fingerprint(`${key}:${uid}`)]) || validSnapshot(snapshots['']);
+      return snapshot ? snapshot.balance_usd : null;
     } catch {
       return null;
     }
@@ -132,6 +219,7 @@ function createAgentRouterTracker({
 
   return {
     snapshotDayBalance,
+    recordUsage,
     start,
     stop,
     getDayBalanceUsd,

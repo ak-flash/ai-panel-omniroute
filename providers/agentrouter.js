@@ -203,7 +203,11 @@ function createAgentRouterProvider(config = {}) {
 
     // Баланс: quota / 500000, два знака после запятой (82.314942 → 82.31)
     const balance = Math.round((quota / QUOTA_PER_UNIT) * 100) / 100;
-    const usedRaw = Number(user.used_quota) / QUOTA_PER_UNIT;
+    const usedQuota =
+      typeof user.used_quota === 'number' ||
+      (typeof user.used_quota === 'string' && user.used_quota.trim() !== '')
+        ? Number(user.used_quota)
+        : NaN;
     return {
       status: 200,
       data: {
@@ -211,7 +215,7 @@ function createAgentRouterProvider(config = {}) {
         wallet: { balance_usd: balance },
         windows: [], // окна расхода — только у xKiro
         // Накопительные цифры профиля — для карточки на главной
-        used_usd: Number.isFinite(usedRaw) && usedRaw > 0 ? Math.round(usedRaw * 100) / 100 : 0,
+        used_usd: Number.isFinite(usedQuota) && usedQuota >= 0 ? usedQuota / QUOTA_PER_UNIT : null,
         requests: Number(user.request_count) || 0,
       },
     };

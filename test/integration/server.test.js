@@ -474,40 +474,97 @@ test('agentrouter: ключ и User ID из хранилища уходят ад
   }
 });
 
-test('agentrouter: разовый снимок баланса дня сохраняется и уходит в usage', async () => {
-  const { createAgentRouterProvider } = require('../../providers/agentrouter');
-  const { createStore } = require('../../src/store');
-  const mock = await startAgentRouterUpstream();
+test('agentrouter: первый usage сохраняет дневной снимок без фонового запроса', async () => {
+  const mock = await startAgentRouterUpstream({
+    responses: [
+      { body: { success: true, data: { quota: 5000000, used_quota: 500000 } } },
+      { body: { success: true, data: { quota: 4500000, used_quota: 1000000 } } },
+      { body: { success: true, data: { quota: 10000000, used_quota: 1500000 } } },
+    ],
+  });
   const store = await createStore({ memory: true });
   await store.set('agentrouterKey', STORED_TOKEN);
   await store.set('agentrouterUserId', STORED_USER_ID);
   const panel = await startPanel({
     providers: [createAgentRouterProvider({ url: mock.url })],
     store,
+    env: { AIPANEL_USAGE_CACHE_MS: '0' },
   });
   try {
-    // Снимок ещё не снят — usage без day_balance_usd
     let data = await (await fetch(panel.base + '/api/providers/agentrouter/usage')).json();
-    assert.equal('day_balance_usd' in data, false);
+    assert.equal(data.wallet.balance_usd, 10);
+    assert.equal(data.day_balance_usd, 10);
+    assert.equal(data.today_usd, 0);
+    assert.equal(mock.seen.length, 1);
 
-    // Ручной разовый снимок (как это делает планировщик в 00:00)
-    await panel.app.snapshotAgentRouterDayBalance();
-    const now = new Date();
     const saved = JSON.parse(await store.get('agentrouterDayBalance'));
-    assert.equal(
-      saved.date,
-      now.getFullYear() +
-        '-' +
-        String(now.getMonth() + 1).padStart(2, '0') +
-        '-' +
-        String(now.getDate()).padStart(2, '0')
-    );
-    assert.equal(saved.balance_usd, 82.31);
+    assert.equal(saved.date, new Date().toISOString().slice(0, 10));
+    assert.deepEqual(Object.values(saved.snapshots), [{ balance_usd: 10, used_usd: 1 }]);
+    assert.equal(JSON.stringify(saved).includes(STORED_TOKEN), false);
 
-    // Теперь usage отдаёт стартовый баланс дня
     data = await (await fetch(panel.base + '/api/providers/agentrouter/usage')).json();
-    assert.equal(data.day_balance_usd, 82.31);
-    assert.equal(data.wallet.balance_usd, 82.31);
+    assert.equal(data.wallet.balance_usd, 9);
+    assert.equal(data.day_balance_usd, 10);
+    assert.equal(data.today_usd, 1);
+
+    data = await (await fetch(panel.base + '/api/providers/agentrouter/usage')).json();
+    assert.equal(data.wallet.balance_usd, 20);
+    assert.equal(data.day_balance_usd, 10);
+    assert.equal(data.today_usd, 2);
+    assert.equal(mock.seen.length, 3);
+    assert.deepEqual(JSON.parse(await store.get('agentrouterDayBalance')), saved);
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('agentrouter: credentials из заголовков создают снимок и не смешивают аккаунты', async () => {
+  const mock = await startAgentRouterUpstream({
+    responses: [
+      { body: { success: true, data: { quota: 5000000, used_quota: 500000 } } },
+      { body: { success: true, data: { quota: 4500000, used_quota: 1000000 } } },
+      { body: { success: true, data: { quota: 1000000, used_quota: 500000 } } },
+    ],
+  });
+  const panel = await startPanel({
+    providers: [createAgentRouterProvider({ url: mock.url })],
+    env: { AIPANEL_USAGE_CACHE_MS: '0' },
+  });
+  try {
+    const headers = { 'x-api-key': 'client-token', 'x-agentrouter-user-id': '42' };
+    const url = panel.base + '/api/providers/agentrouter/usage';
+    let data = await (await fetch(url, { headers })).json();
+    assert.equal(data.today_usd, 0);
+    data = await (await fetch(url, { headers })).json();
+    assert.equal(data.today_usd, 1);
+    data = await (
+      await fetch(url, {
+        headers: { 'x-api-key': 'another-token', 'x-agentrouter-user-id': '99' },
+      })
+    ).json();
+    assert.equal(data.day_balance_usd, 2);
+    assert.equal(data.today_usd, 0);
+    assert.equal(mock.seen.length, 3);
+  } finally {
+    await panel.stop();
+    await mock.close();
+  }
+});
+
+test('agentrouter: кешированный usage не сбрасывает снимок и не делает лишних запросов', async () => {
+  const mock = await startAgentRouterUpstream();
+  const panel = await startPanel({
+    providers: [createAgentRouterProvider({ url: mock.url })],
+  });
+  try {
+    const options = { headers: { 'x-api-key': CLIENT_KEY, 'x-agentrouter-user-id': '42' } };
+    const url = panel.base + '/api/providers/agentrouter/usage';
+    const first = await (await fetch(url, options)).json();
+    const second = await (await fetch(url, options)).json();
+    assert.equal(first.today_usd, 0);
+    assert.deepEqual(second, first);
+    assert.equal(mock.seen.length, 1);
   } finally {
     await panel.stop();
     await mock.close();
