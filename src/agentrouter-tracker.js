@@ -113,13 +113,12 @@ function createAgentRouterTracker({
       }
       if (changed) await st.set(balanceKey, JSON.stringify({ date, snapshots }));
 
-      const dayUsed = spentUsd(snapshot.used_usd);
-      const today =
-        dayUsed !== null
-          ? used !== null && used >= dayUsed
-            ? used - dayUsed
-            : null
-          : Math.max(0, snapshot.balance_usd - balance);
+      const balanceDelta = Math.max(0, snapshot.balance_usd - balance);
+      const usedDelta =
+        spentUsd(snapshot.used_usd) !== null && used !== null && used >= spentUsd(snapshot.used_usd)
+          ? used - spentUsd(snapshot.used_usd)
+          : null;
+      const today = usedDelta === null ? balanceDelta : Math.max(balanceDelta, usedDelta);
       return {
         day_balance_usd: snapshot.balance_usd,
         today_usd: today === null ? null : Math.round(today * 1e6) / 1e6,

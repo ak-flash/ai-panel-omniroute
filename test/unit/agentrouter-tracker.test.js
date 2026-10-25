@@ -104,18 +104,27 @@ test('без счётчика расход вычисляется и при ну
   });
 });
 
-test('неизвестный или сброшенный счётчик не подменяется разницей балансов', async () => {
+test('при уменьшении счётчика расхода используется разница балансов', async () => {
+  const t = tracker(fakeStore(), fakeProvider(10), '2026-09-25T12:00:00Z');
+  await t.recordUsage({ wallet: { balance_usd: 10 }, used_usd: 50 }, 'token', '42');
+  assert.deepEqual(
+    await t.recordUsage({ wallet: { balance_usd: 7 }, used_usd: 49 }, 'token', '42'),
+    { day_balance_usd: 10, today_usd: 3 }
+  );
+});
+
+test('неизвестный или сброшенный счётчик дополняется разницей балансов', async () => {
   const t = tracker(fakeStore(), fakeProvider(10), '2026-09-25T12:00:00Z');
   await t.recordUsage({ wallet: { balance_usd: 10 }, used_usd: 50 }, 'token', '42');
   for (const used of [undefined, null, '', ' ', false, 'invalid', Infinity, -1, 49]) {
     assert.deepEqual(
       await t.recordUsage({ wallet: { balance_usd: 5 }, used_usd: used }, 'token', '42'),
-      { day_balance_usd: 10, today_usd: null }
+      { day_balance_usd: 10, today_usd: 5 }
     );
   }
   assert.deepEqual(
     await t.recordUsage({ wallet: { balance_usd: 5 }, used_usd: 51 }, 'token', '42'),
-    { day_balance_usd: 10, today_usd: 1 }
+    { day_balance_usd: 10, today_usd: 5 }
   );
 });
 

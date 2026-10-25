@@ -333,7 +333,7 @@ function renderAgentRouterCard(data) {
       ? Math.max(0, dayBal - bal)
       : null;
   if (todayEl) {
-    todayEl.textContent = today !== null ? fmtUsd(today) : '—';
+    todayEl.textContent = today !== null && today > 0 ? fmtUsd(today) : '—';
     todayEl.classList.toggle('val-used', today !== null && today > 0);
   }
 }
