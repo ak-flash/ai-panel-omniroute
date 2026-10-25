@@ -11,8 +11,22 @@ export function comboTestModelId(target) {
   return String(target.display || '');
 }
 
-/** Мини-запрос к конкретной модели через OmniRoute: max_tokens 16,
- * без кеша и памяти. Возвращает время ответа или кидает ошибку. */
+function hasUsableContent(content) {
+  if (typeof content === 'string') return content.trim() !== '';
+  if (!Array.isArray(content)) return false;
+  return content.some(part => {
+    if (typeof part === 'string') return part.trim() !== '';
+    if (!part || typeof part !== 'object') return false;
+    return (
+      (part.type === 'text' || part.type === 'output_text') &&
+      typeof part.text === 'string' &&
+      part.text.trim() !== ''
+    );
+  });
+}
+
+/** Мини-запрос к конкретной модели через OmniRoute: запас токенов
+ * покрывает reasoning и видимый ответ. Возвращает время ответа или кидает ошибку. */
 export async function testComboModel(modelId) {
   const startedAt = performance.now();
   let response;
@@ -22,8 +36,8 @@ export async function testComboModel(modelId) {
       headers: { 'content-type': 'application/json', 'X-OmniRoute-No-Cache': 'true' },
       body: JSON.stringify({
         model: modelId,
-        messages: [{ role: 'user', content: 'ping' }],
-        max_tokens: 16,
+        messages: [{ role: 'user', content: 'Reply with exactly one word: pong' }],
+        max_tokens: 4096,
         stream: false,
       }),
       signal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
@@ -55,15 +69,25 @@ export async function testComboModel(modelId) {
     throw e;
   }
 
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    const e = new Error('OmniRoute вернул некорректный JSON');
+    e.ms = Math.round(performance.now() - startedAt);
+    throw e;
+  }
+  const choice = payload && Array.isArray(payload.choices) ? payload.choices[0] : null;
+  if (!choice || !choice.message || !hasUsableContent(choice.message.content)) {
+    const e = new Error('модель вернула пустой ответ');
+    e.ms = Math.round(performance.now() - startedAt);
+    throw e;
+  }
+
   const latencyHeader = parseInt(response.headers.get('X-OmniRoute-Latency-Ms'), 10);
   const ms =
     Number.isFinite(latencyHeader) && latencyHeader > 0
       ? latencyHeader
       : Math.round(performance.now() - startedAt);
-  try {
-    await response.body.cancel();
-  } catch {
-    /* уже закрыт */
-  }
   return { ms, model: response.headers.get('X-OmniRoute-Model') || modelId };
 }

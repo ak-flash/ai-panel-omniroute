@@ -140,7 +140,77 @@ async function mockOmni(page, { combos = [COMBO_A, COMBO_B], puts = [], configPu
   }
 }
 
+async function checkMockedModel(page, { status = 200, body }) {
+  const requests = [];
+  await mockOmni(page, {
+    combos: [
+      {
+        ...COMBO_A,
+        models: [{ id: 1, providerId: 'agentrouter', model: 'agentrouter/gpt-6.1-sol', weight: 0 }],
+      },
+    ],
+  });
+  await page.route('**/api/providers/agentrouter/models', route =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [] }),
+    })
+  );
+  await page.route('**/omniroute/v1/chat/completions', route => {
+    requests.push({ method: route.request().method(), body: route.request().postDataJSON() });
+    return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await page.goto('/combo.html');
+  await waitForBoot(page);
+  const row = page.locator('#combo-models-list li').filter({ hasText: 'agentrouter/gpt-6.1-sol' });
+  const check = row.getByRole('button', { name: 'Проверить модель agentrouter/gpt-6.1-sol' });
+  await check.click();
+  return { requests, row, check };
+}
+
 test.describe('Страница «Combo»', () => {
+  test('проверка модели отправляет один POST и показывает задержку', async ({ page }) => {
+    const { requests, row } = await checkMockedModel(page, {
+      body: { choices: [{ message: { content: [{ type: 'text', text: 'pong' }] } }] },
+    });
+    await expect.poll(() => requests.length).toBe(1);
+    expect(requests[0]).toEqual({
+      method: 'POST',
+      body: {
+        model: 'agentrouter/gpt-6.1-sol',
+        messages: [{ role: 'user', content: 'Reply with exactly one word: pong' }],
+        max_tokens: 4096,
+        stream: false,
+      },
+    });
+    const latency = row.locator('.combo-test-ms.combo-test-ok');
+    await expect(latency).toBeVisible();
+    await expect(latency).toHaveText(/^\d+ мс$/);
+    expect(requests).toHaveLength(1);
+  });
+
+  test('проверка модели сохраняет ошибку пустого ответа upstream без повтора', async ({ page }) => {
+    const detail = 'Upstream returned an empty response';
+    const { requests, row, check } = await checkMockedModel(page, {
+      status: 502,
+      body: { error: { message: detail } },
+    });
+    await expect(check).toHaveClass(/combo-test-err/);
+    await expect(check).toHaveAttribute('title', detail + ' — проверить снова');
+    await expect(page.getByRole('alert')).toContainText('Проверка не удалась: ' + detail);
+    await expect(row.locator('.combo-test-ok')).toHaveCount(0);
+    expect(requests).toHaveLength(1);
+  });
+
+  test('проверка модели отклоняет HTTP 200 без содержимого ответа', async ({ page }) => {
+    const { requests, row, check } = await checkMockedModel(page, { body: {} });
+    await expect(check).toHaveClass(/combo-test-err/);
+    await expect(page.getByRole('alert')).toContainText('Проверка не удалась:');
+    await expect(row.locator('.combo-test-ok')).toHaveCount(0);
+    expect(requests).toHaveLength(1);
+  });
+
   test('список combo загружен, выбрана активная, targets на месте', async ({ page }) => {
     await mockOmni(page);
     await page.goto('/combo.html');
@@ -191,7 +261,9 @@ test.describe('Страница «Combo»', () => {
     await expect(page.locator('#combo-models-list li')).toHaveCount(3);
     const before = await details.boundingBox();
     let release;
-    const responseReady = new Promise(resolve => { release = resolve; });
+    const responseReady = new Promise(resolve => {
+      release = resolve;
+    });
     await page.route('**/omniroute/api/combos/combo-b', async route => {
       await responseReady;
       await route.fulfill({ json: { ...COMBO_B, strategy: 'round-robin' } });
