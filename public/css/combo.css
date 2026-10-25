@@ -216,6 +216,22 @@ li.top .combo-model-id {
   border-color: currentColor;
 }
 
+.combo-error-detail.status-err {
+  display: block;
+  max-width: 100%;
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-inline-start: 3px solid var(--danger);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  color: var(--danger);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .badge.status-other {
   color: var(--text-muted);
   border-color: currentColor;

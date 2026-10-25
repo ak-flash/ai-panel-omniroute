@@ -98,7 +98,9 @@ export function renderComboRecentTable(rows, els) {
     tdStatus.className = 'num-col';
     tdStatus.dataset.label = 'Статус';
     const badge = document.createElement('span');
-    badge.className = 'badge ' + statusClass(row.status, Boolean(row.error));
+    const kind = statusClass(row.status, Boolean(row.error));
+    badge.className =
+      (kind === 'status-err' ? 'combo-error-detail ' : 'badge ') + kind;
     badge.textContent = statusText(row);
     if (row.error) badge.title = extractErrorText(row.error);
     tdStatus.appendChild(badge);
