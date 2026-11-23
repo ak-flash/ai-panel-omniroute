@@ -16,6 +16,7 @@ import { start } from '../boot.js';
 import { fmtUsd, compact, dur, num, pct, barClass } from '../formatters.js';
 import { loadComboList, comboTargets } from '../combos.js';
 import { createWalletCard } from '../cards/wallet-card.js';
+import { initProviderCardSorting } from '../provider-card-sort.js';
 import {
   loadAntigravityQuota,
   getQuota as getAntigravityQuota,
@@ -539,6 +540,7 @@ async function loadIndexComboFirst() {
 
 export async function init() {
   renderProviderLabel();
+  initProviderCardSorting();
   renderAgentRouterRelease();
   // Экран «Нужен ключ» — только если ключей нет ни у одного провайдера
   const hasAnyKey =

@@ -344,7 +344,7 @@ async function toggleComboModel(target) {
   comboModels.forEach(item => arr.push(item._raw));
   const comboId = activeComboId;
   const version = comboLoadVersion;
-  const body = structuredClone(activeComboData);
+  const body = structuredClone(comboTargetsUpdate());
   const disabledTargets = new Set(disabledComboTargets);
   const disabledRaw = new Map(disabledComboRaw);
   try {
@@ -386,7 +386,7 @@ async function deleteComboModel(target) {
   }
   const comboId = activeComboId;
   const version = comboLoadVersion;
-  const body = structuredClone(activeComboData);
+  const body = structuredClone(comboTargetsUpdate());
   const disabledTargets = new Set(disabledComboTargets);
   const disabledRaw = new Map(disabledComboRaw);
   try {
@@ -423,6 +423,14 @@ function comboTargetArray() {
   return null;
 }
 
+function comboTargetsUpdate() {
+  // Не отправляем объект GET целиком: routes.chat может перезаписать
+  // обновлённые models/config, если попадёт в тот же PUT.
+  if (Array.isArray(activeComboData.models)) return { models: activeComboData.models };
+  if (Array.isArray(activeComboData.targets)) return { targets: activeComboData.targets };
+  return { config: activeComboData.config };
+}
+
 function saveReorderedCombo(successMessage = 'Порядок сохранён') {
   const combo = activeCombo();
   if (!combo || !activeComboData) return;
@@ -445,9 +453,25 @@ function saveReorderedCombo(successMessage = 'Порядок сохранён') 
   reordered.forEach(item => arr.push(item));
 
   const version = comboLoadVersion;
-  const body = structuredClone(activeComboData);
+  const body = structuredClone(comboTargetsUpdate());
+  const path = COMBO_PATH(combo.id);
+  const expected = [...comboModels];
   $comboStatus.textContent = 'Сохраняю порядок…';
-  queueComboWrite(() => omniFetch(COMBO_PATH(combo.id), { method: 'PUT', body }))
+  queueComboWrite(async () => {
+    await omniFetch(path, { method: 'PUT', body });
+    const saved = extractComboTargets(await omniFetch(path));
+    const matches =
+      expected.length === saved.length &&
+      expected.every((target, index) => {
+        const model = target.modelId || target.display;
+        const savedModel = saved[index].modelId || saved[index].display;
+        return (
+          model === savedModel &&
+          (!target._raw.id || comboTargetKey(target) === comboTargetKey(saved[index]))
+        );
+      });
+    if (!matches) throw new Error('OmniRoute вернул другой порядок моделей');
+  })
     .then(() => {
       if (version !== comboLoadVersion) return;
       $comboStatus.textContent = '';

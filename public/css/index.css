@@ -12,27 +12,143 @@
 }
 
 .provider-card {
+  position: relative;
   overflow: hidden;
   box-shadow:
     0 1px 2px oklch(0% 0 0 / 0.08),
     0 12px 32px oklch(0% 0 0 / 0.06);
 }
 
-/* Единый вертикальный ритм карточек провайдеров. */
-#cards ~ .provider-card {
-  margin-top: 16px;
-}
-
-.provider-dashboard-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+/* Общий поток позволяет переносить карточки между рядами без пустых ячеек. */
+.provider-cards {
+  display: flex;
+  flex-wrap: wrap;
   gap: 16px;
-  margin-top: 16px;
 }
 
-.provider-dashboard-row .provider-card {
+.provider-cards > .provider-card {
+  flex: 1 1 max(calc((100% - 32px) / 3), min(100%, 240px));
   min-width: 0;
   margin: 0;
+}
+
+.provider-cards > .provider-card-wide {
+  flex-basis: max(calc((100% - 16px) / 2), min(100%, 300px));
+}
+
+.provider-cards > .provider-card-full {
+  flex-basis: 100%;
+}
+
+.provider-drag-handle {
+  display: inline-flex;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--text-faint);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.provider-drag-handle svg,
+.provider-sort-preview svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.provider-drag-handle:hover {
+  color: var(--accent);
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.provider-drag-handle:focus-visible {
+  color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.is-provider-sorting,
+.is-provider-sorting .provider-drag-handle {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.provider-card.is-sorting {
+  opacity: 0.4;
+}
+
+.provider-card[data-sort-drop] {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.provider-card[data-sort-drop]::after {
+  content: '';
+  position: absolute;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.provider-card[data-sort-drop='left']::after {
+  inset: 0 auto 0 0;
+  width: 4px;
+}
+
+.provider-card[data-sort-drop='right']::after {
+  inset: 0 0 0 auto;
+  width: 4px;
+}
+
+.provider-card[data-sort-drop='top']::after {
+  inset: 0 0 auto;
+  height: 4px;
+}
+
+.provider-card[data-sort-drop='bottom']::after {
+  inset: auto 0 0;
+  height: 4px;
+}
+
+.provider-sort-preview {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(340px, calc(100vw - 16px));
+  padding: 10px 14px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-m);
+  box-shadow: 0 8px 24px oklch(0% 0 0 / 0.2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.provider-sort-preview > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (pointer: coarse) {
+  .provider-drag-handle {
+    flex-basis: 36px;
+    width: 36px;
+    height: 36px;
+  }
 }
 
 #index-combo {
@@ -442,18 +558,6 @@
 .provider-card-wallet .provider-card-head {
   margin-bottom: -16px;
   border-bottom: 0;
-}
-
-/* --- Wallet-карточки (AgentRouter, OpenRouter, Selora) в один ряд --- */
-.wallet-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
-  gap: 16px;
-  margin-top: 16px;
-}
-
-.wallet-cards .provider-card {
-  margin: 0;
 }
 
 /* --- AgentRouter: баланс в начале карточки --- */

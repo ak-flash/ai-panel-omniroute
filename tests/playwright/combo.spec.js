@@ -228,6 +228,41 @@ test.describe('Страница «Combo»', () => {
     await expect(items.nth(2)).toContainText('claude-sonnet');
   });
 
+  for (const persists of [true, false]) {
+    test(`перетаскивание: ${persists ? 'сохраняет порядок' : 'обнаруживает несохранённый порядок'}`, async ({ page }) => {
+      await mockOmni(page);
+      let stored = { ...COMBO_A, routes: { chat: { models: COMBO_A.models } } };
+      const puts = [];
+      await page.route('**/omniroute/api/combos/combo-a', async route => {
+        if (route.request().method() === 'PUT') {
+          const body = route.request().postDataJSON();
+          puts.push(body);
+          // OmniRoute отдаёт приоритет routes.chat из PUT над верхнеуровневым models.
+          if (persists) {
+            const models = body.routes?.chat?.models ?? body.models;
+            stored = { ...stored, models, routes: { chat: { models } } };
+          }
+        }
+        await route.fulfill({ json: stored });
+      });
+      await page.goto('/combo.html');
+      await waitForBoot(page);
+      const items = page.locator('#combo-models-list li');
+      await expect(items).toHaveCount(3);
+      await items.nth(2).dragTo(items.nth(0));
+      await expect.poll(() => puts.length).toBe(1);
+      expect(puts[0]).toEqual({ models: [COMBO_A.models[2], ...COMBO_A.models.slice(0, 2)] });
+      if (persists) {
+        await expect(page.getByText('Порядок сохранён', { exact: true })).toBeVisible();
+        await page.reload();
+        await expect(items.first()).toContainText('claude-sonnet');
+      } else {
+        await expect(page.getByText(/Не удалось сохранить порядок:/)).toBeVisible();
+        await expect(page.getByText('Порядок сохранён', { exact: true })).toHaveCount(0);
+        await expect(items.last()).toContainText('claude-sonnet');
+      }
+    });
+  }
   test('бейдж тарифа берётся из каталога провайдера самой модели', async ({ page }) => {
     await mockOmni(page);
     await page.goto('/combo.html');
