@@ -355,6 +355,10 @@
     flex-basis: 100%;
   }
 
+  .provider-cards .provider-drag-handle {
+    display: none;
+  }
+
   .provider-card-head {
     margin: -14px -16px 12px;
     padding: 12px 16px;
