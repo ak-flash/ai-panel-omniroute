@@ -44,13 +44,29 @@
                 /></svg
             ></span>
             <div>
-              <h3 class="info-card-title">Обновление opencode</h3>
-              <p class="info-card-sub">Выполните команду в терминале</p>
+              <h3 class="info-card-title">Обновление Paseo и OpenCode</h3>
+              <p class="info-card-sub">
+                Ubuntu / systemd: выполните команды по очереди в терминале сервера
+              </p>
             </div>
           </div>
+          <p class="hint hint-top-flush">
+            Инструкция для Paseo, установленного через npm: служба и пользователь —
+            <code>paseo</code>, путь к OpenCode — <code>/usr/local/bin/opencode</code>. Перед
+            обновлением завершите работу активных агентов. Используйте отдельный SSH-сеанс:
+            перезапуск службы временно разорвёт соединение с Paseo.
+          </p>
+          <p><strong>1. Обновите Paseo CLI до последней стабильной версии.</strong></p>
           <div class="manage-cmd">
-            <code id="manage-cmd-text">opencode upgrade</code>
-            <button id="btn-copy-cmd" class="btn btn-ghost" title="Скопировать команду">
+            <code id="paseo-cmd-text">sudo npm install -g @getpaseo/cli@latest</code>
+            <button
+              class="btn btn-ghost"
+              type="button"
+              data-copy-command="paseo-cmd-text"
+              aria-label="Скопировать команду обновления Paseo"
+              aria-describedby="copy-status"
+              title="Скопировать команду"
+            >
               <svg
                 class="icon"
                 xmlns="http://www.w3.org/2000/svg"
@@ -58,6 +74,7 @@
                 viewBox="0 0 24 24"
                 stroke-width="1.5"
                 stroke="currentColor"
+                aria-hidden="true"
               >
                 <path
                   stroke-linecap="round"
@@ -68,6 +85,90 @@
               Копировать
             </button>
           </div>
+          <p class="hint">
+            <code>npm warn deprecated uuid@9.0.1</code> — предупреждение об устаревшей зависимости,
+            а не ошибка установки. Если npm завершился без ошибки (например, вывел
+            <code>changed 311 packages in 13s</code>), переходите к следующему шагу.
+          </p>
+          <p><strong>2. Обновите OpenCode от имени пользователя paseo.</strong></p>
+          <div class="manage-cmd">
+            <code id="manage-cmd-text">sudo -u paseo -H /usr/local/bin/opencode upgrade</code>
+            <button
+              id="btn-copy-cmd"
+              class="btn btn-ghost"
+              type="button"
+              data-copy-command="manage-cmd-text"
+              aria-label="Скопировать команду обновления OpenCode"
+              aria-describedby="copy-status"
+              title="Скопировать команду"
+            >
+              <svg
+                class="icon"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z"
+                />
+              </svg>
+              Копировать
+            </button>
+          </div>
+          <p class="hint">
+            Сообщение <code>OpenCode upgrade skipped: 2.3.2 is already installed</code> означает,
+            что эта версия уже установлена — это не ошибка. Номер версии в выводе может отличаться.
+          </p>
+          <p><strong>3. После успешного обновления перезапустите службу Paseo.</strong></p>
+          <div class="manage-cmd">
+            <code id="restart-cmd-text">sudo systemctl restart paseo</code>
+            <button
+              class="btn btn-ghost"
+              type="button"
+              data-copy-command="restart-cmd-text"
+              aria-label="Скопировать команду перезапуска Paseo"
+              aria-describedby="copy-status"
+              title="Скопировать команду"
+            >
+              <svg
+                class="icon"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z"
+                />
+              </svg>
+              Копировать
+            </button>
+          </div>
+          <p class="hint">
+            При успешном перезапуске команда обычно ничего не выводит. После запуска службы
+            подключитесь к Paseo заново.
+          </p>
+          <p class="hint">
+            Документация:
+            <a href="https://paseo.sh/docs/updates.md" target="_blank" rel="noopener noreferrer"
+              >обновления Paseo</a
+            >,
+            <a
+              href="https://opencode.ai/docs/cli/commands/#upgrade"
+              target="_blank"
+              rel="noopener noreferrer"
+              >обновление OpenCode</a
+            >.
+          </p>
           <p id="copy-status" class="models-status" role="status"></p>
         </div>
         <!--

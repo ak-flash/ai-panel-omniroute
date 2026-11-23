@@ -89,7 +89,7 @@
   font-size: var(--fs-md);
 }
 
-#btn-copy-cmd {
+.manage-cmd .btn {
   flex: 0 0 auto;
   min-height: 36px;
   white-space: nowrap;
@@ -120,7 +120,7 @@
     align-items: flex-start;
   }
 
-  #btn-copy-cmd {
+  .manage-cmd .btn {
     width: 100%;
   }
 }

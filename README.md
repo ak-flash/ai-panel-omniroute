@@ -94,43 +94,20 @@ pm2 startup              # автозапуск при перезагрузке 
 
 Сценарий: `git pull` на сервере → установка прод-зависимостей → перезапуск PM2.
 
-**Первый раз (один раз на сервере)**
+На сервере из каталога проекта выполните:
 
 ```bash
-# Установить Node.js через nvm
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-source ~/.bashrc
-nvm install 24
-
-# PM2 глобально
-npm install -g pm2
-
-# Клонировать репозиторий
-git clone https://github.com/ak-flash/ai-panel-omniroute.git /home/user/ai-panel
-cd /home/user/ai-panel
-
-# Создать .env с секретами (шаблон ниже в разделе «Настройка»)
-nano .env
-
-# Установить только production-зависимости
-npm ci --omit=dev
-
-# Запустить и сохранить в автозапуск
-pm2 start server.js --name ai-panel
-pm2 save
-pm2 startup   # выполнить команду, которую выведет PM2
+./scripts/deploy.sh
 ```
 
-**Обновление до новой версии**
+Запускайте скрипт от пользователя PM2, без `sudo`. Нужны Git, Node.js ≥ 22, npm, PM2, `curl` и `flock` (`util-linux`). Скрипт требует чистую рабочую копию, подтягивает upstream текущей ветки через `git pull --ff-only`, устанавливает зависимости (`npm ci --omit=dev`) и выполняет `pm2 restart ai-panel --update-env`. Если процесса ещё нет, запускает его через `pm2 start server.js --name ai-panel`. После HTTP 200 от `/api/ready` выполняет `pm2 save`. При сбое проверки выводит последние 30 строк логов. `.env` не меняется; автоматического отката нет.
+
+Для первого запуска после клонирования и настройки `.env` используйте ту же команду. Для автозапуска после перезагрузки один раз настройте `pm2 startup` по инструкции в его выводе.
+
+Если адрес проверки отличается от настроек текущего окружения и `.env` (например, порт задан только в PM2), укажите его явно:
 
 ```bash
-ssh user@your-server
-cd /home/user/ai-panel
-
-git pull
-npm ci --omit=dev
-pm2 restart ai-panel --update-env
-pm2 logs ai-panel --lines 30   # убедиться, что стартовало без ошибок
+HEALTH_URL=http://127.0.0.1:9000/api/ready ./scripts/deploy.sh
 ```
 
 **Откат** (если что-то пошло не так):
@@ -498,7 +475,7 @@ ai-panel/
     ├── index.html     # страница «Статистика» (главная)
     ├── models.html    # страница «Модели»: каталог моделей
     ├── combo.html     # страница «Combo»: routing combo OmniRoute
-    ├── cheatsheet.html# страница «Шпаргалка»: команда обновления opencode
+    ├── cheatsheet.html# страница «Шпаргалка»: обновление Paseo и OpenCode, перезапуск службы
     ├── js/            # фронтенд-модули
     │   ├── boot.js    # запуск страницы: partials → общий UI → page.init()
     │   ├── session.js # общее состояние: провайдеры, каталог моделей
@@ -536,7 +513,7 @@ ai-panel/
 
 - [x] OmniRoute: переключение моделей в combo (auto-coding и др.) по их API
 - [x] Провайдеры: фабрики-адаптеры в `providers/` (xKiro, AgentRouter, OpenRouter, Selora, Experiential Labs, Antigravity + refresh-token flow)
-- [x] Страница «Управление» с командой обновления opencode
+- [x] Страница «Шпаргалка» с командами обновления Paseo и OpenCode, перезапуска службы
 - [x] Алиасы имён провайдеров для OmniRoute
 - [x] AgentRouter: список моделей и расход за сутки (окон расхода у new-api нет)
 - [x] Уведомления при приближении к лимитам (пороги настраиваются в диалоге настроек)
